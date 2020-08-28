@@ -13,6 +13,9 @@ knitr::opts_chunk$set(echo = TRUE)
 ## Loading environment / libraries
 
 # Todo:
+# Activity mittels Liste aus word herauslesen oder die levels des 2017/18 sheets nutzen. Mittels grepl etc. dann wird es auch automatisch mit activity in 2017/18 verknüpft
+
+# Auseinandernehmen von FoodtypeOrIndividualOrDirection /SpeciesOrDistance  attribute in 2017/18 daten
 
 # Data handling
 # Zeiten kontrollieren ob bei Originaldatei in den Tracks (anhand Dateiname) teilweise GPS Messungen mit viel späterem Zeitpunkt zwischendrin vorkommen
@@ -409,10 +412,10 @@ SUAQ_waypoints_11_20 <-
 #Task: --> change every pttype variable above to a different attribute. See which are categorized in multiple groups!
     
     PtType = ifelse((sym == "Block, Blue" ) & (grepl("lch", name)|grepl("lc", name)), # Metainformation for some lch and lcg are not considered because there are only written down for very less points(10-20 points). Information about call direction is given in the activity table
-                    "long call heard",
+                    "lch",
                     PtType),
     PtType = ifelse((sym == "Block, Blue" ) & grepl("lcg", name),
-                    "long call given",
+                    "lcg",
                     PtType),
     PtType = ifelse((sym == "Block, Red" |
                        sym == "Circle, Red") & grepl("dna", name),
@@ -458,9 +461,9 @@ SUAQ_waypoints_11_20<- SUAQ_waypoints_11_20 %>%  mutate(
   PtType_individual_1=map2_chr(PtType_individual, 1,~.x[.y]),
   PtType_individual_2=map2_chr(PtType_individual, 2,~.x[.y]),
   PtType_individual_3=map2_chr(PtType_individual, 3,~.x[.y]),
-  PtType_direction = ifelse(PtType=="long call given" |PtType=="long call heard",
+  PtType_direction = ifelse(PtType=="lcg" |PtType=="lch",
                             str_extract(name,"\\d+(?!\\d*m)"),NA),
-  PtType_distance = ifelse(PtType=="long call given" |PtType=="long call heard",
+  PtType_distance = ifelse(PtType=="lcg" |PtType=="lch",
                             str_extract(name,"\\d+(?=m)"),NA),
 
 ) %>% select(-PtType_individual)
@@ -493,7 +496,9 @@ SUAQ_waypoints_17_18 <- SUAQ_waypoints_17_18 %>%
          automaticDate=date(automaticDatetime),
          automaticTime=hms::as_hms(automaticDatetime),
          Follow..=as.character(Follow..),
-         Age.Sex=tolower(Age.Sex)
+         Point.Type=tolower(Point.Type),
+         Age.Sex=tolower(Age.Sex),
+         Activity=tolower(Activity)
          ) %>% 
   rename(c("follow"="Follow..",
            "followtype"="Follow.Type",
@@ -505,6 +510,7 @@ SUAQ_waypoints_17_18 <- SUAQ_waypoints_17_18 %>%
            "FollowIndData"="Follow..IndData.",
            "AgeSex"="Age.Sex")) %>% 
   select(-Actual.Time,-Time)
+
 SUAQ_waypoints_11_20 <-
   SUAQ_waypoints_11_20 %>% 
   rename(
@@ -513,21 +519,69 @@ SUAQ_waypoints_11_20 <-
   )%>% 
   mutate(
     "focal" = orangutanname,
-    "follow"= fileN,
-    "AgeSex"=NA
+    "follow"= NA,
+    "AgeSex"= NA,
+    PtType= if_else(PtType=="jumpa","found",PtType),
+    PtType= if_else(PtType=="path","range",PtType) # PATH values in the data of 2017 to 2018 means ranging points
   ) %>% 
   mutate(
     "altitude"=as.character(altitude)
   )
 
 SUAQ_waypoints_11all20<- SUAQ_waypoints_11_20 %>%  bind_rows(SUAQ_waypoints_17_18)
-SUAQ_waypoints_11all20_sf <-  st_as_sf(SUAQ_waypoints_11all20, 
-                          coords = c("N", "E"), 
-                          crs = 4326)
+levels(as.factor(SUAQ_waypoints_11all20$Activity))
+SUAQ_waypoints_11all20 <- SUAQ_waypoints_11all20%>% select(-Date,-FollowIndData)
 
 ########### FINISH MERGE ################
 
 
+
+
+
+
+
+### Merging 2011-2020 data with followlog
+#### for the first two follows which are not joined with the followlog it seams the date in the filename is wrong! --> should be 2011 not 2010. This is the case for many more! maybe look on the automatic date!
+#### PROBLEMS
+specs_AutomaticManualDateNotEqual<- SUAQ_waypoints_11all20 %>% filter(.$manualDate!=.$automaticDate) %>% group_by(.$fileN) %>% summarise(count=n()) # date automatic and manual not the same
+
+
+tmp<- SUAQ_followlog[,c(2,4,15)] %>% mutate(tmp_FollowNumber=.$FollowNumber) %>% select(-FollowNumber)
+tmp2<- SUAQ_followlog[,c(2,4,15)] %>% mutate(tmp_FollowNumber_M_infant=.$FollowNumber) %>%
+  select(-FollowNumber)
+
+
+# Join followlog and add information to gps file
+SUAQ_waypoints_11all20 <- SUAQ_waypoints_11all20 %>%
+  left_join(SUAQ_followlog,by=c("manualDate"="Date","orangutanname"="FocalName"),suffix = c("", "_fromfollowlog")) %>% 
+  left_join(tmp2,by=c("manualDate"="Date","infantname"="FocalName")) %>% 
+  left_join(tmp,by=c("automaticDate"="Date","orangutanname"="FocalName")) %>%
+  mutate(FollowNumber=if_else(is.na(FollowNumber),tmp_FollowNumber,FollowNumber)) %>%
+  select(-tmp_FollowNumber)
+
+
+#### for how many we have missing FN
+SUAQ_numberoffiles <- SUAQ_waypoints_11_20 %>% group_by(fileN) %>% summarise() # number of files is 730
+SUAQ_waypointswithoutfollownumber<- SUAQ_waypoints_11_20 %>% filter(is.na(FollowNumber)) %>% group_by(fileN) %>% summarise(count=n())
+SUAQ_waypointswithfollownumber<- SUAQ_waypoints_11_20 %>%filter(!is.na(FollowNumber)) %>% group_by(fileN) %>% summarise(count=n())
+SUAQ_waypointswithoutfollownumber <- st_drop_geometry(SUAQ_waypointswithoutfollownumber)
+SUAQ_waypointswithfollownumber <- st_drop_geometry(SUAQ_waypointswithfollownumber)
+tmp<- setdiff(SUAQ_waypointswithoutfollownumber,SUAQ_waypointswithfollownumber)
+
+#DELETE testing sth
+tmp<- SUAQ_followlog[,c(2,4,10,15,17,18,19,27:32,35,38:50)]
+
+
+tmp<- SUAQ_waypoints_11_20 %>% filter(.$orangutanname=="julia")
+tmp0<- SUAQ_waypoints_11_20 %>% filter(.$manualDate==as.Date("2014-02-19", tz = "Asia/Pontianak"))
+
+tmp2<- SUAQ_waypoints_11_20 %>% filter(.$fileN=="20130510_Jebi_UNK_NL")
+tmp3<- SUAQ_followlog %>% filter(.$FocalName=="julia")
+tmp4<- SUAQ_followlog %>% filter(.$Date==as.Date("2013-03-29", tz = "Asia/Pontianak"))
+
+
+tmp<- SUAQ_followlog %>% filter(Date!=as.Date(paste(as.numeric(Day),as.numeric(Month),as.numeric(Year)),format = "%d %m %Y"))
+#DELETE testing sth
 
 
 
@@ -596,6 +650,13 @@ tmp<- SUAQ_waypoints_11all20_sf %>% group_by(.$Class) %>% summarise(count=n())
 
 levels(as.factor(SUAQ_waypoints_11all20_sf$Class))
 levels(as.factor(SUAQ_waypoints_11all20_sf$ClassFocal))
+
+
+
+#### save all waypoints as sf
+SUAQ_waypoints_11all20_sf <-  st_as_sf(SUAQ_waypoints_11all20, 
+                          coords = c("N", "E"), 
+                          crs = 4326)
 
 ```
 
