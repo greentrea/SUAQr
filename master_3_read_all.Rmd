@@ -1,0 +1,447 @@
+---
+title: "Projekt"
+author: "Stefan Graf"
+date: "28 3 2020"
+output: html_document
+---
+
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Loading environment / libraries
+
+# Todo:
+
+# Data handling
+# Zeiten kontrollieren ob bei Originaldatei in den Tracks (anhand Dateiname) teilweise GPS Messungen mit viel späterem Zeitpunkt zwischendrin vorkommen
+
+
+
+# Markings:
+#### Quality check: --> are quality checks of chunks executed before
+########### DELETE ############--> are chunks to delete
+## Title --> are titles for sections
+### explanations of the following chunk
+##### SUAQ TRACKS 2018 & 2019 ##### --> Code sections to understand code better
+
+```{r import, echo= 'F',results='hide'}
+# CLASSICAL PACKAGE IMPORTER (Stefan Graf & Tobias Frey)
+packages_checker <- function(packages_list){
+  for (package in packages_list){
+    if (!require(package, character.only = T)) {
+      install.packages(package)
+    }
+    library(package, character.only = T)
+  }
+}
+
+packages_checker(
+  c('tmaptools',# read_gpx function
+    'plotKML',# read GPX to dataframe
+    'lubridate',
+    'zoo',
+    'dbplyr',
+    'plyr',
+    'dplyr',
+    'tidyr',
+    'tidyverse',
+    'sf', # Simple feature --> super spatial data handling structure
+    'raster', # For raster data
+    'ggspatial',
+    'rgdal',
+    'data.table',
+    'RColorBrewer', # color schemas from color brewer web
+    'ggraph', # visualization
+    'igraph',
+    'tmap',
+    'scales',
+    'trajr',
+    'plotly', # zoomable, pannable ggplot
+    'mapview',
+    'ggmap', # easier interactive ggmaps 
+    'leaflet', # Javascript library (originally) for plotting on a maptile interactive map
+    'tmap',
+    'stringr',
+    'remotes' # geom_convexhull function
+    ))
+rm(list = ls())
+getwd()
+
+### CUSTOM FUNCTIONS ###
+clockS = function(t){hour(t)*3600+minute(t)*60+second(t)}
+
+read_GPX_waypoints <- function(flnm){
+    file <- read_GPX(flnm)
+    if(typeof(file)!="list"){file <- file$waypoints}
+    file<- file %>%  # add file name as an attribute
+        mutate(filename = flnm)
+  return(out)
+}
+read_GPX_waypoints <- function(flnm){
+    out <- tryCatch(
+        { message("Try to read file")
+            file <- data.frame()
+            start <- Sys.time()
+            file <- read_GPX(flnm)
+            if(class(file)[1]=="list"){file <- file$waypoints}
+            end <- Sys.time()
+            processduration <- end-start
+            file <- file %>% #Skip the first 16 rows because see below
+              mutate(fileN=substr(filename, 31,(nchar(filename)+1)-5))
+            
+            return(file)
+        },
+        error=function(cond) {
+            message(paste("File seems not to exist", flnm))
+            message("Here's the original error message:")
+            message(cond)
+            # Choose a return value in case of error
+            return(NA) # use dataframe as return instead of NA --> See here why, without it throws an error. https://stackoverflow.com/questions/48512461/error-in-bind-rows-x-id-argument-1-must-have-names-using-map-df-in-purrr
+        },
+        warning=function(cond) {
+            message(paste("Loading file didn't work", flnm))
+            message("Here's the original warning message:")
+            message(cond)
+            # Choose a return value in case of warning
+            return(NULL)
+        },
+        finally={
+            message(paste("Processed URL: ", flnm," Duration: ",processduration))
+            message("Finished")
+        }
+    )    
+    return(out)
+}
+
+
+```
+
+#### SUAQ research site
+## Preprocessing
+1. Getting data from excel/csv files
+2. Getting data from gpx files, clean and order it
+3. Merge Files
+```{r GPS Processing}
+## 1. Getting data from excel/csv files
+##### SUAQ TRACKS 2018 & 2019 #####
+suaq_gps_17_18 <- read_csv2("data/20200415_Master_GPS_Suaq_2017_Mar18_SH.csv")
+str(suaq_gps_17_18)
+st_layers("data/")
+
+
+
+#### CRS Code: EPSG 32647
+#### Create SF Points
+suaq_orangutan_follows_2020_sf <-  st_as_sf(suaq_gps_17_18, 
+                          coords = c("Y", "X"), 
+                          crs = 4326)
+
+coordinates_tmp <- st_coordinates(suaq_orangutan_follows_2020_sf)
+colnames(coordinates_tmp) <- c("E","N")
+suaq_orangutan_follows_2020_sf <- cbind(suaq_orangutan_follows_2020_sf,coordinates_tmp)
+
+
+
+## 2. Getting data from gpx files, clean and order it
+#### SUAQ TRACKS DATA 2020 ####
+
+############################### DELETE ################################  
+gpxohnetrack<- read_GPX("data/20200717_All_stedit/gpx/20100115_Friska_Unk_FN.gpx")
+class(gpxohnetrack)[1]=="list"
+
+gpxmittrack<- read_GPX("data/20200717_All_stedit/gpx//20110118_Friska_Caco_NL.gpx")
+if(typeof(gpxmittrack)=="list"){gpxmittrack <- gpxmittrack$waypoints}
+tmp<- gpxmittrack$track_points
+
+tmp<- as.data.frame(suaq_gpx_list)
+tmp<- tmp %>% mutate(filename=substr(str_extract(suaq_gpx_list, "\\d{8}_[a-zA-Z].+_.+\\."), 1, nchar(str_extract(suaq_gpx_list, "\\d{8}_[a-zA-Z].+_.+\\."))-4))
+
+st_geometry_type(r)
+nrow(r)
+plot(r$geometry)
+############################### DELETE ################################  
+
+#### create a list of all gpx files
+suaq_gpx_list<- list.files(path = "./data/20200717_All_stedit/gpx/",pattern = "*.gpx",full.names = T)
+
+#### Quality check: See if all data paths exist
+vect <- c()
+for(i in c(1:(length(suaq_gpx_list)))){vect[i]<- file.exists(suaq_gpx_list[i])}
+tmp<- as.data.frame(vect)
+
+####  import gpx files from files list, only retrieving waypoints (no automatically saved trackpoints) and adding the filename as attribute
+start_time <- Sys.time()
+SUAQ_waypoints1<- suaq_gpx_list[1:10]%>% 
+  map_df(~read_GPX_waypoints(.))
+end_time <- Sys.time()
+print(start_time-end_time)
+
+# Two follows throw an error --> 20200225_Lois_Ahmad_FN, 20200225_Otto_Armas_FN are empty --> deleted from data files (not from delivery files)
+
+#### Quality check: How many waypoints per follow (filename), see if read in was correct with original files? # is correct!!
+tmp_files<- waypoints %>% group_by(fileN) %>% summarize(count=n())
+
+
+## Seperating values of attribute filename and name. Aswell adding the point type and E and N as a collumn
+#### 1. get rid of full path
+SUAQ_waypoints1<- SUAQ_waypoints1 %>% mutate(fileN=substr(filename, 31,(nchar(filename)+1)-5))
+
+tmp<- substr(str, 31,(nchar(str)+1)-5)
+
+## 2. extract the 5 attributes from filename: filedate, orangutanname, infant name, followername, followtype. "Adress" in the first field is left in the list to identify the start of a new list.
+SUAQ_waypoints <-
+  SUAQ_waypoints %>% mutate(
+    filedate = str_extract(fileN, "\\d{8}"),
+    orangutanname = substr(
+      str_extract(fileN, "\\d{8}_[A-Z][a-z]+"),
+      10,
+      nchar(str_extract(fileN, "\\d{8}_[A-Z][a-z]+"))
+    ),
+    infantname = substr(
+      str_extract(fileN, "_[A-Z][a-z]+(\\([A-Z][a-z]+\\)|[A-Z][a-z]+)"),
+      2 + nchar(orangutanname),
+      nchar(
+        str_extract(fileN, "_[A-Z][a-z]+(\\([A-Z][a-z]+\\)|[A-Z][a-z]+)")
+      )
+    ),
+    followername = substr(
+      str_extract(fileN, "_[A-Z][a-z_]+_[A-Z]{2}"),
+      2,
+      nchar(str_extract(fileN, "_[A-Z][a-z_]+_[A-Z]{2}")) - 3
+    ),
+    followtype = substr(
+      str_extract(fileN, "_[A-Z][a-z_]+_[A-Z]{2}"),
+      nchar(str_extract(fileN, "_[A-Z][a-z_]+_[A-Z]{2}")) - 1,
+      nchar(str_extract(fileN, "_[A-Z][a-z_]+_[A-Z]{2}"))
+    )
+)
+
+
+## 3. get rid of empty collumns
+SUAQ_waypoints <- SUAQ_waypoints[,colSums(is.na(SUAQ_waypoints))<nrow(SUAQ_waypoints)]
+
+
+# 4. Extracting information from Name field: PtType--> Type of point: Longcall, Nest etc. See GPS processing information sheet. 
+SUAQ_waypoints <-
+  SUAQ_waypoints %>% 
+  mutate(
+    actualTime=time,
+    time=str_extract(name,"^\\d{4}"))# matching string start following 4 digits)
+tmp<- waypoints %>% filter(is.na(actualTime))
+
+waypoints <-
+  waypoints %>% mutate(
+    PtType = ifelse((sym == "Circle, Green" |
+                       sym == "Navaid, Green") &
+                      (grepl("SP", name) | grepl("PAGI", name)),
+                    "mornnest",
+                    "Unknown"),
+    PtType = ifelse((sym == "Circle, Green" |
+                       sym == "Navaid, Green") &
+                      (grepl("SM", name) | grepl("MALAM", name)),
+                    "nightnest",
+                    PtType),
+    PtType = ifelse((sym == "Circle, Green" |
+                       sym == "Navaid, Green") &
+                      (
+                        grepl("SS", name) |
+                        grepl("SS1", name) | 
+                        grepl("SS2", name) |  
+                        grepl("SIANG", name)
+                      ),
+                    "daynest",
+                    # maximum 3 daynests
+                    PtType
+    ),
+    PtType = ifelse((sym == "Block, Blue" |
+                       sym == "Circle, Blue") &
+                      (grepl("SM", name) | grepl("MALAM", name)),
+                    "nightnest",
+                    PtType),
+)
+
+
+tmp_levels <- levels(as.factor(waypoints$sym))
+tmp<- waypoints %>% filter(sym==tmp_levels[1])
+tmp2<- levels(as.factor(tmp$name))
+
+waypoints <- waypoints[,colSums(is.na(waypoints))<nrow(waypoints)]
+
+tmp_view<- waypoints %>% count(sym) # number of observation per symbol level
+tmp<- waypoints %>% filter(is.na(sym))
+
+
+  points_red[[i]]$PtType <- "unknown"
+  points_red[[i]]$PtType[which(points_red[[i]]$Symbol == "Navaid, Green" &
+                               (grepl("PAGI", points_red[[i]]$Text) |
+                                 grepl("SP", points_red[[i]]$Text)))] <- "MORNNEST"
+  points_red[[i]]$PtType[which(points_red[[i]]$Symbol == "Navaid, Green" &
+                                 (grepl("SORE", points_red[[i]]$Text) |
+                                    grepl("MALAM", points_red[[i]]$Text) |
+                                    grepl("SM", points_red[[i]]$Text)))] <- "NIGHTNEST"
+  points_red[[i]]$PtType[which(points_red[[i]]$Symbol == "Navaid, Green" &
+                                 (grepl("SIANG", points_red[[i]]$Text) |
+                                    grepl("SS", points_red[[i]]$Text)|))] <- "DAYNEST"
+  
+  points_red[[i]]$PtType[which(points_red[[i]]$Symbol == "Block, Blue" &
+                                grepl("LCH", points_red[[i]]$Text))] <- "LCH"
+  points_red[[i]]$PtType[which(points_red[[i]]$Symbol == "Block, Blue" &
+                                 grepl("LCG", points_red[[i]]$Text))] <- "LCG"
+  
+  points_red[[i]]$PtType[which(points_red[[i]]$Symbol == "Flag, Red")] <- "RANGE"
+  points_red[[i]]$PtType[which(points_red[[i]]$Symbol == "Flag, Green")] <- "TREE"
+
+
+
+
+```
+```{r R-specific preparation}
+# CRS Code: EPSG 32647
+# Create SF Points
+suaq_orangutan_waypoints <- waypoints %>% drop_na(lat,lon)
+suaq_orangutan_follows_2020_sf <-  st_as_sf(suaq_orangutan_waypoints, 
+                          coords = c("lat", "lon"), 
+                          crs = 4326)
+
+coordinates_tmp <- st_coordinates(suaq_orangutan_follows_2020_sf)
+colnames(coordinates_tmp) <- c("E","N")
+suaq_orangutan_follows_2020_sf <- cbind(suaq_orangutan_follows_2020_sf,coordinates_tmp)
+
+
+##### DATA WRANGLING ######
+# Create timelag
+suaq_orangutan_follows_2020_sf<- suaq_orangutan_follows_2020_sf %>% 
+  group_by(fileN)%>% 
+  mutate(timelag=as.numeric(difftime(lead(as.POSIXlt(CreationTime)),as.POSIXlt(CreationTime),units = "secs"))) # change datetime to time, see analysis below
+
+suaq_neg_timelag <- suaq_orangutan_follows_2020_sf %>% filter(timelag<0)
+
+##### Set a GPS Tracking Laufnummer oder Lösung des Zeitproblems ##### 
+# Begründung: In den Tracks kommen teilweise Punkte vor welche zu einer viel späteren Zeit gemacht wurden. Oder wurde Zeit falsch gespeichert (bzw. lief umwandlung in Indonesische Zeitzone falsch)
+#suaq_orangutan_follows_2020_sf<- suaq_orangutan_follows_2020_sf %>%  arrange(desc(datetime))
+
+#SUAQ_data<- SUAQ_data %>%  arrange(desc(.$CreationTime))
+
+# Laufnummer für GPS Punkt erstellen
+
+
+
+
+## Create DateTime from time column (time is not datetime)
+suaq_orangutan_follows_2020_sf <- suaq_orangutan_follows_2020_sf %>%
+  mutate(datetime=with_tz(ymd_hms(CreationTime),"Asia/Pontianak"))
+suaq_orangutan_follows_2020_sf <- suaq_orangutan_follows_2020_sf %>%
+  mutate(date=date(datetime), truetime=hms::as_hms(datetime))
+
+suaq_orangutan_follows_2020_sf %>% ggplot(aes(truetime))+geom_histogram()
+suaq_orangutan_follows_2020_sf %>% ggplot(aes(hms::as_hms(CreationTime)))+geom_histogram() # time before conversion
+
+follows_points_in_night<- suaq_orangutan_follows_2020_sf %>% filter(truetime<lubridate::hms("04:00:00")) # probably one outlier and one track in the night. Or wrong time settings
+
+```
+## Calculate timelag 
+- Corrected time --> datetime, 
+```{r Timelag suaq}
+# Timelag histogram
+summary(suaq_orangutan_follows_2020_sf$timelag)
+suaq_orangutan_follows_2020_sf %>% ggplot(aes(suaq_orangutan_follows_2020_sf$timelag))+
+  geom_histogram(binwidth = )
+suaq_orangutan_follows_2020_sf <- suaq_orangutan_follows_2020_sf %>% filter(timelag<0)
+
+# dates have the same distribution
+ketambe_orangutan_tracks_sf %>% ggplot(aes(date_tmp))+geom_histogram()
+ketambe_orangutan_tracks_sf %>% ggplot(aes(dateandtime))+geom_histogram()
+
+# change the calculation of timelag to time_tmp
+```
+
+### Analysis
+## First visuals SUAQ
+```{r Visualization Suaq}
+##### VISUALIZE ######
+# Grouping and visualize it
+plot1<- suaq_orangutan_follows_2020_sf %>% 
+  group_by(Follow..) %>%
+  ggplot(aes(E,N))+
+  geom_point(aes(color=suaq_orangutan_follows_2020_sf$Focal),size=0.3)+
+  geom_path(aes(color=suaq_orangutan_follows_2020_sf$Focal), alpha = 0.2,size=0.3)
+ggplotly(plot1)
+# Grouping --> research tracklengths / number of points per track / time intervall tracks
+suaq_num_point_follows<- suaq_orangutan_follows_2020_sf %>% 
+  group_by(fileN) %>%
+  tally()
+
+suaq_num_point_follows_histogram<- suaq_num_point_follows %>% ggplot(aes(n))+
+  geom_histogram()+
+  xlab("Lenght of follow [num of waypoints]")+
+  ylab("num of waypoints")
+suaq_num_point_follows_histogram
+
+# Zoom-Panable map of tracks
+ggplotly(plot1)
+
+# plot specific track
+pal<- brewer.pal(30, "BrBG")
+
+plot_tmp<- suaq_orangutan_follows_2020_sf %>% 
+  filter(fileN=='20190113_Lisa(Leon)_Saidi_NN.') %>%
+  ggplot(aes(E,N, label=paste(ID,time)))+
+  geom_point()+
+  geom_path()+
+  geom_text(aes(label=paste(ID,truetime)),position = position_nudge(y = -0.0003),size=3)
+ggplotly(plot_tmp)
+
+
+plot_tmp<- suaq_orangutan_follows_2020_sf %>% 
+  filter(fileN=='20190113_Lisa(Leon)_Saidi_NN.') %>% 
+  arrange(desc(datetime)) %>% 
+  ggplot(aes(E,N, label=paste(ID,time)))+
+  geom_point()+
+  geom_path()+a
+  geom_text(aes(label=paste(ID,truetime)),position = position_nudge(y = -0.0003),size=3)
+ggplotly(plot_tmp)
+
+
+# Map with tiles (leaflet)
+
+
+
+# create convex hulls on points of each orangutan
+suaq_orangutan_chulls_2019 <- suaq_orangutan_follows_2020_sf %>%
+  group_by(orangutanname) %>% 
+  summarise(geometry = st_combine(geometry) ) %>%
+  st_convex_hull()
+
+plot_tmp<- ggplot(suaq_orangutan_chulls_2019) + geom_sf(data = suaq_orangutan_chulls_2019, aes(colour = orangutanname,alpha=1),fill=NA)
+ggplotly(plot_tmp)
+
+## next idea homerange per month or year (need more years!)
+
+# suaq_orangutan_chulls_month <- suaq_orangutan_follows_2020_sf %>%
+#   group_by(orangutanname) %>%
+#   summarise(geometry = st_combine(geometry)) %>%
+#   st_convex_hull()
+# rownames(suaq_orangutan_chulls_month) <- suaq_orangutan_chulls_month$orangutanname
+# 
+# suaq_orangutan_chulls_january <- suaq_orangutan_follows_2020_sf %>%
+#   filter(between(datetime, as.Date("2019-01-01"),as.Date("2019-01-31"))) %>% 
+#   group_by(orangutanname) %>%
+#   summarise(geometry = st_combine(geometry)) %>%
+#   st_convex_hull()
+# colnames(suaq_orangutan_chulls_january)[2]
+# class(suaq_orangutan_chulls_january$geometry[1])
+# 
+# suaq_orangutan_chulls_month<-bind_cols(suaq_orangutan_chulls_month, suaq_orangutan_chulls_january,by = c("orangutanname" = "orangutanname"))
+# ?full_join
+# 
+# suaq_orangutan_chulls %>% ggplot()+
+#     geom_polygon(suaq_orangutan_chulls$geometry)
+# plot_tmp<- ggplot(suaq_orangutan_chulls) + geom_sf(data = suaq_orangutan_chulls, aes(colour = orangutanname,alpha=1),fill=NA)
+# ggplotly(plot_tmp)
+
+
+
+
+```
