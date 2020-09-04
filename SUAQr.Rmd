@@ -290,11 +290,11 @@ SUAQ_waypoints_11_20 <-
         str_extract(fileN, "_[A-Z][a-z]+(\\([A-Z][a-z]+\\)|[A-Z][a-z]+)")
       )
     )),
-    followername = substr(
+    followername = tolower(substr(
       str_extract(fileN, "_[A-Z][a-z_]+_[A-Z]{2}"),
       2,
       nchar(str_extract(fileN, "_[A-Z][a-z_]+_[A-Z]{2}")) - 3
-    ),
+    )),
     followtype = substr(
       str_extract(fileN, "_[A-Z][a-z_]+_[A-Z]{2}"),
       nchar(str_extract(fileN, "_[A-Z][a-z_]+_[A-Z]{2}")) - 1,
@@ -496,6 +496,7 @@ SUAQ_waypoints_17_18 <- SUAQ_waypoints_17_18 %>%
          automaticDate=date(automaticDatetime),
          automaticTime=hms::as_hms(automaticDatetime),
          Follow..=as.character(Follow..),
+         fileN=as.character(Follow..),
          Point.Type=tolower(Point.Type),
          Age.Sex=tolower(Age.Sex),
          Activity=tolower(Activity)
@@ -526,7 +527,8 @@ SUAQ_waypoints_11_20 <-
   ) %>% 
   mutate(
     "altitude"=as.character(altitude)
-  )
+  ) %>% 
+select(-orangutanname)
 
 SUAQ_waypoints_11all20<- SUAQ_waypoints_11_20 %>%  bind_rows(SUAQ_waypoints_17_18)
 levels(as.factor(SUAQ_waypoints_11all20$Activity))
@@ -549,35 +551,43 @@ specs_AutomaticManualDateNotEqual<- SUAQ_waypoints_11all20 %>% filter(.$manualDa
 tmp<- SUAQ_followlog[,c(2,4,15)] %>% mutate(tmp_FollowNumber=.$FollowNumber) %>% select(-FollowNumber)
 tmp2<- SUAQ_followlog[,c(2,4,15)] %>% mutate(tmp_FollowNumber_M_infant=.$FollowNumber) %>%
   select(-FollowNumber)
-
+tmp3<- SUAQ_followlog[,c(2,4,15,20)] %>% mutate(tmp_FollowNumber_M_followname=.$FollowNumber) %>%
+  select(-FollowNumber)
+print()
 
 # Join followlog and add information to gps file
-SUAQ_waypoints_11all20 <- SUAQ_waypoints_11all20 %>%
-  left_join(SUAQ_followlog,by=c("manualDate"="Date","orangutanname"="FocalName"),suffix = c("", "_fromfollowlog")) %>% 
+SUAQ_waypoints_11all20_test <- SUAQ_waypoints_11all20 %>%
+  left_join(SUAQ_followlog[,c(2,4,15)],by=c("manualDate"="Date","orangutanname"="FocalName"),suffix = c("", "_fromfollowlog")) %>% 
   left_join(tmp2,by=c("manualDate"="Date","infantname"="FocalName")) %>% 
   left_join(tmp,by=c("automaticDate"="Date","orangutanname"="FocalName")) %>%
+  left_join(tmp3,by=c("manualDate"="Date","followername"="Observer1")) %>%
   mutate(FollowNumber=if_else(is.na(FollowNumber),tmp_FollowNumber,FollowNumber)) %>%
-  select(-tmp_FollowNumber)
+  select(-tmp_FollowNumber)%>%
+  mutate(FollowNumber=if_else(is.na(follow),FollowNumber,as.numeric(follow))) %>% 
+  mutate(FollowNumber=if_else(is.na(FollowNumber),FollowNumber,as.numeric(follow))) %>%
+  mutate(FollowNumber=if_else(is.na(FollowNumber),tmp_FollowNumber_M_followname,FollowNumber))
+levels(as.factor(SUAQ_waypoints_11all20_test$FollowNumber))
+
 
 
 #### for how many we have missing FN
-SUAQ_numberoffiles <- SUAQ_waypoints_11_20 %>% group_by(fileN) %>% summarise() # number of files is 730
-SUAQ_waypointswithoutfollownumber<- SUAQ_waypoints_11_20 %>% filter(is.na(FollowNumber)) %>% group_by(fileN) %>% summarise(count=n())
-SUAQ_waypointswithfollownumber<- SUAQ_waypoints_11_20 %>%filter(!is.na(FollowNumber)) %>% group_by(fileN) %>% summarise(count=n())
+SUAQ_numberoffiles <- SUAQ_waypoints_11all20 %>% group_by(fileN) %>% summarise() # number of files is 730
+SUAQ_waypointswithoutfollownumber<- SUAQ_waypoints_11all20 %>% filter(is.na(FollowNumber)) %>% group_by(fileN) %>% summarise(count=n())
+SUAQ_waypointswithfollownumber<- SUAQ_waypoints_11all20 %>%filter(!is.na(FollowNumber)) %>% group_by(fileN) %>% summarise(count=n())
 SUAQ_waypointswithoutfollownumber <- st_drop_geometry(SUAQ_waypointswithoutfollownumber)
 SUAQ_waypointswithfollownumber <- st_drop_geometry(SUAQ_waypointswithfollownumber)
-tmp<- setdiff(SUAQ_waypointswithoutfollownumber,SUAQ_waypointswithfollownumber)
+tmp<- setdiff(SUAQ_waypointswithfollownumber,SUAQ_waypointswithoutfollownumber)
 
 #DELETE testing sth
 tmp<- SUAQ_followlog[,c(2,4,10,15,17,18,19,27:32,35,38:50)]
 
 
-tmp<- SUAQ_waypoints_11_20 %>% filter(.$orangutanname=="julia")
-tmp0<- SUAQ_waypoints_11_20 %>% filter(.$manualDate==as.Date("2014-02-19", tz = "Asia/Pontianak"))
+tmp<- SUAQ_waypoints_11all20 %>% filter(.$orangutanname=="julia")
+tmp0<- SUAQ_waypoints_11all20 %>% filter(.$manualDate==as.Date("2015-01-29", tz = "Asia/Pontianak"))
 
-tmp2<- SUAQ_waypoints_11_20 %>% filter(.$fileN=="20130510_Jebi_UNK_NL")
+tmp2<- SUAQ_waypoints_11all20 %>% filter(.$fileN=="20140401_FriskaFredyFrankie_Kevin_FN")
 tmp3<- SUAQ_followlog %>% filter(.$FocalName=="julia")
-tmp4<- SUAQ_followlog %>% filter(.$Date==as.Date("2013-03-29", tz = "Asia/Pontianak"))
+tmp4<- SUAQ_followlog %>% filter(.$Date==as.Date("2015-01-29", tz = "Asia/Pontianak"))
 
 
 tmp<- SUAQ_followlog %>% filter(Date!=as.Date(paste(as.numeric(Day),as.numeric(Month),as.numeric(Year)),format = "%d %m %Y"))
