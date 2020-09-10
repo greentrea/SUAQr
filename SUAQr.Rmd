@@ -15,6 +15,8 @@ knitr::opts_chunk$set(echo = TRUE)
 # Todo:
 # Activity mittels Liste aus word herauslesen oder die levels des 2017/18 sheets nutzen. Mittels grepl etc. dann wird es auch automatisch mit activity in 2017/18 verknüpft
 
+# Follow Type --> Besser umschreiben bis jetzt mit regex gearbeitet. Grosse 2 Buchstaben geparsed vielleicht eher mit grepl arbeiten. Siehe abschnitt beim einlesen des Followtypes --> bereits entwurf vorhanden.
+
 # Auseinandernehmen von FoodtypeOrIndividualOrDirection /SpeciesOrDistance  attribute in 2017/18 daten
 
 # Data handling
@@ -159,12 +161,20 @@ SUAQ_followlog <-
   mutate(Date = as.Date(Date, format = "%d.%m.%Y"),
          FocalName = tolower(FocalName),
          SexFocal = tolower(SexFocal),
-         ClassFocal = tolower(ClassFocal))
+         ClassFocal = tolower(ClassFocal),
+         Observer1 = tolower(Observer1),
+         Observer2 = tolower(Observer2),
+         Observer3 = tolower(Observer3),
+         Observer4 = tolower(Observer4),
+         Observer5 = tolower(Observer5),
+         FocalName = if_else(grepl("\\(prob\\)",FocalName),str_remove(FocalName,"\\(prob\\)"),FocalName)
+
+         )
 SUAQ_followlog <- SUAQ_followlog %>%
   mutate(Date =if_else(is.na(Date),as.Date(paste(as.numeric(Day),as.numeric(Month),as.numeric(Year)),format = "%d %m %Y"),Date))
-class(SUAQ_followlog$Date[1])
 
 SUAQ_followlog<- SUAQ_followlog %>% filter(!is.na(FollowNumber)|!is.na(Date)) ## only keep if one of the 2 attributes are available
+
 
 #### How many GPS follows should be available? How many do I have? because 140 are not found automatically in the followlog.
 
@@ -300,6 +310,8 @@ SUAQ_waypoints_11_20 <-
       nchar(str_extract(fileN, "_[A-Z][a-z_]+_[A-Z]{2}")) - 1,
       nchar(str_extract(fileN, "_[A-Z][a-z_]+_[A-Z]{2}"))
     ),
+    
+    ## BESSER --> following 
     #followtype = ifelse(grepl("_NL", fileN),"_NL",NA),
     #followtype = ifelse(grepl("_NN", fileN),"NN",followtype),
     #followtype = ifelse(grepl("_FL", fileN),"FL",followtype),
@@ -322,9 +334,16 @@ SUAQ_waypoints_11_20 <-
   mutate(
     cmt = dmy_hms(cmt, tz = "Asia/Pontianak"),
     automaticDatetime = ymd_hms(time, tz = "Asia/Pontianak"),
-    manualDatetime = as.POSIXct(paste0(ymd(filedate)," ", str_extract(name, "^\\d{4}")), format = "%Y-%m-%d %H%M",tz="Asia/Pontianak") # matching string start following 4 digits. Nameing datetime but changeing afterwards (to a real datetime). Just for ordering purposes
+    manualDatetime = as.POSIXct(
+      paste0(ymd(filedate), " ", str_extract(name, "^\\d{4}")),
+      format = "%Y-%m-%d %H%M",
+      tz = "Asia/Pontianak"
+    ),
+    # matching string start following 4 digits. Nameing datetime but changeing afterwards (to a real datetime). Just for ordering purposes
+    manualDate = date(as.POSIXct(ymd(filedate),
+                            format = "%Y-%m-%d",
+                            tz = "Asia/Pontianak"))
   )
-
 
 #### adding automatic datetime if 
 SUAQ_waypoints_11_20[is.na(SUAQ_waypoints_11_20$automaticDatetime),] %<>% mutate(automaticDatetime = cmt) # piping forth and back. In documentation its written x %<>% foo %>% bar,  its the same as x <- x %>% foo %>% bar. In this case thats not correct!
@@ -335,7 +354,6 @@ SUAQ_waypoints_11_20<- SUAQ_waypoints_11_20 %<>%mutate(
     orangutanname = if_else(orangutanname=="lilli","lilly",orangutanname),
     orangutanname = if_else(orangutanname=="cissi","cissy",orangutanname),
     orangutanname = if_else(orangutanname=="julia","yulia",orangutanname),
-    manualDate = date(manualDatetime),
     manualTime = hms::as_hms(manualDatetime),
     automaticDate = date(automaticDatetime),
     automaticTime = hms::as_hms(automaticDatetime),
@@ -531,6 +549,7 @@ SUAQ_waypoints_11_20 <-
   ) %>% 
 select(-orangutanname)
 
+typeof(SUAQ_waypoints_11_20$manualDate)
 SUAQ_waypoints_11all20<- SUAQ_waypoints_11_20 %>%  bind_rows(SUAQ_waypoints_17_18)
 levels(as.factor(SUAQ_waypoints_11all20$Activity))
 SUAQ_waypoints_11all20 <- SUAQ_waypoints_11all20%>% select(-Date,-FollowIndData)
@@ -555,24 +574,29 @@ tmp3<- SUAQ_followlog[,c(2,4,15)] %>% mutate(tmp_FollowNumber_M_infant=.$FollowN
   select(-FollowNumber)
 tmp4<- SUAQ_followlog[,c(2,4,20)] %>% mutate(tmp_FollowNumber_M_followname=.$FollowNumber) %>%
   select(-FollowNumber)
+tmp5<- SUAQ_followlog[,c(2,4,21)] %>% mutate(tmp_FollowNumber_M_followname2=.$FollowNumber) %>%
+  select(-FollowNumber)
 
 # Join followlog and add information to gps file
 SUAQ_waypoints_11all20 <- SUAQ_waypoints_11all20 %>%
   left_join(tmp,by=c("manualDate"="Date","focal"="FocalName")) %>%
   left_join(tmp2,by=c("automaticDate"="Date","focal"="FocalName")) %>%
   left_join(tmp3,by=c("manualDate"="Date","infantname"="FocalName")) %>% 
-  left_join(tmp4,by=c("manualDate"="Date","followername"="Observer1"))
+  left_join(tmp4,by=c("manualDate"="Date","followername"="Observer1")) %>% 
+  left_join(tmp5,by=c("manualDate"="Date","followername"="Observer2"))
   
 SUAQ_waypoints_11all20 <- SUAQ_waypoints_11all20 %>%
   mutate(follow=as.numeric(follow)) %>% 
   mutate(follow=if_else(is.na(follow),as.numeric(tmp_FollowNumber_M_focal),follow)) %>%
-  select(-tmp_FollowNumber_M_focal) %>% 
+  #select(-tmp_FollowNumber_M_focal) %>% 
   mutate(follow=if_else(is.na(follow),as.numeric(tmp_FollowNumber_M_focal_automatic),follow)) %>%
-  select(-tmp_FollowNumber_M_focal_automatic) %>% 
+  #select(-tmp_FollowNumber_M_focal_automatic) %>% 
   mutate(follow=if_else(is.na(follow),tmp_FollowNumber_M_infant,follow)) %>%
-  select(-tmp_FollowNumber_M_infant) %>% 
+  #select(-tmp_FollowNumber_M_infant) %>% 
   mutate(follow=if_else(is.na(follow),tmp_FollowNumber_M_followname,follow)) %>% 
-  select(-tmp_FollowNumber_M_followname)
+  #select(-tmp_FollowNumber_M_followname)
+  mutate(follow=if_else(is.na(follow),tmp_FollowNumber_M_followname2,follow))
+
 
 
 
@@ -581,20 +605,18 @@ SUAQ_waypoints_11all20 <- SUAQ_waypoints_11all20 %>%
 SUAQ_numberoffiles <- SUAQ_waypoints_11all20 %>% group_by(fileN) %>% summarise() # number of files is 730
 SUAQ_waypointswithoutfollownumber<- SUAQ_waypoints_11all20 %>% filter(is.na(follow)) %>% group_by(fileN) %>% summarise(count=n())
 SUAQ_waypointswithfollownumber<- SUAQ_waypoints_11all20 %>%filter(!is.na(follow)) %>% group_by(fileN) %>% summarise(count=n())
-SUAQ_waypointswithoutfollownumber <- st_drop_geometry(SUAQ_waypointswithoutfollownumber)
-SUAQ_waypointswithfollownumber <- st_drop_geometry(SUAQ_waypointswithfollownumber)
+
 tmp<- setdiff(SUAQ_waypointswithfollownumber,SUAQ_waypointswithoutfollownumber)
 
 #DELETE testing sth
 tmp<- SUAQ_followlog[,c(2,4,10,15,17,18,19,27:32,35,38:50)]
 
 
-tmp<- SUAQ_waypoints_11all20 %>% filter(.$orangutanname=="julia")
-tmp0<- SUAQ_waypoints_11all20 %>% filter(.$manualDate==as.Date("2015-01-29", tz = "Asia/Pontianak"))
-
+tmp<- SUAQ_waypoints_11all20 %>% filter(focal=="pluto")
+tmp0<- SUAQ_waypoints_11all20 %>% filter(.$manualDate==as.Date("2015-03-05", tz = "Asia/Pontianak"))
 tmp2<- SUAQ_waypoints_11all20 %>% filter(.$fileN=="20140401_FriskaFredyFrankie_Kevin_FN")
-tmp3<- SUAQ_followlog %>% filter(.$FocalName=="julia")
-tmp4<- SUAQ_followlog %>% filter(.$Date==as.Date("2015-01-29", tz = "Asia/Pontianak"))
+tmp3<- SUAQ_followlog %>% filter(.$FocalName=="ibu")
+tmp4<- SUAQ_followlog %>% filter(.$Date==as.Date("2015-03-05", tz = "Asia/Pontianak"))
 
 
 tmp<- SUAQ_followlog %>% filter(Date!=as.Date(paste(as.numeric(Day),as.numeric(Month),as.numeric(Year)),format = "%d %m %Y"))
@@ -602,7 +624,7 @@ tmp<- SUAQ_followlog %>% filter(Date!=as.Date(paste(as.numeric(Day),as.numeric(M
 
 
 
-
+print() # stop automatic sript
 
 
 
@@ -648,12 +670,12 @@ tmp<- setdiff(SUAQ_waypointswithoutfollownumber,SUAQ_waypointswithfollownumber)
 tmp<- SUAQ_followlog[,c(2,4,10,15,17,18,19,27:32,35,38:50)]
 
 
-tmp<- SUAQ_waypoints_11_20 %>% filter(.$orangutanname=="julia")
-tmp0<- SUAQ_waypoints_11_20 %>% filter(.$manualDate==as.Date("2014-02-19", tz = "Asia/Pontianak"))
+tmp<- SUAQ_waypoints_11_20 %>% filter(focal=="rakus")
+tmp0<- SUAQ_waypoints_11_20 %>% filter(.$manualDate==as.Date("2019-11-29", tz = "Asia/Pontianak"))
 
 tmp2<- SUAQ_waypoints_11_20 %>% filter(.$fileN=="20130510_Jebi_UNK_NL")
-tmp3<- SUAQ_followlog %>% filter(.$FocalName=="julia")
-tmp4<- SUAQ_followlog %>% filter(.$Date==as.Date("2013-03-29", tz = "Asia/Pontianak"))
+tmp3<- SUAQ_followlog %>% filter(.$FocalName=="lois")
+tmp4<- SUAQ_followlog %>% filter(.$Date==as.Date("2019-11-29", tz = "Asia/Pontianak"))
 
 
 tmp<- SUAQ_followlog %>% filter(Date!=as.Date(paste(as.numeric(Day),as.numeric(Month),as.numeric(Year)),format = "%d %m %Y"))
