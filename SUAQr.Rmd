@@ -354,12 +354,29 @@ SUAQ_waypoints_11_20<- SUAQ_waypoints_11_20 %<>%mutate(
     orangutanname = if_else(orangutanname=="lilli","lilly",orangutanname),
     orangutanname = if_else(orangutanname=="cissi","cissy",orangutanname),
     orangutanname = if_else(orangutanname=="julia","yulia",orangutanname),
+    orangutanname = if_else(fileN=="20130317_Dodi_Unk_FL","adol.female",orangutanname),# manual adjustment for follows which aren't matching a record in the followlog or have slight differences f.e. focal name is different.
+    orangutanname = if_else(fileN=="20130508_Unk_Unk_FN","pauline",orangutanname),
+    orangutanname = if_else(fileN=="20130502_FlMale_Caco_FL","pluto",orangutanname),
+    orangutanname = if_else(fileN=="20130510_Jebi_UNK_NL","pauline",orangutanname),
+    orangutanname = if_else(fileN=="20130518_UnflMale_Unk_FL","unid.ind.",orangutanname),
+    orangutanname = if_else(fileN=="20130925_Ulysses_Toni_NN","unfl.male",orangutanname),
+    orangutanname = if_else(fileN=="20130926_Ulysses_Mudini_NN","unfl.male",orangutanname),
+    orangutanname = if_else(fileN=="20130508_Unk_Unk_FN","pauline",orangutanname),
+    orangutanname = if_else(fileN=="20191002_UnflUnid(U1200)_FL","fez",orangutanname),
+    orangutanname = if_else(fileN=="20191129_UnflH1050_Ulil_FN","gura",orangutanname),
+
     manualTime = hms::as_hms(manualDatetime),
     automaticDate = date(automaticDatetime),
     automaticTime = hms::as_hms(automaticDatetime),
     name=str_extract(name, "[^\\d{4} ].*") # not matching the digits in the beginning plus whitespace but everything after
   )
-
+SUAQ_waypoints_11_20<- SUAQ_waypoints_11_20 %>% mutate(
+  tmp_delete= if_else(
+    fileN=="20110128_Karma_Unk_NN"|
+    fileN=="20110130_Friska_Wiebe_NL"|
+    fileN=="20130317_Dodi(prob)_Unk_FL"|
+    fileN=="20130510_Jebi(prob)_UNK_NL",TRUE,FALSE)
+) %>% filter(tmp_delete==FALSE)
 
 
 ### 2.2.4 Extracting information from Name field: PtType--> Type of point: Longcall, Nest etc. See GPS processing information sheet. 
@@ -588,14 +605,15 @@ SUAQ_waypoints_11all20 <- SUAQ_waypoints_11all20 %>%
 SUAQ_waypoints_11all20 <- SUAQ_waypoints_11all20 %>%
   mutate(follow=as.numeric(follow)) %>% 
   mutate(follow=if_else(is.na(follow),as.numeric(tmp_FollowNumber_M_focal),follow)) %>%
-  #select(-tmp_FollowNumber_M_focal) %>% 
+  select(-tmp_FollowNumber_M_focal) %>% 
   mutate(follow=if_else(is.na(follow),as.numeric(tmp_FollowNumber_M_focal_automatic),follow)) %>%
-  #select(-tmp_FollowNumber_M_focal_automatic) %>% 
+  select(-tmp_FollowNumber_M_focal_automatic) %>% 
   mutate(follow=if_else(is.na(follow),tmp_FollowNumber_M_infant,follow)) %>%
-  #select(-tmp_FollowNumber_M_infant) %>% 
+  select(-tmp_FollowNumber_M_infant) %>% 
   mutate(follow=if_else(is.na(follow),tmp_FollowNumber_M_followname,follow)) %>% 
-  #select(-tmp_FollowNumber_M_followname)
+  select(-tmp_FollowNumber_M_followname)
   mutate(follow=if_else(is.na(follow),tmp_FollowNumber_M_followname2,follow))
+  select(-tmp_FollowNumber_M_followname2)
 
 
 
@@ -613,10 +631,10 @@ tmp<- SUAQ_followlog[,c(2,4,10,15,17,18,19,27:32,35,38:50)]
 
 
 tmp<- SUAQ_waypoints_11all20 %>% filter(focal=="pluto")
-tmp0<- SUAQ_waypoints_11all20 %>% filter(.$manualDate==as.Date("2015-03-05", tz = "Asia/Pontianak"))
+tmp0<- SUAQ_waypoints_11all20 %>% filter(.$manualDate==as.Date("2013-04-30", tz = "Asia/Pontianak"))
 tmp2<- SUAQ_waypoints_11all20 %>% filter(.$fileN=="20140401_FriskaFredyFrankie_Kevin_FN")
 tmp3<- SUAQ_followlog %>% filter(.$FocalName=="ibu")
-tmp4<- SUAQ_followlog %>% filter(.$Date==as.Date("2015-03-05", tz = "Asia/Pontianak"))
+tmp4<- SUAQ_followlog %>% filter(.$Date==as.Date("2013-04-30", tz = "Asia/Pontianak"))
 
 
 tmp<- SUAQ_followlog %>% filter(Date!=as.Date(paste(as.numeric(Day),as.numeric(Month),as.numeric(Year)),format = "%d %m %Y"))
@@ -671,11 +689,11 @@ tmp<- SUAQ_followlog[,c(2,4,10,15,17,18,19,27:32,35,38:50)]
 
 
 tmp<- SUAQ_waypoints_11_20 %>% filter(focal=="rakus")
-tmp0<- SUAQ_waypoints_11_20 %>% filter(.$manualDate==as.Date("2019-11-29", tz = "Asia/Pontianak"))
+tmp0<- SUAQ_waypoints_11_20 %>% filter(.$manualDate==as.Date("2013-03-17", tz = "Asia/Pontianak"))
 
 tmp2<- SUAQ_waypoints_11_20 %>% filter(.$fileN=="20130510_Jebi_UNK_NL")
 tmp3<- SUAQ_followlog %>% filter(.$FocalName=="lois")
-tmp4<- SUAQ_followlog %>% filter(.$Date==as.Date("2019-11-29", tz = "Asia/Pontianak"))
+tmp4<- SUAQ_followlog %>% filter(.$Date==as.Date("2013-03-17", tz = "Asia/Pontianak"))
 
 
 tmp<- SUAQ_followlog %>% filter(Date!=as.Date(paste(as.numeric(Day),as.numeric(Month),as.numeric(Year)),format = "%d %m %Y"))
