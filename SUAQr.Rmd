@@ -611,14 +611,54 @@ SUAQ_waypoints_11all20 <- SUAQ_waypoints_11all20 %>%
   mutate(follow=if_else(is.na(follow),tmp_FollowNumber_M_infant,follow)) %>%
   select(-tmp_FollowNumber_M_infant) %>% 
   mutate(follow=if_else(is.na(follow),tmp_FollowNumber_M_followname,follow)) %>% 
-  select(-tmp_FollowNumber_M_followname)
-  mutate(follow=if_else(is.na(follow),tmp_FollowNumber_M_followname2,follow))
+  select(-tmp_FollowNumber_M_followname) %>% 
+  mutate(follow=if_else(is.na(follow),tmp_FollowNumber_M_followname2,follow)) %>% 
   select(-tmp_FollowNumber_M_followname2)
 
+  
+#### manually adding follownumber for cases where join with followlog didn't retrieve one  
+SUAQ_waypoints_11all20 <-SUAQ_waypoints_11all20 %>% 
+  mutate(
+    follow=if_else(fileN=="20100921_Ibu_Unk_NL",1000001,follow),
+    follow=if_else(fileN=="20110128_Karma_Sahrol_NL",717,follow),# müsste in followlog angepasst werden
+    follow=if_else(fileN=="20110129_Friska_Unk_FN",1000002,follow),
+    follow=if_else(fileN=="20110130_Friska_Wiebe_NL",1000003,follow),
+    follow=if_else(fileN=="20130317_Dodi_Unk_FL",951,follow),
+    follow=if_else(fileN=="20130502_FlMale_Caco_FL",970,follow),
+    follow=if_else(fileN=="20130508_Unk_Unk_FN",971,follow),
+    follow=if_else(fileN=="20130518_Ellie_Armas_F",1000004,follow),
+    follow=if_else(fileN=="20130518_UnflMale_Unk_FL",1000005,follow),
+    follow=if_else(grepl("20130603_FriskaFrankie",fileN),1000006,follow),
+    follow=if_else(fileN=="20130627_FriskaFrankie_Caco_F",1000007,follow),
+    follow=if_else(fileN=="20130630_FriskaFrankieFredy_Raja_F",1000008,follow),
+    follow=if_else(fileN=="20130925_Ulysses_Toni_NN",1108,follow),
+    follow=if_else(fileN=="20130926_Ulysses_Mudini_NN",1109,follow),
+    follow=if_else(fileN=="20150210_UnflMale(R1200)_P1LisaLois_FN_Fikar",1439,follow),
+    follow=if_else(fileN=="20190112_Lisa_Fikar_NN",2559,follow),
+    follow=if_else(fileN=="20130925_Ulysses_Toni_NN",1108,follow),
+    follow=if_else(fileN=="20190117_Rakus(prob)_Saidi_J",1000009,follow),
+    follow=if_else(fileN=="20190303_Tiara_Saidi_FN",2599,follow),
+    follow=if_else(fileN=="20190330_Kopi_Adami_NN",2621,follow),
+    follow=if_else(fileN=="20190331_Kopi_Adami_NN",2622,follow),
+    follow=if_else(fileN=="20190614_Lois_Ulil_NN",2685,follow),
+    follow=if_else(fileN=="20190729_FlMale_Luz_J",1000010,follow),
+    follow=if_else(fileN=="20190801_Cinnamon_Miftah_J",1000011,follow),
+    follow=if_else(fileN=="20190917_Ellie_Saidi_J",1000012,follow),
+    follow=if_else(fileN=="20190922_Balu_Luz_J",1000013,follow),
+    follow=if_else(fileN=="20191002_UnflUnid(U1200)_FL",2810,follow),
+    follow=if_else(fileN=="20191011_Aqra_Lara_J",1000014,follow),
+    follow=if_else(fileN=="20191110_Marjo_J",1000013,follow),
+    follow=if_else(fileN=="20190922_Balu_Luz_J",1000015,follow),
+    follow=if_else(fileN=="20191110_Sakura_J",1000016,follow),
+    follow=if_else(fileN=="20191125_Ellie_Adami_J",1000017,follow),
+    follow=if_else(fileN=="20191129_UnflH1050_Ulil_FN",2873,follow),
+    follow=if_else(fileN=="20200117_Balu_Tri_J",1000018,follow),
+    follow=if_else(fileN=="20130510_Jebi_UNK_NL",1335,follow),
+    follow=if_else(fileN=="20190209_Yulia_Ulil_NN",2582,follow)
+    ) 
 
 
-
-
+######## #### #### #### #### #### #### #### #### #### #### #### TODELETE
 #### for how many we have missing FN
 SUAQ_numberoffiles <- SUAQ_waypoints_11all20 %>% group_by(fileN) %>% summarise() # number of files is 730
 SUAQ_waypointswithoutfollownumber<- SUAQ_waypoints_11all20 %>% filter(is.na(follow)) %>% group_by(fileN) %>% summarise(count=n())
@@ -630,12 +670,13 @@ tmp<- setdiff(SUAQ_waypointswithfollownumber,SUAQ_waypointswithoutfollownumber)
 tmp<- SUAQ_followlog[,c(2,4,10,15,17,18,19,27:32,35,38:50)]
 
 
-tmp<- SUAQ_waypoints_11all20 %>% filter(focal=="pluto")
-tmp0<- SUAQ_waypoints_11all20 %>% filter(.$manualDate==as.Date("2013-04-30", tz = "Asia/Pontianak"))
-tmp2<- SUAQ_waypoints_11all20 %>% filter(.$fileN=="20140401_FriskaFredyFrankie_Kevin_FN")
-tmp3<- SUAQ_followlog %>% filter(.$FocalName=="ibu")
-tmp4<- SUAQ_followlog %>% filter(.$Date==as.Date("2013-04-30", tz = "Asia/Pontianak"))
+tmp<- SUAQ_waypoints_11all20 %>% filter(focal=="aqra")
+tmp0<- SUAQ_waypoints_11all20 %>% filter(.$manualDate==as.Date("2014-04-30", tz = "Asia/Pontianak"))
+tmp2<- SUAQ_waypoints_11all20 %>% filter(.$fileN=="20120401_FriskaFredyFrankie_Kevin_FN")
+tmp3<- SUAQ_followlog %>% filter(.$FocalName=="aqra")
+tmp4<- SUAQ_followlog %>% filter(.$Date==as.Date("2014-05-10", tz = "Asia/Pontianak"))
 
+tmp<- SUAQ_waypoints_11all20 %>% filter(.$follow==1335)
 
 tmp<- SUAQ_followlog %>% filter(Date!=as.Date(paste(as.numeric(Day),as.numeric(Month),as.numeric(Year)),format = "%d %m %Y"))
 #DELETE testing sth
@@ -643,6 +684,7 @@ tmp<- SUAQ_followlog %>% filter(Date!=as.Date(paste(as.numeric(Day),as.numeric(M
 
 
 print() # stop automatic sript
+######## #### #### #### #### #### #### #### #### #### #### #### TODELETE
 
 
 
