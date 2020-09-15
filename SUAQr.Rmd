@@ -167,14 +167,17 @@ SUAQ_followlog <-
          Observer3 = tolower(Observer3),
          Observer4 = tolower(Observer4),
          Observer5 = tolower(Observer5),
-         FocalName = if_else(grepl("\\(prob\\)",FocalName),str_remove(FocalName,"\\(prob\\)"),FocalName)
-
+         FocalName = if_else(grepl("\\(prob\\)",FocalName),
+                             str_remove(FocalName,"\\(prob\\)"),FocalName)
          )
+
+
 SUAQ_followlog <- SUAQ_followlog %>%
   mutate(Date =if_else(is.na(Date),as.Date(paste(as.numeric(Day),as.numeric(Month),as.numeric(Year)),format = "%d %m %Y"),Date))
 
 SUAQ_followlog<- SUAQ_followlog %>% filter(!is.na(FollowNumber)|!is.na(Date)) ## only keep if one of the 2 attributes are available
 
+SUAQ_followlog <- SUAQ_followlog[,(colSums(is.na(SUAQ_followlog))<nrow(SUAQ_followlog))]
 
 #### How many GPS follows should be available? How many do I have? because 140 are not found automatically in the followlog.
 
@@ -342,7 +345,11 @@ SUAQ_waypoints_11_20 <-
     # matching string start following 4 digits. Nameing datetime but changeing afterwards (to a real datetime). Just for ordering purposes
     manualDate = date(as.POSIXct(ymd(filedate),
                             format = "%Y-%m-%d",
-                            tz = "Asia/Pontianak"))
+                            tz = "Asia/Pontianak")),
+    manualTime = hms::as_hms(manualDatetime),
+    automaticDate = date(automaticDatetime),
+    automaticTime = hms::as_hms(automaticDatetime),
+    name=str_extract(name, "[^\\d{4} ].*") # not matching the digits in the beginning plus whitespace but everything after
   )
 
 #### adding automatic datetime if 
@@ -364,11 +371,6 @@ SUAQ_waypoints_11_20<- SUAQ_waypoints_11_20 %<>%mutate(
     orangutanname = if_else(fileN=="20130508_Unk_Unk_FN","pauline",orangutanname),
     orangutanname = if_else(fileN=="20191002_UnflUnid(U1200)_FL","fez",orangutanname),
     orangutanname = if_else(fileN=="20191129_UnflH1050_Ulil_FN","gura",orangutanname),
-
-    manualTime = hms::as_hms(manualDatetime),
-    automaticDate = date(automaticDatetime),
-    automaticTime = hms::as_hms(automaticDatetime),
-    name=str_extract(name, "[^\\d{4} ].*") # not matching the digits in the beginning plus whitespace but everything after
   )
 SUAQ_waypoints_11_20<- SUAQ_waypoints_11_20 %>% mutate(
   tmp_delete= if_else(
@@ -510,7 +512,7 @@ SUAQ_waypoints_11_20<- SUAQ_waypoints_11_20 %>%  mutate(
 
 
 
-########### MERGE ################
+########### MERGE GPS DATA ################
 ### Merging 2017-2018 data with the rest
 #### CRS Code: EPSG 32647
 #### Create SF Points
@@ -521,7 +523,7 @@ colnames(coordinates_tmp) <- c("E","N")
 SUAQ_waypoints_11_20_sf <- cbind(SUAQ_waypoints_11_20_sf,coordinates_tmp)
 SUAQ_waypoints_11_20<- st_drop_geometry(SUAQ_waypoints_11_20_sf)
 
-
+SUAQ_waypoints_11_20
 
 SUAQ_waypoints_17_18 <- SUAQ_waypoints_17_18 %>% 
   mutate(automaticDatetime=dmy_hms(paste(.$Date,.$Actual.Time), tz = "Asia/Pontianak"),
@@ -568,30 +570,35 @@ select(-orangutanname)
 
 typeof(SUAQ_waypoints_11_20$manualDate)
 SUAQ_waypoints_11all20<- SUAQ_waypoints_11_20 %>%  bind_rows(SUAQ_waypoints_17_18)
-levels(as.factor(SUAQ_waypoints_11all20$Activity))
-SUAQ_waypoints_11all20 <- SUAQ_waypoints_11all20%>% select(-Date,-FollowIndData)
 
-########### FINISH MERGE ################
+SUAQ_waypoints_11all20 <- SUAQ_waypoints_11all20%>%
+  select(-Date,
+         -FollowIndData,
+         -cmt,
+         -desc
+         )
+
+########### FINISH MERGE GPS DATA ################
 
 
 
 
 
 
-
+########### ADDING FOLLOWNUMBER (JOIN) ################
 ### Merging 2011-2020 data with followlog
 #### for the first two follows which are not joined with the followlog it seams the date in the filename is wrong! --> should be 2011 not 2010. This is the case for many more! maybe look on the automatic date!
 #### PROBLEMS
 specs_AutomaticManualDateNotEqual<- SUAQ_waypoints_11all20 %>% filter(.$manualDate!=.$automaticDate) %>% group_by(.$fileN) %>% summarise(count=n()) # date automatic and manual not the same
 
-tmp<- SUAQ_followlog[,c(2,4,15)] %>% mutate(tmp_FollowNumber_M_focal=.$FollowNumber) %>%
+tmp<- SUAQ_followlog[,c(2,4,14)] %>% mutate(tmp_FollowNumber_M_focal=.$FollowNumber) %>%
   select(-FollowNumber)
-tmp2<- SUAQ_followlog[,c(2,4,15)] %>% mutate(tmp_FollowNumber_M_focal_automatic=.$FollowNumber) %>% select(-FollowNumber)
-tmp3<- SUAQ_followlog[,c(2,4,15)] %>% mutate(tmp_FollowNumber_M_infant=.$FollowNumber) %>%
+tmp2<- SUAQ_followlog[,c(2,4,14)] %>% mutate(tmp_FollowNumber_M_focal_automatic=.$FollowNumber) %>% select(-FollowNumber)
+tmp3<- SUAQ_followlog[,c(2,4,14)] %>% mutate(tmp_FollowNumber_M_infant=.$FollowNumber) %>%
   select(-FollowNumber)
-tmp4<- SUAQ_followlog[,c(2,4,20)] %>% mutate(tmp_FollowNumber_M_followname=.$FollowNumber) %>%
+tmp4<- SUAQ_followlog[,c(2,4,19)] %>% mutate(tmp_FollowNumber_M_followname=.$FollowNumber) %>%
   select(-FollowNumber)
-tmp5<- SUAQ_followlog[,c(2,4,21)] %>% mutate(tmp_FollowNumber_M_followname2=.$FollowNumber) %>%
+tmp5<- SUAQ_followlog[,c(2,4,20)] %>% mutate(tmp_FollowNumber_M_followname2=.$FollowNumber) %>%
   select(-FollowNumber)
 
 # Join followlog and add information to gps file
@@ -655,101 +662,21 @@ SUAQ_waypoints_11all20 <-SUAQ_waypoints_11all20 %>%
     follow=if_else(fileN=="20200117_Balu_Tri_J",1000018,follow),
     follow=if_else(fileN=="20130510_Jebi_UNK_NL",1335,follow),
     follow=if_else(fileN=="20190209_Yulia_Ulil_NN",2582,follow)
-    ) 
+    )
+
+names(SUAQ_followlog) <- paste0("SUAQ_followlog.", names(SUAQ_followlog))
+SUAQ_waypoints_11all20 <- SUAQ_waypoints_11all20 %>%
+  left_join(SUAQ_followlog[,c(2,4,14,16,17,19,20,21,22,23,25,29,30,31,32,33,34,35,36,38,39,40,41,42,43,46,55,56,57,58,59,60,61,62,63,64,65,66,67:74)],by=c("follow"="SUAQ_followlog.FollowNumber"),suffix = c("", "_fromFollowlog"))
+
+########### FINISH ADDING FOLLOWNUMBER (JOIN) ################
 
 
-######## #### #### #### #### #### #### #### #### #### #### #### TODELETE
-#### for how many we have missing FN
-SUAQ_numberoffiles <- SUAQ_waypoints_11all20 %>% group_by(fileN) %>% summarise() # number of files is 730
-SUAQ_waypointswithoutfollownumber<- SUAQ_waypoints_11all20 %>% filter(is.na(follow)) %>% group_by(fileN) %>% summarise(count=n())
-SUAQ_waypointswithfollownumber<- SUAQ_waypoints_11all20 %>%filter(!is.na(follow)) %>% group_by(fileN) %>% summarise(count=n())
-
-tmp<- setdiff(SUAQ_waypointswithfollownumber,SUAQ_waypointswithoutfollownumber)
-
-#DELETE testing sth
-tmp<- SUAQ_followlog[,c(2,4,10,15,17,18,19,27:32,35,38:50)]
-
-
-tmp<- SUAQ_waypoints_11all20 %>% filter(focal=="aqra")
-tmp0<- SUAQ_waypoints_11all20 %>% filter(.$manualDate==as.Date("2014-04-30", tz = "Asia/Pontianak"))
-tmp2<- SUAQ_waypoints_11all20 %>% filter(.$fileN=="20120401_FriskaFredyFrankie_Kevin_FN")
-tmp3<- SUAQ_followlog %>% filter(.$FocalName=="aqra")
-tmp4<- SUAQ_followlog %>% filter(.$Date==as.Date("2014-05-10", tz = "Asia/Pontianak"))
-
-tmp<- SUAQ_waypoints_11all20 %>% filter(.$follow==1335)
-
-tmp<- SUAQ_followlog %>% filter(Date!=as.Date(paste(as.numeric(Day),as.numeric(Month),as.numeric(Year)),format = "%d %m %Y"))
-#DELETE testing sth
-
-
-
-print() # stop automatic sript
-######## #### #### #### #### #### #### #### #### #### #### #### TODELETE
-
-
-
-
-
-
+print()
 
 ##### JOINING ORANGUTANS INFO ##### 
-SUAQ_waypoints_11_20 <-
-  SUAQ_waypoints_11_20 %>% left_join(SUAQ_orangutans[,1:10], by = c("orangutanname" = "orangutanname"),suffix = c("", "_fromOUcatalog"))
-SUAQ_waypoints_17_18_sf <-
-  SUAQ_waypoints_17_18_sf %>% left_join(SUAQ_orangutans[,1:10], by = c("Focal" = "Orangutan name"),suffix = c("", "_fromOUcatalog"))
-
-
-
-### Merging 2011-2020 data with followlog
-#### for the first two follows which are not joined with the followlog it seams the date in the filename is wrong! --> should be 2011 not 2010. This is the case for many more! maybe look on the automatic date!
-#### PROBLEMS
-specs_AutomaticManualDateNotEqual<- SUAQ_waypoints_11_20 %>% filter(.$manualDate!=.$automaticDate) %>% group_by(.$fileN) %>% summarise(count=n()) # date automatic and manual not the same
-
-tmp<- SUAQ_followlog[,c(2,4,15)] %>% mutate(tmp_FollowNumber=.$FollowNumber) %>% select(-FollowNumber)
-tmp2<- SUAQ_followlog[,c(2,4,15)] %>% mutate(tmp_FollowNumber_M_infant=.$FollowNumber) %>% select(-FollowNumber)
-
-
-# Join followlog and add information to gps file
-SUAQ_waypoints_11_20 <- SUAQ_waypoints_11_20 %>%
-  left_join(SUAQ_followlog,by=c("manualDate"="Date","orangutanname"="FocalName"),suffix = c("", "_fromfollowlog")) %>% 
-  left_join(tmp2,by=c("manualDate"="Date","infantname"="FocalName")) %>% 
-  left_join(tmp,by=c("automaticDate"="Date","orangutanname"="FocalName")) %>%
-  mutate(FollowNumber=if_else(is.na(FollowNumber),tmp_FollowNumber,FollowNumber)) %>%
-  select(-tmp_FollowNumber)
-
-
-#### for how many we have missing FN
-SUAQ_numberoffiles <- SUAQ_waypoints_11_20 %>% group_by(fileN) %>% summarise() # number of files is 730
-SUAQ_waypointswithoutfollownumber<- SUAQ_waypoints_11_20 %>% filter(is.na(FollowNumber)) %>% group_by(fileN) %>% summarise(count=n())
-SUAQ_waypointswithfollownumber<- SUAQ_waypoints_11_20 %>%filter(!is.na(FollowNumber)) %>% group_by(fileN) %>% summarise(count=n())
-SUAQ_waypointswithoutfollownumber <- st_drop_geometry(SUAQ_waypointswithoutfollownumber)
-SUAQ_waypointswithfollownumber <- st_drop_geometry(SUAQ_waypointswithfollownumber)
-tmp<- setdiff(SUAQ_waypointswithoutfollownumber,SUAQ_waypointswithfollownumber)
-
-#DELETE testing sth
-tmp<- SUAQ_followlog[,c(2,4,10,15,17,18,19,27:32,35,38:50)]
-
-
-tmp<- SUAQ_waypoints_11_20 %>% filter(focal=="rakus")
-tmp0<- SUAQ_waypoints_11_20 %>% filter(.$manualDate==as.Date("2013-03-17", tz = "Asia/Pontianak"))
-
-tmp2<- SUAQ_waypoints_11_20 %>% filter(.$fileN=="20130510_Jebi_UNK_NL")
-tmp3<- SUAQ_followlog %>% filter(.$FocalName=="lois")
-tmp4<- SUAQ_followlog %>% filter(.$Date==as.Date("2013-03-17", tz = "Asia/Pontianak"))
-
-
-tmp<- SUAQ_followlog %>% filter(Date!=as.Date(paste(as.numeric(Day),as.numeric(Month),as.numeric(Year)),format = "%d %m %Y"))
-#DELETE testing sth
-
-
-
-SUAQ_waypoints_11all20_sf <- SUAQ_waypoints_11all20_sf %>% 
-mutate(Class=if_else(is.na(Class),ClassFocal,Class))
-tmp<- SUAQ_waypoints_11all20_sf %>% group_by(.$Class) %>% summarise(count=n())
-
-levels(as.factor(SUAQ_waypoints_11all20_sf$Class))
-levels(as.factor(SUAQ_waypoints_11all20_sf$ClassFocal))
-
+names(SUAQ_orangutans) <- paste0("SUAQ_orangutans.", names(SUAQ_orangutans))
+SUAQ_waypoints_11all20_test <-
+  SUAQ_waypoints_11all20 %>% left_join(SUAQ_orangutans[,1:10], by = c("focal" = "SUAQ_orangutans.orangutanname"))
 
 
 #### save all waypoints as sf
