@@ -585,6 +585,7 @@ SUAQ_waypoints_11all20 <- SUAQ_waypoints_11all20%>%
 
 
 
+
 ########### ADDING FOLLOWNUMBER (JOIN) ################
 ### Merging 2011-2020 data with followlog
 #### for the first two follows which are not joined with the followlog it seams the date in the filename is wrong! --> should be 2011 not 2010. This is the case for many more! maybe look on the automatic date!
@@ -670,19 +671,16 @@ SUAQ_waypoints_11all20 <- SUAQ_waypoints_11all20 %>%
 
 ########### FINISH ADDING FOLLOWNUMBER (JOIN) ################
 
-
-print()
-
 ##### JOINING ORANGUTANS INFO ##### 
 names(SUAQ_orangutans) <- paste0("SUAQ_orangutans.", names(SUAQ_orangutans))
-SUAQ_waypoints_11all20_test <-
+SUAQ_waypoints_11all20 <-
   SUAQ_waypoints_11all20 %>% left_join(SUAQ_orangutans[,1:10], by = c("focal" = "SUAQ_orangutans.orangutanname"))
 
 
 #### save all waypoints as sf
 SUAQ_waypoints_11all20_sf <-  st_as_sf(SUAQ_waypoints_11all20, 
                           coords = c("N", "E"), 
-                          crs = 4326)
+                          crs = 32647)
 
 ```
 
@@ -691,25 +689,15 @@ SUAQ_waypoints_11all20_sf <-  st_as_sf(SUAQ_waypoints_11all20,
 
 
 ```{r R-specific preparation}
-# CRS Code: EPSG 32647
-# Create SF Points
-suaq_orangutan_waypoints <- waypoints %>% drop_na(lat,lon)
-suaq_orangutan_follows_2020_sf <-  st_as_sf(suaq_orangutan_waypoints, 
-                          coords = c("lat", "lon"), 
-                          crs = 4326)
-
-coordinates_tmp <- st_coordinates(suaq_orangutan_follows_2020_sf)
-colnames(coordinates_tmp) <- c("E","N")
-suaq_orangutan_follows_2020_sf <- cbind(suaq_orangutan_follows_2020_sf,coordinates_tmp)
-
-
 ##### DATA WRANGLING ######
 # Create timelag
-suaq_orangutan_follows_2020_sf<- suaq_orangutan_follows_2020_sf %>% 
-  group_by(fileN)%>% 
-  mutate(timelag=as.numeric(difftime(lead(as.POSIXlt(CreationTime)),as.POSIXlt(CreationTime),units = "secs"))) # change datetime to time, see analysis below
+SUAQ_waypoints_11all20_sf<- SUAQ_waypoints_11all20_sf %>% 
+  group_by(follow)%>% arrange(manualTime,.by_group = TRUE) %>% 
+  mutate(timelag=as.numeric(difftime(lead(as.POSIXlt(manualTime)),as.POSIXlt(manualTime),units = "secs"))) # change datetime to time, see analysis below
 
-suaq_neg_timelag <- suaq_orangutan_follows_2020_sf %>% filter(timelag<0)
+specs_neg_timelag <- SUAQ_waypoints_11all20_sf %>% filter(timelag<0)
+
+SUAQ_waypoints_11all20_sf %>% ggplot(aes(.$timelag))+geom_histogram(binwidth = 30)+scale_y_log10()
 
 ##### Set a GPS Tracking Laufnummer oder Lösung des Zeitproblems ##### 
 # Begründung: In den Tracks kommen teilweise Punkte vor welche zu einer viel späteren Zeit gemacht wurden. Oder wurde Zeit falsch gespeichert (bzw. lief umwandlung in Indonesische Zeitzone falsch)
@@ -717,127 +705,114 @@ suaq_neg_timelag <- suaq_orangutan_follows_2020_sf %>% filter(timelag<0)
 
 #SUAQ_data<- SUAQ_data %>%  arrange(desc(.$CreationTime))
 
-# Laufnummer für GPS Punkt erstellen
+#### Laufnummer für GPS Punkt erstellen
 
 
+SUAQ_waypoints_11all20_sf %>% ggplot(aes(manualTime))+geom_histogram()
+SUAQ_waypoints_11all20_sf %>% filter(is.na(manualTime)) %>% ggplot(aes(hms::as_hms(automaticTime)))+geom_histogram() # time before conversion
 
-
-## Create DateTime from time column (time is not datetime)
-suaq_orangutan_follows_2020_sf <- suaq_orangutan_follows_2020_sf %>%
-  mutate(datetime=with_tz(ymd_hms(CreationTime),"Asia/Pontianak"))
-suaq_orangutan_follows_2020_sf <- suaq_orangutan_follows_2020_sf %>%
-  mutate(date=date(datetime), truetime=hms::as_hms(datetime))
-
-suaq_orangutan_follows_2020_sf %>% ggplot(aes(truetime))+geom_histogram()
-suaq_orangutan_follows_2020_sf %>% ggplot(aes(hms::as_hms(CreationTime)))+geom_histogram() # time before conversion
-
-follows_points_in_night<- suaq_orangutan_follows_2020_sf %>% filter(truetime<lubridate::hms("04:00:00")) # probably one outlier and one track in the night. Or wrong time settings
+specs_follows_points_in_night<- SUAQ_waypoints_11all20_sf %>% filter(manualTime<lubridate::hms("04:00:00")) # probably one outlier and one track in the night. Or wrong time settings
 
 ```
-## Calculate timelag 
-- Corrected time --> datetime, 
-```{r Timelag suaq}
-# Timelag histogram
-summary(suaq_orangutan_follows_2020_sf$timelag)
-suaq_orangutan_follows_2020_sf %>% ggplot(aes(suaq_orangutan_follows_2020_sf$timelag))+
-  geom_histogram(binwidth = )
-suaq_orangutan_follows_2020_sf <- suaq_orangutan_follows_2020_sf %>% filter(timelag<0)
 
-# dates have the same distribution
-ketambe_orangutan_tracks_sf %>% ggplot(aes(date_tmp))+geom_histogram()
-ketambe_orangutan_tracks_sf %>% ggplot(aes(dateandtime))+geom_histogram()
-
-# change the calculation of timelag to time_tmp
-```
 
 ### Analysis
 ## First visuals SUAQ
 ```{r Visualization Suaq}
 ##### VISUALIZE ######
 #### number of follows
-result_numoffollows<- SUAQ_waypoints_11all20_sf %>% group_by(.$Follow..,Focal) %>% summarize(count=n()) %>% group_by(Focal) %>% summarize(count=n())
+result_numoffollows<- SUAQ_waypoints_11all20_sf %>% group_by(follow,focal) %>% summarize(count=n()) %>% group_by(focal) %>% summarize(count=n())
 
 #### number of points per individual no matter if its as a infant or focal
-SUAQ_tracksperorangutanfocal <-
+SUAQ_tracksperorangutanfocal_sf <-
   SUAQ_waypoints_11all20_sf %>% 
-  group_by(Follow..,Focal, infantname) %>% 
+  group_by(follow,focal,infantname) %>% 
   summarise(count =n()) %>%
   ungroup() %>%
-  group_by(Focal) %>%
+  group_by(focal) %>%
   summarize(count_focal = sum(count))
-SUAQ_tracksperorangutaninfant <-
+SUAQ_tracksperorangutaninfant_sf <-
   SUAQ_waypoints_11all20_sf %>% 
-  group_by(Follow.., Focal, infantname) %>% 
+  group_by(follow,focal,infantname) %>% 
   summarise(count =n()) %>%
   ungroup() %>%
   group_by(infantname) %>%
   summarize(count_infant = sum(count))
-SUAQ_tracksperorangutanfocal<- st_drop_geometry(SUAQ_tracksperorangutanfocal)
-SUAQ_tracksperorangutaninfant<- st_drop_geometry(SUAQ_tracksperorangutaninfant)
-SUAQ_tracksperorangutan<- SUAQ_tracksperorangutanfocal %>% left_join(SUAQ_tracksperorangutaninfant,by=c("Focal"="infantname")) %>% mutate(NumPointsPerFocal=ifelse(is.na(.$count_infant),.$count_focal,.$count_infant+.$count_focal))
+SUAQ_tracksperorangutanfocal<- st_drop_geometry(SUAQ_tracksperorangutanfocal_sf)
+SUAQ_tracksperorangutaninfant<- st_drop_geometry(SUAQ_tracksperorangutaninfant_sf)
+SUAQ_tracksperorangutan<- SUAQ_tracksperorangutanfocal %>% left_join(SUAQ_tracksperorangutaninfant,by=c("focal"="infantname")) %>% mutate(NumPointsPerFocal=ifelse(is.na(.$count_infant),.$count_focal,.$count_infant+.$count_focal))
 
 #### Orangutan hirarchy
-family<- data.frame(SUAQ_orangutans$orangutanname, SUAQ_orangutans$Mother,SUAQ_orangutans$Sex,stringsAsFactors = FALSE)
-names(family) <- c("name","mother","sex")
-family <- family %>%left_join(SUAQ_tracksperorangutan,by=c("name"="Focal"))
-family <- family %>%left_join(SUAQ_tracksperorangutan[,c(1,4)],by=c("mother"="Focal"),na_matches="never")
+SUAQ_family<- data.frame(SUAQ_orangutans$SUAQ_orangutans.orangutanname, 
+                         SUAQ_orangutans$SUAQ_orangutans.Mother,
+                         SUAQ_orangutans$SUAQ_orangutans.Sex,stringsAsFactors = FALSE)
+
+ names(SUAQ_family) <- c("name","mother","sex")
+
+SUAQ_family <- SUAQ_family %>%
+  left_join(SUAQ_tracksperorangutan,by=c("name"="focal"))
+SUAQ_family <- SUAQ_family%>%
+  left_join(SUAQ_tracksperorangutan[,c(1,4)],by=c("mother"="focal"),na_matches="never")
 
 
-family <-
-  family %>% mutate(
+SUAQ_family <-
+  SUAQ_family %>% mutate(
     sex = ifelse(sex == "male","#b2df8a","#a6cee3"),
     name = ifelse(
-      is.na(.$NumPointsPerFocal.x),
+      is.na(NumPointsPerFocal.x),
       name,
       paste(name, "[", NumPointsPerFocal.x,"]")
     ),
     mother = ifelse(
-      is.na(.$NumPointsPerFocal.y),
+      is.na(NumPointsPerFocal.y),
       mother,
       paste(mother, "[", NumPointsPerFocal.y,"]")
     )
   )
-family<- family %>% filter(mother!="NA  : [ NA ]")
-network <- graph_from_data_frame(d=family, directed=F) 
+SUAQ_family<- SUAQ_family %>% filter(mother!="NA  : [ NA ]")
+network <- graph_from_data_frame(d=SUAQ_family, directed=F) 
 layout <- layout.reingold.tilford(network, circular=T)
 #layout <- layout_(network,as_tree())
-V(network)[family$mother]$color = "#1f78b4"
-V(network)[family$name]$color = family$sex
+V(network)[SUAQ_family$mother]$color = "#1f78b4"
+V(network)[SUAQ_family$name]$color = SUAQ_family$sex
 plot.igraph(network, layout=layout,edge.width=2,edge.size=2,vertex.size=5,vertex.label.dist=1,vertex.label.cex=1, label.degree=-pi/4,main="SUAQ Orangutans July 2020 \n (Mother = dark blue, Male = Green, Female = Blue)",vertex.label.color="black")
 
 
 #### Visualize Observation duration for individuals
 specs_orangutan_tot_num_of_gps <-
-  group_by(SUAQ_waypoints_11all20_sf, Focal) %>%               
+  group_by(SUAQ_waypoints_11all20_sf, focal) %>%               
   summarise(n())
-colnames(specs_orangutan_tot_num_of_gps) <- c("Focal", 
+colnames(specs_orangutan_tot_num_of_gps) <- c("focal", 
                                              "orangutan_tot_num_of_gps","geometry")
-tempe<- specs_orangutan_tot_num_of_gps[,c(1,2)]
-SUAQ_waypoints_11all20_sf <-SUAQ_waypoints_11all20_sf %>% 
-  left_join(tempe,by = c("Focal" = "Focal"))
+tmp<- specs_orangutan_tot_num_of_gps[,c(1,2)]
+SUAQ_waypoints_11all20 <-st_drop_geometry(SUAQ_waypoints_11all20_sf) %>% 
+  left_join(tmp,by = c("focal" = "focal"))
 
 
-waypoints_sfbackup <- SUAQ_waypoints_11all20_sf
-waypoints_sfbackup <- waypoints_sfbackup %>%  mutate(Focal=paste(Focal,orangutan_tot_num_of_gps))
-waypoints_sfbackup$Focal = with(waypoints_sfbackup, reorder(Focal,orangutan_tot_num_of_gps, length))
-orangutan_followperiods<- waypoints_sfbackup %>%
-  filter(!is.na(Focal)) %>%
-  group_by(Focal) %>%
-  ggplot(aes(manualDate,Focal))+
-  geom_point(aes(colour=Focal))+
+waypoints_backup <- SUAQ_waypoints_11all20
+waypoints_backup <- waypoints_backup %>%  mutate(focal=paste(focal,orangutan_tot_num_of_gps))
+waypoints_backup$Focal = with(waypoints_backup, reorder(focal,orangutan_tot_num_of_gps, length))
+orangutan_followperiods<- waypoints_backup %>%
+  filter(!is.na(focal)) %>%
+  group_by(focal) %>%
+  ggplot(aes(manualDate,focal))+
+  geom_point(aes(colour=focal))+
   labs(title= "Duration of observation for \n orangutan individuals", x= "date", y="orangutanname")+
   theme(legend.position = "none") 
 orangutan_followperiods
 
 # Histogram of number of gps per individual
-specs_orangutan_tot_num_of_gps %>% ggplot(aes(.$Focal))
-specs_orangutan_tot_num_of_gps_class<- specs_orangutan_tot_num_of_gps %>% left_join(SUAQ_orangutans[,c(1,2)],by=c("Focal"="orangutanname"))
+specs_orangutan_tot_num_of_gps %>% ggplot(aes(.$focal))
+specs_orangutan_tot_num_of_gps_class<- specs_orangutan_tot_num_of_gps %>% 
+  left_join(SUAQ_orangutans[,c(1,2)],by=c("focal"="SUAQ_orangutans.orangutanname"))
 specs_orangutan_tot_num_of_gps_class <-
-  group_by(SUAQ_waypoints_11all20_sf, Focal,Class) %>%               
-  summarise(n())
+  group_by(SUAQ_waypoints_11all20_sf, focal,SUAQ_orangutans.Class) %>%               
+  summarise(orangutan_tot_num_of_gps=n())
 
-specs_orangutan_tot_num_of_gps_class$Focal = with(specs_orangutan_tot_num_of_gps_class, reorder(Focal,orangutan_tot_num_of_gps, length))
-specs_orangutan_tot_num_of_gps_class %>% ggplot() + geom_point(aes(log(orangutan_tot_num_of_gps),Focal))
+specs_orangutan_tot_num_of_gps_class$focal = with(specs_orangutan_tot_num_of_gps_class, 
+                                                  reorder(focal,orangutan_tot_num_of_gps, length))
+specs_orangutan_tot_num_of_gps_class %>% ggplot() + 
+  geom_point(aes(log(orangutan_tot_num_of_gps),focal))
 
 ggplotly(orangutan_followperiods)
 
