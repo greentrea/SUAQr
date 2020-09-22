@@ -23,6 +23,12 @@ knitr::opts_chunk$set(echo = TRUE)
 # Zeiten kontrollieren ob bei Originaldatei in den Tracks (anhand Dateiname) teilweise GPS Messungen mit viel späterem Zeitpunkt zwischendrin vorkommen
 
 
+# Get rid of points in camp
+
+# Maybe find out whats wrong with points which are not in bounding box (see Processing script end) --> Probably Northing and easting is the same but why and which follow?
+
+# Filter out impossible steplengths and steps
+
 
 # Markings:
 #### Quality check: --> are quality checks of chunks executed before
@@ -72,13 +78,39 @@ packages_checker(
     'tmap',
     'stringr',
     'remotes', # geom_convexhull function
-    'magrittr'
+    'magrittr',
+    'ggridges',
+    'forcats',
+    'move',# Brownian Bridge Movement Model
+    'adehabitatHR'
     ))
 rm(list = ls())
 getwd()
 
 ### CUSTOM FUNCTIONS ###
 clockS = function(t){hour(t)*3600+minute(t)*60+second(t)}
+
+st_kde <- function(points,cellsize, bandwith, extent = NULL){
+  require(MASS)
+  require(raster)
+  require(sf)
+  if(is.null(extent)){
+    extent_vec <- st_bbox(points)[c(1,3,2,4)]
+  } else{
+    extent_vec <- st_bbox(extent)[c(1,3,2,4)]
+  }
+  
+  n_y <- ceiling((extent_vec[4]-extent_vec[3])/cellsize)
+  n_x <- ceiling((extent_vec[2]-extent_vec[1])/cellsize)
+  
+  extent_vec[2] <- extent_vec[1]+(n_x*cellsize)-cellsize
+  extent_vec[4] <- extent_vec[3]+(n_y*cellsize)-cellsize
+  
+  coords <- st_coordinates(points)
+  matrix <- kde2d(coords[,1],coords[,2],h = bandwith,n = c(n_x,n_y),lims = extent_vec)
+  raster(matrix)
+}
+
 
 read_GPX_waypoints <- function(flnm){
     file <- read_GPX(flnm)
@@ -142,7 +174,7 @@ SUAQ_waypoints_17_18 <- SUAQ_waypoints_17_18 %>% mutate(Focal=tolower(Focal))
 #### CRS Code: EPSG 32647
 #### Create SF Points
 SUAQ_waypoints_17_18_sf <-  st_as_sf(SUAQ_waypoints_17_18, 
-                          coords = c("Y", "X"), 
+                          coords = c("X", "Y"), 
                           crs = 32647)
 
 coordinates_tmp <- st_coordinates(SUAQ_waypoints_17_18_sf)
@@ -186,7 +218,7 @@ SUAQ_followlog %>% filter(.$Date>as_date("01-01-2010")) %>% nrow()
 
 
 ### 0.2 Orangutans names and information
-SUAQ_orangutans<- read_csv2("data/20200806_Orangutan_ID.csv")
+SUAQ_orangutans<- read_csv2("data/20200920_Orangutan_ID.csv")
 SUAQ_orangutans<- SUAQ_orangutans[rowSums(is.na(SUAQ_orangutans)) != ncol(SUAQ_orangutans),]
 #### delete empty collumns of orangutan list
 SUAQ_orangutans <- SUAQ_orangutans[,(colSums(is.na(SUAQ_orangutans))<nrow(SUAQ_orangutans))]
@@ -371,7 +403,9 @@ SUAQ_waypoints_11_20<- SUAQ_waypoints_11_20 %<>%mutate(
     orangutanname = if_else(fileN=="20130508_Unk_Unk_FN","pauline",orangutanname),
     orangutanname = if_else(fileN=="20191002_UnflUnid(U1200)_FL","fez",orangutanname),
     orangutanname = if_else(fileN=="20191129_UnflH1050_Ulil_FN","gura",orangutanname),
+    orangutanname = if_else(orangutanname=="caeser","caesar",orangutanname)
   )
+
 SUAQ_waypoints_11_20<- SUAQ_waypoints_11_20 %>% mutate(
   tmp_delete= if_else(
     fileN=="20110128_Karma_Unk_NN"|
@@ -536,7 +570,8 @@ SUAQ_waypoints_17_18 <- SUAQ_waypoints_17_18 %>%
          fileN=as.character(Follow..),
          Point.Type=tolower(Point.Type),
          Age.Sex=tolower(Age.Sex),
-         Activity=tolower(Activity)
+         Activity=tolower(Activity),
+         orangutanname = if_else(orangutanname=="caeser","caesar",orangutanname)
          ) %>% 
   rename(c("follow"="Follow..",
            "followtype"="Follow.Type",
@@ -677,15 +712,26 @@ SUAQ_waypoints_11all20 <-
   SUAQ_waypoints_11all20 %>% left_join(SUAQ_orangutans[,1:10], by = c("focal" = "SUAQ_orangutans.orangutanname"))
 
 
+
+# Create project dataframes
+#### waypoints all already saved
+#### Only keep gps points within Bounding box of 330000-360000N / 323000-328000E because some points are wrong probably the N and the E variable are the same (accidently copied)
+
+SUAQ_waypoints_11all20 <- SUAQ_waypoints_11all20 %>% filter(E>323000 & 
+                                                            E<328000 & 
+                                                            N>330000 & 
+                                                            N<360000)
 #### save all waypoints as sf
 SUAQ_waypoints_11all20_sf <-  st_as_sf(SUAQ_waypoints_11all20, 
                           coords = c("N", "E"), 
                           crs = 32647)
 
+
+#### waypoints of female orangutans in SUAQ (attention here the defined gender by the followlog is taken)
+SUAQ_waypoints_fem_sf<- SUAQ_waypoints_11all20_sf %>% filter(SUAQ_orangutans.Sex=="female")
+
+SUAQ_waypoints_fem <- SUAQ_waypoints_11all20 %>% filter(SUAQ_orangutans.Sex=="female")
 ```
-
-
-
 
 
 ```{r R-specific preparation}
@@ -718,10 +764,10 @@ specs_follows_points_in_night<- SUAQ_waypoints_11all20_sf %>% filter(manualTime<
 
 ### Analysis
 ## First visuals SUAQ
-```{r Visualization Suaq}
+```{r Visualization social relationships}
 ##### VISUALIZE ######
 #### number of follows
-result_numoffollows<- SUAQ_waypoints_11all20_sf %>% group_by(follow,focal) %>% summarize(count=n()) %>% group_by(focal) %>% summarize(count=n())
+result_numoffollows<- SUAQ_waypoints_11all20 %>% group_by(follow,focal) %>% summarize(count=n()) %>% group_by(focal) %>% summarize(count=n())
 
 #### number of points per individual no matter if its as a infant or focal
 SUAQ_tracksperorangutanfocal_sf <-
@@ -776,79 +822,210 @@ layout <- layout.reingold.tilford(network, circular=T)
 V(network)[SUAQ_family$mother]$color = "#1f78b4"
 V(network)[SUAQ_family$name]$color = SUAQ_family$sex
 plot.igraph(network, layout=layout,edge.width=2,edge.size=2,vertex.size=5,vertex.label.dist=1,vertex.label.cex=1, label.degree=-pi/4,main="SUAQ Orangutans July 2020 \n (Mother = dark blue, Male = Green, Female = Blue)",vertex.label.color="black")
+```
+
+```{r Visualization observation duration}
+tmp<- SUAQ_waypoints_11all20 %>% 
+  filter(!is.na(.$SUAQ_followlog.SexFocal),is.na(.$SUAQ_orangutans.Sex))
 
 
 #### Visualize Observation duration for individuals
-specs_orangutan_tot_num_of_gps <-
-  group_by(SUAQ_waypoints_11all20_sf, focal) %>%               
-  summarise(n())
-colnames(specs_orangutan_tot_num_of_gps) <- c("focal", 
-                                             "orangutan_tot_num_of_gps","geometry")
-tmp<- specs_orangutan_tot_num_of_gps[,c(1,2)]
-SUAQ_waypoints_11all20 <-st_drop_geometry(SUAQ_waypoints_11all20_sf) %>% 
+specs_orangutan_tot_num_of_gps <-SUAQ_waypoints_11all20 %>% 
+  group_by(focal) %>%
+  summarise(n()) %>% left_join(result_numoffollows,by=c('focal'='focal'))
+colnames(specs_orangutan_tot_num_of_gps) <- c("focal",
+                                           "orangutan_tot_num_of_gps","orangutan_num_of_follows")
+
+#### Number of GPS points
+tmp_SUAQ_waypoints_11all20 <- SUAQ_waypoints_11all20
+tmp<- specs_orangutan_tot_num_of_gps
+tmp_SUAQ_waypoints_11all20 <-tmp_SUAQ_waypoints_11all20 %>% 
   left_join(tmp,by = c("focal" = "focal"))
 
+tmp_SUAQ_waypoints_11all20 <-
+  tmp_SUAQ_waypoints_11all20 %>%  mutate(focal = paste(focal," [#GPS: ", orangutan_tot_num_of_gps,"] [#Follows: ",orangutan_num_of_follows,"]"))
+tmp_SUAQ_waypoints_11all20$focal = with(tmp_SUAQ_waypoints_11all20,
+                                        reorder(focal, orangutan_tot_num_of_gps, length))
 
-waypoints_backup <- SUAQ_waypoints_11all20
-waypoints_backup <- waypoints_backup %>%  mutate(focal=paste(focal,orangutan_tot_num_of_gps))
-waypoints_backup$Focal = with(waypoints_backup, reorder(focal,orangutan_tot_num_of_gps, length))
-orangutan_followperiods<- waypoints_backup %>%
+
+plot_orangutan_followperiods <- tmp_SUAQ_waypoints_11all20 %>%
   filter(!is.na(focal)) %>%
-  group_by(focal) %>%
-  ggplot(aes(manualDate,focal))+
-  geom_point(aes(colour=focal))+
-  labs(title= "Duration of observation for \n orangutan individuals", x= "date", y="orangutanname")+
-  theme(legend.position = "none") 
-orangutan_followperiods
+  filter(SUAQ_orangutans.Sex=="female") %>% 
+  ggplot(aes(manualDate, focal)) +
+  geom_point(aes(colour = focal)) +
+  labs(title = "Duration of observation for \n female orangutans", x = "date", y =
+         "orangutanname") +
+  theme(legend.position = "none")
+plot_orangutan_followperiods
+ggplotly(plot_orangutan_followperiods)
 
-# Histogram of number of gps per individual
-specs_orangutan_tot_num_of_gps %>% ggplot(aes(.$focal))
-specs_orangutan_tot_num_of_gps_class<- specs_orangutan_tot_num_of_gps %>% 
-  left_join(SUAQ_orangutans[,c(1,2)],by=c("focal"="SUAQ_orangutans.orangutanname"))
-specs_orangutan_tot_num_of_gps_class <-
-  group_by(SUAQ_waypoints_11all20_sf, focal,SUAQ_orangutans.Class) %>%               
-  summarise(orangutan_tot_num_of_gps=n())
+#### Histogram of orangutans and their number of follows
+specs_orangutan_tot_num_of_gps<- specs_orangutan_tot_num_of_gps %>%
+  left_join(SUAQ_orangutans[,c(1:5)],by=c("focal"="SUAQ_orangutans.orangutanname"))
+specs_orangutan_tot_num_of_gps %>% 
+  filter(.$SUAQ_orangutans.Sex=="female") %>%
+  ggplot(aes(reorder(focal, -orangutan_num_of_follows),x =orangutan_num_of_follows))+
+  geom_bar(stat="identity")
 
-specs_orangutan_tot_num_of_gps_class$focal = with(specs_orangutan_tot_num_of_gps_class, 
-                                                  reorder(focal,orangutan_tot_num_of_gps, length))
-specs_orangutan_tot_num_of_gps_class %>% ggplot() + 
-  geom_point(aes(log(orangutan_tot_num_of_gps),focal))
+#### Histogram of number of gps per individual
+plot_orangutan_followhisto<- tmp_SUAQ_waypoints_11all20 %>%
+  filter(!is.na(focal)) %>%
+  filter(SUAQ_orangutans.Sex=="female") %>% 
+  ggplot(aes(manualDate, focal,fill=focal)) +
+  geom_density_ridges(alpha=0.6,
+                      scale=0.95, 
+                      stat="binline", 
+                      bins=120,
+                      jittered_points=TRUE,
+                      draw_baseline = FALSE,
+                      color = "Black") + # bin for every 3 months
+  theme_ridges() +
+  labs(title = "Duration of observation for \n female orangutans", x = "date", y =
+         "orangutanname [number of GPS observations]") +
+  theme(legend.position = "none")
+plot_orangutan_followhisto
 
-ggplotly(orangutan_followperiods)
+#### Histogram of number of gps per individual for the 10
+plot_orangutan_followhisto_best<- tmp_SUAQ_waypoints_11all20 %>%
+  filter(!is.na(focal)) %>%
+  filter(SUAQ_orangutans.Sex=="female") %>% 
+  filter(.$orangutan_tot_num_of_gps>200) %>% 
+  ggplot(aes(manualDate,focal,fill=focal)) +
+  geom_density_ridges(alpha=0.6,
+                      scale=0.95, 
+                      stat="binline", 
+                      bins=120,
+                      jittered_points=TRUE,
+                      draw_baseline = FALSE,
+                      color = "Black") + # bin for every 3 months
+  theme_ridges() +
+  labs(title = "Duration of observation for \n female orangutans", x = "date", y =
+         "orangutanname [number of GPS observations]") +
+  theme(legend.position = "none")
+plot_orangutan_followhisto_best
 
 
+```
 
 
+```{r Visualization gps on map}
+# 
 
-
-
-
-
-
-
-################## OLD ################## 
 
 # Grouping and visualize it
-plot1<- suaq_orangutan_follows_2020_sf %>% 
-  group_by(Follow..) %>%
+plot1<- SUAQ_waypoints_11all20 %>%
+  group_by(follow) %>%
   ggplot(aes(E,N))+
-  geom_point(aes(color=suaq_orangutan_follows_2020_sf$Focal),size=0.3)+
-  geom_path(aes(color=suaq_orangutan_follows_2020_sf$Focal), alpha = 0.2,size=0.3)
-ggplotly(plot1)
+  geom_point(aes(color=SUAQ_waypoints_11all20$focal),size=0.3)+
+  geom_path(aes(color=SUAQ_waypoints_11all20$focal), alpha = 0.2,size=0.3)+
+  theme(legend.position = "none")
+plot1
+# Zoom-Panable map of tracks
+plot2<- SUAQ_waypoints_11all20 %>%
+  group_by(follow) %>%
+  ggplot(aes(E,N))+
+  geom_point(aes(color=SUAQ_waypoints_11all20$focal),size=0.3)+
+  geom_path(aes(color=SUAQ_waypoints_11all20$focal), alpha = 0.2,size=0.3)
+ggplotly(plot2)
+
+#### FEMALE: Map of female gps tracks
+# Zoom-Panable map of tracks of females with over 200 GPS points
+tmp_SUAQ_mosttrackedfemales <- SUAQ_waypoints_11all20 %>%
+  filter(!(SUAQ_orangutans.Sex == "male")) %>%
+  filter(
+    focal %in% c(
+      "lisa",
+      "friska",
+      "ellie",
+      "cissy",
+      "lilly",
+      "yulia",
+      "raffi",
+      "sarabi",
+      "trident",
+      "alice",
+      "cinnamon"
+    )
+  )
+tmp_SUAQ_mosttrackedfemales_sf <- SUAQ_waypoints_11all20_sf %>%
+  filter(!(SUAQ_orangutans.Sex == "male")) %>%
+  filter(
+    focal %in% c(
+      "lisa",
+      "friska",
+      "ellie",
+      "cissy",
+      "lilly",
+      "yulia",
+      "raffi",
+      "sarabi",
+      "trident",
+      "alice",
+      "cinnamon"
+    )
+  )
+
+#### Plot most tracked females OU
+plot2<-tmp_SUAQ_mosttrackedfemales %>% 
+  group_by(follow) %>%
+  ggplot(aes(E,N))+
+  geom_point(aes(color=focal),size=0.3)+
+  geom_path(aes(color=focal), alpha = 0.2,size=0.3)
+ggplotly(plot2)
+
+#### create convex hulls on points of each most tracked female orangutan
+tmp_SUAQ_mosttrackedfemales_chulls <- tmp_SUAQ_mosttrackedfemales_sf %>%
+  group_by(focal) %>% 
+  summarise(geometry = st_combine(geometry) ) %>%
+  st_convex_hull()
+
+tmp_SUAQ_mosttrackedfemales_centroid <- tmp_SUAQ_mosttrackedfemales_sf %>%
+  group_by(focal) %>% 
+  summarise(geometry = st_combine(geometry) ) %>%
+  st_centroid()
+
+plot_SUAQ_mosttrackedfemales_chulls_centroid <-
+  ggplot(tmp_SUAQ_mosttrackedfemales_chulls) + 
+  geom_sf(data = tmp_SUAQ_mosttrackedfemales_chulls,
+                                               aes(colour = focal, alpha = 1),
+                                               fill = NA)+
+  geom_sf(data = tmp_SUAQ_mosttrackedfemales_centroid,aes(colour = focal, alpha = 1))
+ggplotly(plot_SUAQ_mosttrackedfemales_chulls_centroid)
+
+#### Create dBBMM
+
+tmp_SUAQ_mosttrackedfemales_test <- tmp_SUAQ_mosttrackedfemales %>% 
+  filter(!is.na(.$manualDatetime)&!is.na(focal)) %>% group_by(follow) %>% 
+  arrange(manualDatetime) %>%
+  group_by(focal) %>% 
+  distinct(manualDatetime,focal,.keep_all = TRUE)
+
+tmp_SUAQ_mosttrackedfemales_test <- tmp_SUAQ_mosttrackedfemales_test %>%
+  group_by(focal)
+
+data2 <- move(
+             x=tmp_SUAQ_mosttrackedfemales_test$E, 
+             y=tmp_SUAQ_mosttrackedfemales_test$N, 
+             time=tmp_SUAQ_mosttrackedfemales_test$manualDatetime, 
+             proj=CRS("+proj=utm +zone=47 +datum=WGS84 +units=m +no_defs"),
+             animal=tmp_SUAQ_mosttrackedfemales_test$focal)
+
+
+plot(data, type="b", pch=20)
+
+#### GENDER:
+plot_gender_map<- SUAQ_waypoints_11all20 %>%
+  group_by(follow) %>%
+  ggplot(aes(E,N))+
+  geom_point(aes(color=SUAQ_orangutans.Sex),size=0.3)+
+  geom_path(aes(color=SUAQ_orangutans.Sex), alpha = 0.2,size=0.3)
+ggplotly(plot_gender_map)
+
 
 # Grouping --> research tracklengths / number of points per track / time intervall tracks
-suaq_num_point_follows<- suaq_orangutan_follows_2020_sf %>% 
-  group_by(fileN) %>%
-  tally()
 
-suaq_num_point_follows_histogram<- suaq_num_point_follows %>% ggplot(aes(n))+
-  geom_histogram()+
-  xlab("Lenght of follow [num of waypoints]")+
-  ylab("num of waypoints")
-suaq_num_point_follows_histogram
 
-# Zoom-Panable map of tracks
-ggplotly(plot1)
+
 
 # plot specific track
 pal<- brewer.pal(30, "BrBG")
@@ -876,14 +1053,7 @@ ggplotly(plot_tmp)
 
 
 
-# create convex hulls on points of each orangutan
-suaq_orangutan_chulls_2019 <- suaq_orangutan_follows_2020_sf %>%
-  group_by(orangutanname) %>% 
-  summarise(geometry = st_combine(geometry) ) %>%
-  st_convex_hull()
 
-plot_tmp<- ggplot(suaq_orangutan_chulls_2019) + geom_sf(data = suaq_orangutan_chulls_2019, aes(colour = orangutanname,alpha=1),fill=NA)
-ggplotly(plot_tmp)
 
 ## next idea homerange per month or year (need more years!)
 
