@@ -81,7 +81,8 @@ packages_checker(
     'ggridges',
     'forcats',
     'move',# Brownian Bridge Movement Model
-    'adehabitatHR'
+    'adehabitatHR',
+    'ggpubr'
     ))
 rm(list = ls())
 getwd()
@@ -165,7 +166,7 @@ SUAQ_waypoints_17_18 <- SUAQ_waypoints_17_18 %>% mutate(Focal=tolower(Focal))
 #### CRS Code: EPSG 32647
 #### Create SF Points
 SUAQ_waypoints_17_18_sf <-  st_as_sf(SUAQ_waypoints_17_18, 
-                          coords = c("X", "Y"), 
+                          coords = c("Y","X"), 
                           crs = 32647)
 coordinates_tmp <- st_coordinates(SUAQ_waypoints_17_18_sf)
 colnames(coordinates_tmp) <- c("E","N")
@@ -634,7 +635,7 @@ SUAQ_waypoints_11all20 <- SUAQ_waypoints_11all20 %>% filter(E>323000 &
                                                             N<360000)
 #### save all waypoints as sf
 SUAQ_waypoints_11all20_sf <-  st_as_sf(SUAQ_waypoints_11all20, 
-                          coords = c("N", "E"), 
+                          coords = c("E","N"), 
                           crs = 32647)
 #### waypoints of female orangutans in SUAQ (attention here the defined gender by the followlog is taken)
 SUAQ_waypoints_fem_sf<- SUAQ_waypoints_11all20_sf %>% filter(SUAQ_orangutans.Sex=="female")
@@ -892,25 +893,22 @@ plot_gender_map<- SUAQ_waypoints_11all20 %>%
   geom_point(aes(color=SUAQ_orangutans.Sex),size=0.3)+
   geom_path(aes(color=SUAQ_orangutans.Sex), alpha = 0.2,size=0.3)
 ggplotly(plot_gender_map)
-# Grouping --> research tracklengths / number of points per track / time intervall tracks
-# plot specific track
-pal<- brewer.pal(30, "BrBG")
-plot_tmp<- suaq_orangutan_follows_2020_sf %>% 
-  filter(fileN=='20190113_Lisa(Leon)_Saidi_NN.') %>%
-  ggplot(aes(E,N, label=paste(ID,time)))+
-  geom_point()+
-  geom_path()+
-  geom_text(aes(label=paste(ID,truetime)),position = position_nudge(y = -0.0003),size=3)
-ggplotly(plot_tmp)
-plot_tmp<- suaq_orangutan_follows_2020_sf %>% 
-  filter(fileN=='20190113_Lisa(Leon)_Saidi_NN.') %>% 
-  arrange(desc(datetime)) %>% 
-  ggplot(aes(E,N, label=paste(ID,time)))+
-  geom_point()+
-  geom_path()+a
-  geom_text(aes(label=paste(ID,truetime)),position = position_nudge(y = -0.0003),size=3)
-ggplotly(plot_tmp)
+
+
+
 # Map with tiles (leaflet)
+pal <- colorFactor(get_palette(palette = "default", 42), domain = levels(as.factor(SUAQ_waypoints_11all20_sf$focal)))
+
+plot2<- leaflet(data = st_transform(SUAQ_waypoints_11all20_sf, crs = 4326)) %>% 
+  addProviderTiles(providers$Esri.WorldImagery) %>% 
+  addCircleMarkers(color = ~pal(SUAQ_waypoints_11all20_sf$focal),
+                   fillOpacity = 1,
+                   radius = 1,
+                   opacity = 1)
+plot2
+
+
+
 ## next idea homerange per month or year (need more years!)
 # suaq_orangutan_chulls_month <- suaq_orangutan_follows_2020_sf %>%
 #   group_by(orangutanname) %>%
