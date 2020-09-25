@@ -927,7 +927,8 @@ mcp_map_95 <- ggmap(mybasemap) +
               aes(long, lat, colour = id, fill = id),
               alpha = 0.3) + # alpha sets the transparency
   geom_point(data = tmp_SUAQ_waypoints_morethan50gps_11all20.geo, 
-             aes(x = tmp_SUAQ_waypoints_morethan50gps_11all20.geo$E, y = tmp_SUAQ_waypoints_morethan50gps_11all20.geo$N, colour = tmp_SUAQ_waypoints_morethan50gps_11all20.geo$id))  +
+             aes(x = tmp_SUAQ_waypoints_morethan50gps_11all20.geo$E, y = tmp_SUAQ_waypoints_morethan50gps_11all20.geo$N, colour = 
+                   tmp_SUAQ_waypoints_morethan50gps_11all20.geo$id))  +
   theme(legend.position = c(0.15, 0.80)) +
   labs(x = "Longitude", y = "Latitude")
 mcp_map_95

@@ -49,6 +49,13 @@ colnames(specs_orangutan_tot_num_of_gps) <- c("focal",
 
 
 SUAQ_pathnetwork<- st_read("data/SUAQ_pathnetwork.shp")
+SUAQ_pathnetwork <- st_transform(SUAQ_pathnetwork, 4326)
+
+# with mcp
+tmp_SUAQ_waypoints_morethan50gps_11all20<- SUAQ_waypoints_11_20_backup %>% 
+  left_join(specs_orangutan_tot_num_of_gps[,c(1:3)],by=c("focal"="focal"))%>% 
+  filter(orangutan_tot_num_of_gps>=50)
+
 
 # Define UI for application that draws a histogram
 ui <- fluidPage(
@@ -87,20 +94,51 @@ ui <- fluidPage(
 # Define server logic required to draw a histogram
 server <- function(input, output) {
     output$mapPlot <- renderPlot({
-        tmp_SUAQ_selected_chulls <- SUAQ_waypoints_11_20_backup_sf %>%
-            filter(focal %in% input$focalids) %>%
-            left_join(specs_orangutan_tot_num_of_gps,by = c("focal" = "focal")) %>% 
-            mutate(focal = paste(focal," [#GPS:", orangutan_tot_num_of_gps,"] [#Follows:",orangutan_num_of_follows,"]")) %>% 
-            group_by(focal) %>%
-            summarise(geometry = st_combine(geometry) ) %>%
-            st_convex_hull()
-        ggplot(tmp_SUAQ_selected_chulls) +
-            geom_sf(data = tmp_SUAQ_selected_chulls,
-                    aes(colour = focal),alpha=0)+
-            geom_sf(data = SUAQ_pathnetwork,aes(fill = "path-network"))+
-            labs(col="Focal")+
-            theme(legend.title = element_blank(),legend.position = "bottom",plot.caption = element_text(hjust=0.5, size=rel(1.2)))
+        # tmp_SUAQ_selected_chulls <- SUAQ_waypoints_11_20_backup_sf %>%
+        #     filter(focal %in% input$focalids) %>%
+        #     left_join(specs_orangutan_tot_num_of_gps,by = c("focal" = "focal")) %>% 
+        #     mutate(focal = paste(focal," [#GPS:", orangutan_tot_num_of_gps,"] [#Follows:",orangutan_num_of_follows,"]")) %>% 
+        #     group_by(focal) %>%
+        #     summarise(geometry = st_combine(geometry) ) %>%
+        #     st_convex_hull()
+        # ggplot(tmp_SUAQ_selected_chulls) +
+        #     geom_sf(data = tmp_SUAQ_selected_chulls,
+        #             aes(colour = focal),alpha=0)+
+        #     geom_sf(data = SUAQ_pathnetwork,aes(fill = "path-network"))+
+        #     labs(col="Focal")+
+        #     theme(legend.title = element_blank(),legend.position = "bottom",plot.caption = element_text(hjust=0.5, size=rel(1.2)))
+      tmp_SUAQ_waypoints_morethan50gps_11all20<-tmp_SUAQ_waypoints_morethan50gps_11all20 %>% filter(focal %in%input$focalids)
+      tmp_SUAQ_waypoints_morethan50gps_11all20.sp<- tmp_SUAQ_waypoints_morethan50gps_11all20[,c(24,25,26)]
+      coordinates(tmp_SUAQ_waypoints_morethan50gps_11all20.sp) <- c("E","N")
+      proj4string(tmp_SUAQ_waypoints_morethan50gps_11all20.sp) <- CRS( "+proj=utm +zone=47 +datum=WGS84 +units=m +no_defs" )
       
+      tmp_SUAQ_waypoints_morethan50gps_11all20.mcp<- mcp(tmp_SUAQ_waypoints_morethan50gps_11all20.sp,percent = 95)
+      
+      tmp_SUAQ_waypoints_morethan50gps_11all20.spgeo <- spTransform(tmp_SUAQ_waypoints_morethan50gps_11all20.sp, CRS("+proj=longlat"))
+      tmp_SUAQ_waypoints_morethan50gps_11all20.mcpgeo <- spTransform(tmp_SUAQ_waypoints_morethan50gps_11all20.mcp, CRS("+proj=longlat"))
+      
+      mybasemap <- get_stamenmap(bbox = c(left = min(tmp_SUAQ_waypoints_morethan50gps_11all20.spgeo@coords[,1])-0.005, 
+                                          bottom = min(tmp_SUAQ_waypoints_morethan50gps_11all20.spgeo@coords[,2])-0.005, 
+                                          right = max(tmp_SUAQ_waypoints_morethan50gps_11all20.spgeo@coords[,1])+0.005, 
+                                          top = max(tmp_SUAQ_waypoints_morethan50gps_11all20.spgeo@coords[,2])+0.005), 
+                                 zoom = 12)
+      
+      tmp_SUAQ_waypoints_morethan50gps_11all20.geo <- data.frame(tmp_SUAQ_waypoints_morethan50gps_11all20.spgeo@coords, 
+                                                                 id = tmp_SUAQ_waypoints_morethan50gps_11all20.spgeo@data$focal )
+      
+      
+      mcp_map_95 <- ggmap(mybasemap) + 
+        geom_polygon(data = fortify(tmp_SUAQ_waypoints_morethan50gps_11all20.mcpgeo),  
+                     # Polygon layer needs to be "fortified" to add geometry to the dataframe
+                     aes(long, lat, colour = id, fill = id),
+                     alpha = 0.3) + # alpha sets the transparency
+        geom_point(data = tmp_SUAQ_waypoints_morethan50gps_11all20.geo, 
+                   aes(x = tmp_SUAQ_waypoints_morethan50gps_11all20.geo$E, y = tmp_SUAQ_waypoints_morethan50gps_11all20.geo$N, colour = 
+                         tmp_SUAQ_waypoints_morethan50gps_11all20.geo$id))  +
+        theme(legend.position = c(0.15, 0.80)) +
+        labs(x = "Longitude", y = "Latitude")+
+        geom_sf(data = SUAQ_pathnetwork, inherit.aes = FALSE)
+      mcp_map_95
     },
     height=reactive(ifelse(!is.null(input$innerWidth),input$innerWidth*2.5/5,0)))
 }
