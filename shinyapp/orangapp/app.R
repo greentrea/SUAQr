@@ -30,6 +30,8 @@ library('ggmap') # easier interactive ggmaps
 library('leaflet') # Javascript library (originally) for plotting on a maptile interactive map
 library('remotes') # geom_convexhull function
 library('shiny')
+library('spdplyr')
+library('adehabitatHR')
 
 
 # All sessions data
@@ -57,6 +59,28 @@ tmp_SUAQ_waypoints_morethan50gps_11all20<- SUAQ_waypoints_11_20_backup %>%
   filter(orangutan_tot_num_of_gps>=50)
 
 
+tmp_SUAQ_waypoints_morethan50gps_11all20.sp<- tmp_SUAQ_waypoints_morethan50gps_11all20[,c(24,25,26)]
+coordinates(tmp_SUAQ_waypoints_morethan50gps_11all20.sp) <- c("E","N")
+proj4string(tmp_SUAQ_waypoints_morethan50gps_11all20.sp) <- CRS( "+proj=utm +zone=47 +datum=WGS84 +units=m +no_defs" )
+
+tmp_SUAQ_waypoints_morethan50gps_11all20.mcp<- mcp(tmp_SUAQ_waypoints_morethan50gps_11all20.sp,percent = 95)
+
+tmp_SUAQ_waypoints_morethan50gps_11all20.spgeo <- spTransform(tmp_SUAQ_waypoints_morethan50gps_11all20.sp, CRS("+proj=longlat"))
+tmp_SUAQ_waypoints_morethan50gps_11all20.mcpgeo <- spTransform(tmp_SUAQ_waypoints_morethan50gps_11all20.mcp, CRS("+proj=longlat"))
+
+mybasemap <- get_stamenmap(bbox = c(left = min(tmp_SUAQ_waypoints_morethan50gps_11all20.spgeo@coords[,1])-0.005, 
+                                    bottom = min(tmp_SUAQ_waypoints_morethan50gps_11all20.spgeo@coords[,2])-0.005, 
+                                    right = max(tmp_SUAQ_waypoints_morethan50gps_11all20.spgeo@coords[,1])+0.005, 
+                                    top = max(tmp_SUAQ_waypoints_morethan50gps_11all20.spgeo@coords[,2])+0.005), 
+                           zoom = 12)
+
+tmp_SUAQ_waypoints_morethan50gps_11all20.geo <- data.frame(tmp_SUAQ_waypoints_morethan50gps_11all20.spgeo@coords, 
+                                                           id = tmp_SUAQ_waypoints_morethan50gps_11all20.spgeo@data$focal )
+
+
+
+
+
 # Define UI for application that draws a histogram
 ui <- fluidPage(
 
@@ -66,7 +90,7 @@ ui <- fluidPage(
     # Session Data
     
     
-    
+    br(),
     # Sidebar with a slider input for number of bins 
     sidebarLayout(position = "right",
         sidebarPanel(
@@ -78,17 +102,21 @@ ui <- fluidPage(
                             });
                             ')),
             checkboxGroupInput(inputId = "focalids",
-                               "Orangutan name",specs_orangutan_tot_num_of_gps$focal,specs_orangutan_tot_num_of_gps$focal[10],inline = T),
-          width = 4
+                               "Orangutan name",levels(as.factor(tmp_SUAQ_waypoints_morethan50gps_11all20$focal)),levels(as.factor(tmp_SUAQ_waypoints_morethan50gps_11all20$focal))[1],inline = T),
+          width = 3
         ),
 
         # Show a plot of the generated distribution
-        fillPage(mainPanel(
-           plotOutput("mapPlot"),width = 8
-        ))
+        mainPanel(
+           plotOutput("mapPlot",width = "100%",
+                      height = "80%"),width = 9
+        ),
+        
     ),
+
     hr(),
-    print("(Considered Data: 2010-2020) \n ® Data is owned by the University of Zurich and is not allowed to use. Further information @stefan.grafen@gmail.com ~~~")
+    print("Considered Data: 2010-2020"),br(),
+    print("® Data is owned by the University of Zurich and is not allowed to use. Further information @stefan.grafen@gmail.com")
 )
 
 # Define server logic required to draw a histogram
@@ -107,30 +135,12 @@ server <- function(input, output) {
         #     geom_sf(data = SUAQ_pathnetwork,aes(fill = "path-network"))+
         #     labs(col="Focal")+
         #     theme(legend.title = element_blank(),legend.position = "bottom",plot.caption = element_text(hjust=0.5, size=rel(1.2)))
-      tmp_SUAQ_waypoints_morethan50gps_11all20<-tmp_SUAQ_waypoints_morethan50gps_11all20 %>% filter(focal %in%input$focalids)
-      tmp_SUAQ_waypoints_morethan50gps_11all20.sp<- tmp_SUAQ_waypoints_morethan50gps_11all20[,c(24,25,26)]
-      coordinates(tmp_SUAQ_waypoints_morethan50gps_11all20.sp) <- c("E","N")
-      proj4string(tmp_SUAQ_waypoints_morethan50gps_11all20.sp) <- CRS( "+proj=utm +zone=47 +datum=WGS84 +units=m +no_defs" )
-      
-      tmp_SUAQ_waypoints_morethan50gps_11all20.mcp<- mcp(tmp_SUAQ_waypoints_morethan50gps_11all20.sp,percent = 95)
-      
-      tmp_SUAQ_waypoints_morethan50gps_11all20.spgeo <- spTransform(tmp_SUAQ_waypoints_morethan50gps_11all20.sp, CRS("+proj=longlat"))
-      tmp_SUAQ_waypoints_morethan50gps_11all20.mcpgeo <- spTransform(tmp_SUAQ_waypoints_morethan50gps_11all20.mcp, CRS("+proj=longlat"))
-      
-      mybasemap <- get_stamenmap(bbox = c(left = min(tmp_SUAQ_waypoints_morethan50gps_11all20.spgeo@coords[,1])-0.005, 
-                                          bottom = min(tmp_SUAQ_waypoints_morethan50gps_11all20.spgeo@coords[,2])-0.005, 
-                                          right = max(tmp_SUAQ_waypoints_morethan50gps_11all20.spgeo@coords[,1])+0.005, 
-                                          top = max(tmp_SUAQ_waypoints_morethan50gps_11all20.spgeo@coords[,2])+0.005), 
-                                 zoom = 12)
-      
-      tmp_SUAQ_waypoints_morethan50gps_11all20.geo <- data.frame(tmp_SUAQ_waypoints_morethan50gps_11all20.spgeo@coords, 
-                                                                 id = tmp_SUAQ_waypoints_morethan50gps_11all20.spgeo@data$focal )
-      
-      
+      tmp_SUAQ_waypoints_morethan50gps_11all20.mcpgeo <- tmp_SUAQ_waypoints_morethan50gps_11all20.mcpgeo %>% filter(.$id %in% input$focalids)
+      tmp_SUAQ_waypoints_morethan50gps_11all20.geo <- tmp_SUAQ_waypoints_morethan50gps_11all20.geo %>% filter(.$id %in% input$focalids)
       mcp_map_95 <- ggmap(mybasemap) + 
         geom_polygon(data = fortify(tmp_SUAQ_waypoints_morethan50gps_11all20.mcpgeo),  
                      # Polygon layer needs to be "fortified" to add geometry to the dataframe
-                     aes(long, lat, colour = id, fill = id),
+                     aes(long, lat, colour = id),
                      alpha = 0.3) + # alpha sets the transparency
         geom_point(data = tmp_SUAQ_waypoints_morethan50gps_11all20.geo, 
                    aes(x = tmp_SUAQ_waypoints_morethan50gps_11all20.geo$E, y = tmp_SUAQ_waypoints_morethan50gps_11all20.geo$N, colour = 
