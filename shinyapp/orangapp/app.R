@@ -15,6 +15,7 @@
 library('tmaptools')# read GPX to dataframe
 library('hR')# making realtionships of orangutans
 library('dbplyr')
+library('ggmap')
 library('plyr')
 library('tidyr')
 library('tidyverse')

@@ -644,7 +644,7 @@ SUAQ_waypoints_11all20 <-
 # Create project dataframes
 #### waypoints all already saved
 #### Only keep gps points within Bounding box of 330000-360000N / 323000-328000E because some points are wrong probably the N and the E variable are the same (accidently copied)
-SUAQ_waypoints_11all20_test <- SUAQ_waypoints_11all20 %>% filter(E>323000 & 
+SUAQ_waypoints_11all20 <- SUAQ_waypoints_11all20 %>% filter(E>323000 & 
                                                             E<328000 & 
                                                             N>330000 & 
                                                             N<360000)
@@ -903,21 +903,34 @@ ggplotly(plot_SUAQ_mosttrackedfemales_chulls_centroid)
 tmp_SUAQ_waypoints_morethan50gps_11all20<- SUAQ_waypoints_11all20 %>% 
   left_join(specs_orangutan_tot_num_of_gps[,c(1:3)],by=c("focal"="focal"))%>% 
   filter(orangutan_tot_num_of_gps>=50)
-SUAQ_waypoints_all.sp<- tmp_SUAQ_waypoints_morethan50gps_11all20[,c(24,25,26)]
-coordinates(SUAQ_waypoints_all.sp) <- c("E","N")
-proj4string(SUAQ_waypoints_all.sp) <- CRS( "+proj=utm +zone=47 +datum=WGS84 +units=m +no_defs" )
+tmp_SUAQ_waypoints_morethan50gps_11all20.sp<- tmp_SUAQ_waypoints_morethan50gps_11all20[,c(24,25,26)]
+coordinates(tmp_SUAQ_waypoints_morethan50gps_11all20.sp) <- c("E","N")
+proj4string(tmp_SUAQ_waypoints_morethan50gps_11all20.sp) <- CRS( "+proj=utm +zone=47 +datum=WGS84 +units=m +no_defs" )
 
-SUAQ_waypoints_all.mcp<- mcp(SUAQ_waypoints_all.sp,percent = 95)
+tmp_SUAQ_waypoints_morethan50gps_11all20.mcp<- mcp(tmp_SUAQ_waypoints_morethan50gps_11all20.sp,percent = 95)
 
-SUAQ_waypoints_all.spgeo <- spTransform(SUAQ_waypoints_all.sp, CRS("+proj=longlat"))
-SUAQ_waypoints_all.mcpgeo <- spTransform(SUAQ_waypoints_all.mcp, CRS("+proj=longlat"))
+tmp_SUAQ_waypoints_morethan50gps_11all20.spgeo <- spTransform(tmp_SUAQ_waypoints_morethan50gps_11all20.sp, CRS("+proj=longlat"))
+tmp_SUAQ_waypoints_morethan50gps_11all20.mcpgeo <- spTransform(tmp_SUAQ_waypoints_morethan50gps_11all20.mcp, CRS("+proj=longlat"))
 
-mybasemap <- get_stamenmap(bbox = c(left = min(SUAQ_waypoints_all.spgeo@coords[,1])-0.005, 
-                                    bottom = min(SUAQ_waypoints_all.spgeo@coords[,2])-0.005, 
-                                    right = max(SUAQ_waypoints_all.spgeo@coords[,1])+0.005, 
-                                    top = max(SUAQ_waypoints_all.spgeo@coords[,2])+0.005), 
+mybasemap <- get_stamenmap(bbox = c(left = min(tmp_SUAQ_waypoints_morethan50gps_11all20.spgeo@coords[,1])-0.005, 
+                                    bottom = min(tmp_SUAQ_waypoints_morethan50gps_11all20.spgeo@coords[,2])-0.005, 
+                                    right = max(tmp_SUAQ_waypoints_morethan50gps_11all20.spgeo@coords[,1])+0.005, 
+                                    top = max(tmp_SUAQ_waypoints_morethan50gps_11all20.spgeo@coords[,2])+0.005), 
                            zoom = 12)
 
+tmp_SUAQ_waypoints_morethan50gps_11all20.geo <- data.frame(tmp_SUAQ_waypoints_morethan50gps_11all20.spgeo@coords, 
+                          id = tmp_SUAQ_waypoints_morethan50gps_11all20.spgeo@data$focal )
+
+mcp_map_95 <- ggmap(mybasemap) + 
+  geom_polygon(data = fortify(tmp_SUAQ_waypoints_morethan50gps_11all20.mcpgeo),  
+               # Polygon layer needs to be "fortified" to add geometry to the dataframe
+              aes(long, lat, colour = id, fill = id),
+              alpha = 0.3) + # alpha sets the transparency
+  geom_point(data = tmp_SUAQ_waypoints_morethan50gps_11all20.geo, 
+             aes(x = tmp_SUAQ_waypoints_morethan50gps_11all20.geo$E, y = tmp_SUAQ_waypoints_morethan50gps_11all20.geo$N, colour = tmp_SUAQ_waypoints_morethan50gps_11all20.geo$id))  +
+  theme(legend.position = c(0.15, 0.80)) +
+  labs(x = "Longitude", y = "Latitude")
+mcp_map_95
 
 
 
