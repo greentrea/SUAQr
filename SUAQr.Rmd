@@ -82,10 +82,13 @@ packages_checker(
     'forcats',
     'move',# Brownian Bridge Movement Model
     'adehabitatHR',
-    'ggpubr'
+    'ggpubr',
+    'htmlwidgets'
     ))
 rm(list = ls())
 getwd()
+
+
 ### CUSTOM FUNCTIONS ###
 clockS = function(t){hour(t)*3600+minute(t)*60+second(t)}
 st_kde <- function(points,cellsize, bandwith, extent = NULL){
@@ -195,6 +198,9 @@ SUAQ_followlog<- SUAQ_followlog %>% filter(!is.na(FollowNumber)|!is.na(Date)) ##
 SUAQ_followlog <- SUAQ_followlog[,(colSums(is.na(SUAQ_followlog))<nrow(SUAQ_followlog))]
 #### How many GPS follows should be available? How many do I have? because 140 are not found automatically in the followlog.
 SUAQ_followlog %>% filter(.$Date>as_date("01-01-2010")) %>% nrow()
+
+
+
 ### 0.2 Orangutans names and information
 SUAQ_orangutans<- read_csv2("data/20200920_Orangutan_ID.csv")
 SUAQ_orangutans<- SUAQ_orangutans[rowSums(is.na(SUAQ_orangutans)) != ncol(SUAQ_orangutans),]
@@ -264,6 +270,16 @@ for(i in c(1:nrow(SUAQ_OUnames_uniquetofollowlog))) {
 }
 SUAQ_OUnames_uniquetofollowlog <- NA
 SUAQ_followlog_orangutanlevels_ex <- NA
+
+### 0.3 GPX of path network in SUAQ
+
+SUAQ_pathnetwork<- read_GPX(file="data/SUAQ_Peta_WithLines.GPX",layers = c("routes"))
+plot(SUAQ_pathnetwork)
+
+
+
+
+
 #### SUAQ TRACKS DATA 2020 ####
 ## 2. Getting data from gpx files, clean and order it
 ### 2.1 Loading data from GPX files
@@ -855,6 +871,8 @@ plot2<-tmp_SUAQ_mosttrackedfemales %>%
   geom_point(aes(color=focal),size=0.3)+
   geom_path(aes(color=focal), alpha = 0.2,size=0.3)
 ggplotly(plot2)
+
+
 #### create convex hulls on points of each most tracked female orangutan
 tmp_SUAQ_mosttrackedfemales_chulls <- tmp_SUAQ_mosttrackedfemales_sf %>%
   group_by(focal) %>% 
@@ -869,8 +887,14 @@ plot_SUAQ_mosttrackedfemales_chulls_centroid <-
   geom_sf(data = tmp_SUAQ_mosttrackedfemales_chulls,
                                                aes(colour = focal, alpha = 1),
                                                fill = NA)+
-  geom_sf(data = tmp_SUAQ_mosttrackedfemales_centroid,aes(colour = focal, alpha = 1))
+  #geom_sf(data = tmp_SUAQ_mosttrackedfemales_centroid,aes(colour = focal, alpha = 1))+
+  geom_sf(data = SUAQ_pathnetwork,
+                                               aes(colour = "black", alpha = 1),
+                                               fill = NA,colour = "black")
 ggplotly(plot_SUAQ_mosttrackedfemales_chulls_centroid)
+
+
+
 #### Create dBBMM
 tmp_SUAQ_mosttrackedfemales_test <- tmp_SUAQ_mosttrackedfemales %>% 
   filter(!is.na(.$manualDatetime)&!is.na(focal)) %>% group_by(follow) %>% 
