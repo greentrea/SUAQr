@@ -1,0 +1,12 @@
+name: orangapp
+title: orangapp
+username:
+account: greentrea
+server: shinyapps.io
+hostUrl: https://api.shinyapps.io/v1
+appId: 2887261
+bundleId: 3671063
+url: https://greentrea.shinyapps.io/orangapp/
+when: 1601054949.49325
+asMultiple: FALSE
+asStatic: FALSE
