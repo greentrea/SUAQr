@@ -32,6 +32,7 @@ library('remotes') # geom_convexhull function
 library('shiny')
 library('spdplyr')
 library('adehabitatHR')
+library('ggplot2')
 
 
 # All sessions data
@@ -63,7 +64,7 @@ tmp_SUAQ_waypoints_morethan50gps_11all20.sp<- tmp_SUAQ_waypoints_morethan50gps_1
 coordinates(tmp_SUAQ_waypoints_morethan50gps_11all20.sp) <- c("E","N")
 proj4string(tmp_SUAQ_waypoints_morethan50gps_11all20.sp) <- CRS( "+proj=utm +zone=47 +datum=WGS84 +units=m +no_defs" )
 
-tmp_SUAQ_waypoints_morethan50gps_11all20.mcp<- mcp(tmp_SUAQ_waypoints_morethan50gps_11all20.sp,percent = 95)
+tmp_SUAQ_waypoints_morethan50gps_11all20.mcp<- mcp(tmp_SUAQ_waypoints_morethan50gps_11all20.sp,percent = 98)
 
 tmp_SUAQ_waypoints_morethan50gps_11all20.spgeo <- spTransform(tmp_SUAQ_waypoints_morethan50gps_11all20.sp, CRS("+proj=longlat"))
 tmp_SUAQ_waypoints_morethan50gps_11all20.mcpgeo <- spTransform(tmp_SUAQ_waypoints_morethan50gps_11all20.mcp, CRS("+proj=longlat"))
@@ -73,6 +74,9 @@ mybasemap <- get_stamenmap(bbox = c(left = min(tmp_SUAQ_waypoints_morethan50gps_
                                     right = max(tmp_SUAQ_waypoints_morethan50gps_11all20.spgeo@coords[,1])+0.005, 
                                     top = max(tmp_SUAQ_waypoints_morethan50gps_11all20.spgeo@coords[,2])+0.005), 
                            zoom = 12)
+register_google(key = "AIzaSyABLRgWSFHCKuSyFF7QgZpa9ZgIqc9izZg")
+
+# API key: https://maps.googleapis.com/maps/api/directions/json?origin=Toronto&destination=Montreal&key=AIzaSyABLRgWSFHCKuSyFF7QgZpa9ZgIqc9izZg
 
 tmp_SUAQ_waypoints_morethan50gps_11all20.geo <- data.frame(tmp_SUAQ_waypoints_morethan50gps_11all20.spgeo@coords, 
                                                            id = tmp_SUAQ_waypoints_morethan50gps_11all20.spgeo@data$focal )
@@ -85,15 +89,17 @@ tmp_SUAQ_waypoints_morethan50gps_11all20.geo <- data.frame(tmp_SUAQ_waypoints_mo
 ui <- fluidPage(
 
     # Application title
-    titlePanel("Minimum convex polygon for orangutans in SUAQ"),
+    titlePanel(h1("Minimum convex polygon for orangutans in SUAQ",
+                  style='background-color:cadetblue;
+                     padding-left: 10px;padding-bottom:10px;padding-top:10px')),
     
     # Session Data
     
-    
-    br(),
-    # Sidebar with a slider input for number of bins 
+    # Sidebar with a slider input for number of bins
     sidebarLayout(position = "right",
-        sidebarPanel(
+          sidebarPanel(
+          br(),
+          tags$style(".well {background-color:white;border-width:0px}"),
           tags$head(tags$script('$(document).on("shiny:connected", function(e) {
                             Shiny.onInputChange("innerWidth", window.innerWidth);
                             });
@@ -101,21 +107,21 @@ ui <- fluidPage(
                             Shiny.onInputChange("innerWidth", window.innerWidth);
                             });
                             ')),
+            
             checkboxGroupInput(inputId = "focalids",
                                "Orangutan name",levels(as.factor(tmp_SUAQ_waypoints_morethan50gps_11all20$focal)),levels(as.factor(tmp_SUAQ_waypoints_morethan50gps_11all20$focal))[1],inline = T),
           width = 3
         ),
-
         # Show a plot of the generated distribution
         mainPanel(
            plotOutput("mapPlot",width = "100%",
-                      height = "80%"),width = 9
+                      height = "75%"),width = 9
         ),
         
     ),
 
     hr(),
-    print("Considered Data: 2010-2020"),br(),
+    print("Considered Data: 2010-2020 | MCP calculated with 98 percent of GPS points"),br(),
     print("® Data is owned by the University of Zurich and is not allowed to use. Further information @stefan.grafen@gmail.com")
 )
 
@@ -137,15 +143,15 @@ server <- function(input, output) {
         #     theme(legend.title = element_blank(),legend.position = "bottom",plot.caption = element_text(hjust=0.5, size=rel(1.2)))
       tmp_SUAQ_waypoints_morethan50gps_11all20.mcpgeo <- tmp_SUAQ_waypoints_morethan50gps_11all20.mcpgeo %>% filter(.$id %in% input$focalids)
       tmp_SUAQ_waypoints_morethan50gps_11all20.geo <- tmp_SUAQ_waypoints_morethan50gps_11all20.geo %>% filter(.$id %in% input$focalids)
-      mcp_map_95 <- ggmap(mybasemap) + 
+      mcp_map_95 <- ggplot() + 
         geom_polygon(data = fortify(tmp_SUAQ_waypoints_morethan50gps_11all20.mcpgeo),  
                      # Polygon layer needs to be "fortified" to add geometry to the dataframe
                      aes(long, lat, colour = id),
-                     alpha = 0.3) + # alpha sets the transparency
+                     alpha = 0) + # alpha sets the transparency
         geom_point(data = tmp_SUAQ_waypoints_morethan50gps_11all20.geo, 
                    aes(x = tmp_SUAQ_waypoints_morethan50gps_11all20.geo$E, y = tmp_SUAQ_waypoints_morethan50gps_11all20.geo$N, colour = 
                          tmp_SUAQ_waypoints_morethan50gps_11all20.geo$id))  +
-        theme(legend.position = c(0.15, 0.80)) +
+        theme(legend.position = c(0.15, 0.80),plot.title =element_blank()) +
         labs(x = "Longitude", y = "Latitude")+
         geom_sf(data = SUAQ_pathnetwork, inherit.aes = FALSE)
       mcp_map_95
