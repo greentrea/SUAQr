@@ -114,8 +114,8 @@ ui <- fluidPage(
         ),
         # Show a plot of the generated distribution
         mainPanel(
-           plotOutput("mapPlot",width = "100%",
-                      height = "75%"),width = 9
+           plotlyOutput("mapPlot",width = "100%",
+                      height = "100%"),width = 9
         ),
         
     ),
@@ -127,7 +127,7 @@ ui <- fluidPage(
 
 # Define server logic required to draw a histogram
 server <- function(input, output) {
-    output$mapPlot <- renderPlot({
+    output$mapPlot <- renderPlotly({
         # tmp_SUAQ_selected_chulls <- SUAQ_waypoints_11_20_backup_sf %>%
         #     filter(focal %in% input$focalids) %>%
         #     left_join(specs_orangutan_tot_num_of_gps,by = c("focal" = "focal")) %>% 
@@ -146,17 +146,16 @@ server <- function(input, output) {
       mcp_map_95 <- ggplot() + 
         geom_polygon(data = fortify(tmp_SUAQ_waypoints_morethan50gps_11all20.mcpgeo),  
                      # Polygon layer needs to be "fortified" to add geometry to the dataframe
-                     aes(long, lat, colour = id),
-                     alpha = 0) + # alpha sets the transparency
+                     aes(long, lat, colour = id,fill=id,alpha=0.1),
+                     alpha = 1) + # alpha sets the transparency
         geom_point(data = tmp_SUAQ_waypoints_morethan50gps_11all20.geo, 
                    aes(x = tmp_SUAQ_waypoints_morethan50gps_11all20.geo$E, y = tmp_SUAQ_waypoints_morethan50gps_11all20.geo$N, colour = 
                          tmp_SUAQ_waypoints_morethan50gps_11all20.geo$id))  +
         theme(legend.position = c(0.15, 0.80),plot.title =element_blank()) +
         labs(x = "Longitude", y = "Latitude")+
         geom_sf(data = SUAQ_pathnetwork, inherit.aes = FALSE)
-      mcp_map_95
-    },
-    height=reactive(ifelse(!is.null(input$innerWidth),input$innerWidth*2.5/5,0)))
+      ggplotly(mcp_map_95)
+    })
 }
 
 # Run the application 

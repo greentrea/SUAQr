@@ -519,7 +519,7 @@ SUAQ_waypoints_17_18 <- SUAQ_waypoints_17_18 %>%
          Point.Type=tolower(Point.Type),
          Age.Sex=tolower(Age.Sex),
          Activity=tolower(Activity),
-         orangutanname = if_else(Focal=="caeser","caesar",Focal)
+         Focal = if_else(Focal=="caeser","caesar",Focal)
          ) %>% 
   rename(c("follow"="Follow..",
            "followtype"="Follow.Type",
