@@ -74,7 +74,6 @@ mybasemap <- get_stamenmap(bbox = c(left = min(tmp_SUAQ_waypoints_morethan50gps_
                                     right = max(tmp_SUAQ_waypoints_morethan50gps_11all20.spgeo@coords[,1])+0.005, 
                                     top = max(tmp_SUAQ_waypoints_morethan50gps_11all20.spgeo@coords[,2])+0.005), 
                            zoom = 12)
-register_google(key = "AIzaSyABLRgWSFHCKuSyFF7QgZpa9ZgIqc9izZg")
 
 # API key: https://maps.googleapis.com/maps/api/directions/json?origin=Toronto&destination=Montreal&key=AIzaSyABLRgWSFHCKuSyFF7QgZpa9ZgIqc9izZg
 

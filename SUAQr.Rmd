@@ -935,11 +935,19 @@ mcp_map_95
 
 
 
-mcp(SUAQ_waypoints_all.sp,percent = 95)
+mcp(tmp_SUAQ_waypoints_morethan50gps_11all20.sp,percent = 95)
 graphics.off() 
 par("mar") 
 par(mar=c(1,1,1,1))
-hrs <- mcp.area(SUAQ_waypoints_all.sp, percent = seq(50, 100, by = 5))
+hrs <- mcp.area(tmp_SUAQ_waypoints_morethan50gps_11all20.sp, percent = seq(20, 100, by = 5))
+hrs
+#### Create kernelUD
+SUAQ_HR_kernelUD<- kernelUD(tmp_SUAQ_waypoints_morethan50gps_11all20.sp, h = "href", grid = 60,
+             same4all = FALSE, hlim = c(0.1, 1.5),
+             kern = c("bivnorm", "epa"), extent = 1,
+             boundary = NULL)
+plot(SUAQ_HR_kernelUD$ellie)
+
 
 #### Create dBBMM
 tmp_SUAQ_mosttrackedfemales_test <- tmp_SUAQ_mosttrackedfemales %>% 
