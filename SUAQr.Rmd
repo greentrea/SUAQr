@@ -161,20 +161,7 @@ st_read_GPX_waypoints <- function(flnm){
 2. Getting data from gpx files, clean and order it
 3. Merge Files
 ```{r GPS Processing}
-## 1. Getting data from excel/csv files
-##### SUAQ TRACKS 2018 & 2019 #####
-SUAQ_waypoints_17_18 <- read_csv2("data/20200415_Master_GPS_Suaq_2017_Mar18_SH.csv")
-SUAQ_waypoints_17_18<- SUAQ_waypoints_17_18[,1:16] # drop last collumns
-SUAQ_waypoints_17_18 <- SUAQ_waypoints_17_18 %>% mutate(Focal=tolower(Focal))
-#### CRS Code: EPSG 32647
-#### Create SF Points
-SUAQ_waypoints_17_18_sf <-  st_as_sf(SUAQ_waypoints_17_18, 
-                          coords = c("X","Y"), 
-                          crs = 32647)
-coordinates_tmp <- st_coordinates(SUAQ_waypoints_17_18_sf)
-colnames(coordinates_tmp) <- c("E","N")
-SUAQ_waypoints_17_18_sf <- cbind(SUAQ_waypoints_17_18_sf,coordinates_tmp)
-SUAQ_waypoints_17_18 <- st_drop_geometry(SUAQ_waypoints_17_18_sf)
+
 ## 0. Loading metadatasets
 ### 0.1 FollowLog
 SUAQ_followlog<- read_csv2("data/202003_SUAQ_FollowLog.csv")
@@ -275,27 +262,37 @@ SUAQ_followlog_orangutanlevels_ex <- NA
 
 SUAQ_pathnetwork<- read_GPX(file="data/SUAQ_Peta_WithLines.GPX",layers = c("routes"))
 
+## 1. Getting data from excel/csv files for year 2017/18
+SUAQ_waypoints_17_18 <- read_csv2("data/20200415_Master_GPS_Suaq_2017_Mar18_SH.csv")
+SUAQ_waypoints_17_18<- SUAQ_waypoints_17_18[,1:16] # drop last collumns
+SUAQ_waypoints_17_18 <- SUAQ_waypoints_17_18 %>% mutate(Focal=tolower(Focal))
+
+##### CRS Code: EPSG 32647
+##### Create SF Points
+SUAQ_waypoints_17_18_sf <-  st_as_sf(SUAQ_waypoints_17_18, 
+                          coords = c("X","Y"), 
+                          crs = 32647)
+coordinates_tmp <- st_coordinates(SUAQ_waypoints_17_18_sf)
+colnames(coordinates_tmp) <- c("E","N")
+SUAQ_waypoints_17_18_sf <- cbind(SUAQ_waypoints_17_18_sf,coordinates_tmp)
+SUAQ_waypoints_17_18 <- st_drop_geometry(SUAQ_waypoints_17_18_sf)
 
 
-
-
-#### SUAQ TRACKS DATA 2020 ####
-## 2. Getting data from gpx files, clean and order it
-### 2.1 Loading data from GPX files
-#### create a list of all gpx files
+## 2.  SUAQ TRACKS DATA 2020
+### 2.1 Getting data from gpx files, clean and order it
+##### Create a list of all gpx files
 suaq_gpx_list<- list.files(path = "./data/20200717_All_stedit/gpx/",pattern = "*.gpx",full.names = T)
-####  import gpx files from files list, only retrieving waypoints (no automatically saved trackpoints) and adding the filename as attribute
+##### import gpx files from files list, only retrieving waypoints (no automatically saved trackpoints) and adding the filename as attribute
 start_time <- Sys.time()
 SUAQ_waypoints_11_20<- suaq_gpx_list%>% 
   map_df(~st_read_GPX_waypoints(.))
 end_time <- Sys.time()
 print(start_time-end_time)
-# Two follows throw an error --> 20200225_Lois_Ahmad_FN, 20200225_Otto_Armas_FN are empty --> deleted from data files (not from delivery files)
+##### Two follows throw an error --> 20200225_Lois_Ahmad_FN, 20200225_Otto_Armas_FN are empty --> deleted from data files (not from delivery files)
+
 ### 2.2 Tidying the attributes and values
-#### 2.2.1 extract the 5 attributes from filename: filedate, orangutanname, infant name, followername, followtype. "Adress" in the first field is left in the list to identify the start of a new list.
-str_extract("20130630_FriskaFrankieFredy_Raja_F", "_[A-Z][a-z]+(\\([A-Z][a-z]+\\)|[A-Z][a-z]+)")
-# To do: 
-# Parse Orangutan names but include strangly given alternatives. Structure is well. How to identify patterns 
+##### extract the 5 attributes from filename: filedate, orangutanname, infant name, followername, followtype. "Adress" in the first field is left in the list to identify the start of a new list.
+
 SUAQ_waypoints_11_20 <-
   SUAQ_waypoints_11_20 %>% mutate(
     filedate = str_extract(fileN, "\\d{8}"),
@@ -322,7 +319,7 @@ SUAQ_waypoints_11_20 <-
       nchar(str_extract(fileN, "_[A-Z][a-z_]+_[A-Z]{2}"))
     ),
     
-    ## BESSER --> following 
+    ## BESSER? --> following 
     #followtype = ifelse(grepl("_NL", fileN),"_NL",NA),
     #followtype = ifelse(grepl("_NN", fileN),"NN",followtype),
     #followtype = ifelse(grepl("_FL", fileN),"FL",followtype),
@@ -331,11 +328,11 @@ SUAQ_waypoints_11_20 <-
     #followtype = ifelse(grepl("_Jg", fileN),"F?",followtype),
     #followtype = ifelse(grepl("_FN", fileN),"_FN",followtype)
 )
-### 2.2.2 get rid of empty collumns
+#### 2.2.1 get rid of empty collumns
 SUAQ_waypoints_11_20 <-SUAQ_waypoints_11_20 %>% slice(1:nrow(SUAQ_waypoints_11_20)) # BUG: some kind of bug related to the rbind of rows of sf data frames, when applying the function read_gpx with map_df is causing a problem. The sf df are not index-able and dropping the geometry is also not possible
 st_geometry(SUAQ_waypoints_11_20) <- SUAQ_waypoints_11_20$geometry
 SUAQ_waypoints_11_20 <- SUAQ_waypoints_11_20[,(colSums(is.na(SUAQ_waypoints_11_20))<nrow(SUAQ_waypoints_11_20))]
-### 2.2.3 creating automatic Datetime (from gps collumn time or collumn cmt) and manual Datetime (from input user GPS Device and from name of Data file)
+#### 2.2.3 creating automatic Datetime (from gps collumn time or collumn cmt) and manual Datetime (from input user GPS Device and from name of Data file)
 SUAQ_waypoints_11_20 <-
   SUAQ_waypoints_11_20 %>%
   mutate(
@@ -355,8 +352,9 @@ SUAQ_waypoints_11_20 <-
     automaticTime = hms::as_hms(automaticDatetime),
     name=str_extract(name, "[^\\d{4} ].*") # not matching the digits in the beginning plus whitespace but everything after
   )
-#### adding automatic datetime if 
+##### adding automatic datetime if 
 SUAQ_waypoints_11_20[is.na(SUAQ_waypoints_11_20$automaticDatetime),] %<>% mutate(automaticDatetime = cmt) # piping forth and back. In documentation its written x %<>% foo %>% bar,  its the same as x <- x %>% foo %>% bar. In this case thats not correct!
+##### manual adjustment for follows which aren't matching a record in the followlog or have slight differences f.e. focal name is different.
 SUAQ_waypoints_11_20<- SUAQ_waypoints_11_20 %<>%mutate(
     orangutanname = if_else(orangutanname=="jebi","pauline",orangutanname),
     orangutanname = if_else(orangutanname=="lilli","lilly",orangutanname),
@@ -381,16 +379,14 @@ SUAQ_waypoints_11_20<- SUAQ_waypoints_11_20 %>% mutate(
     fileN=="20130317_Dodi(prob)_Unk_FL"|
     fileN=="20130510_Jebi(prob)_UNK_NL",TRUE,FALSE)
 ) %>% filter(tmp_delete==FALSE)
-### 2.2.4 Extracting information from Name field: PtType--> Type of point: Longcall, Nest etc. See GPS processing information sheet. 
-#### To lowercase name collumn
+#### 2.2.4 Extracting information from Name field: PtType--> Type of point: Longcall, Nest etc. See GPS processing information sheet. 
+##### To lowercase name collumn
 SUAQ_waypoints_11_20<- SUAQ_waypoints_11_20 %>% mutate(name=tolower(name)) # reduces complexity by around 277 combinations to total 897
 #### See what are all possible combinations of the name fields (all levels)
 SUAQ_wp_namecollumn_levels<- SUAQ_waypoints_11_20 %>% group_by(.$name,.$sym) %>% summarise(count=n())
-#### Making naveaid green symbols same as green circles. Probably meant the same.
-# baseline for this categorization is the excel "Dateneckdaten" there are the main information on how many special cases there are and how they are handled.
-# Manual corrections (for values which are otherwise uncategorizable):
+##### Making naveaid green symbols same as green circles. Probably meant the same. Baseline for this categorization is the excel "Dateneckdaten" there are the main information on how many special cases there are and how they are handled.Manual corrections (for values which are otherwise uncategorizable):
 SUAQ_waypoints_11_20$name[SUAQ_waypoints_11_20$name == "<100m 221 degrees"] <- "lc <100m 221 degrees"
-#Comment:
+
 SUAQ_waypoints_11_20 <-
   SUAQ_waypoints_11_20 %>% mutate(
     PtType = ifelse((sym == "Circle, Green" |sym == "Navaid, Green") &
@@ -440,7 +436,7 @@ SUAQ_waypoints_11_20 <-
     
     
     
-#Task: --> change every pttype variable above to a different attribute. See which are categorized in multiple groups!
+##### Task: --> change every pttype variable above to a different attribute. See which are categorized in multiple groups!
     
     PtType = ifelse((sym == "Block, Blue" ) & (grepl("lch", name)|grepl("lc", name)), # Metainformation for some lch and lcg are not considered because there are only written down for very less points(10-20 points). Information about call direction is given in the activity table
                     "lch",
@@ -496,10 +492,12 @@ SUAQ_waypoints_11_20<- SUAQ_waypoints_11_20 %>%  mutate(
   PtType_distance = ifelse(PtType=="lcg" |PtType=="lch",
                             str_extract(name,"\\d+(?=m)"),NA),
 ) %>% dplyr::select(-PtType_individual)
-########### MERGE GPS DATA ################
-### Merging 2017-2018 data with the rest
-#### CRS Code: EPSG 32647
-#### Create SF Points
+
+
+## 3. Combine Datasets 
+### 3.1. Merging 2017-2018 data with the rest
+##### CRS Code: EPSG 32647
+##### Create SF Points
 SUAQ_waypoints_11_20<- st_set_crs(SUAQ_waypoints_11_20,4326)
 SUAQ_waypoints_11_20_sf <- st_transform(SUAQ_waypoints_11_20,32647)
 coordinates_tmp <- st_coordinates(SUAQ_waypoints_11_20_sf)
@@ -557,11 +555,10 @@ SUAQ_waypoints_11all20 <- SUAQ_waypoints_11all20%>%
          -cmt,
          -desc
          )
-########### FINISH MERGE GPS DATA ################
-########### ADDING FOLLOWNUMBER (JOIN) ################
-### Merging 2011-2020 data with followlog
-#### for the first two follows which are not joined with the followlog it seams the date in the filename is wrong! --> should be 2011 not 2010. This is the case for many more! maybe look on the automatic date!
-#### PROBLEMS
+## 4. ADDING FOLLOWNUMBER (JOIN) 
+### 4.2. Joining 2011-2020 data with followlog and add information to gps file
+##### for the first two follows which are not joined with the followlog it seams the date in the filename is wrong! --> should be 2011 not 2010. This is the case for many more! maybe look on the automatic date!
+##### PROBLEMS
 specs_AutomaticManualDateNotEqual<- SUAQ_waypoints_11all20 %>% filter(.$manualDate!=.$automaticDate) %>% group_by(.$fileN) %>% summarise(count=n()) # date automatic and manual not the same
 tmp<- SUAQ_followlog[,c(2,4,14)] %>% mutate(tmp_FollowNumber_M_focal=.$FollowNumber) %>%
   dplyr::select(-FollowNumber)
@@ -572,7 +569,8 @@ tmp4<- SUAQ_followlog[,c(2,4,19)] %>% mutate(tmp_FollowNumber_M_followname=.$Fol
   dplyr::select(-FollowNumber)
 tmp5<- SUAQ_followlog[,c(2,4,20)] %>% mutate(tmp_FollowNumber_M_followname2=.$FollowNumber) %>%
   dplyr::select(-FollowNumber)
-# Join followlog and add information to gps file
+
+##### Join followlog 
 SUAQ_waypoints_11all20 <- SUAQ_waypoints_11all20 %>%
   left_join(tmp,by=c("manualDate"="Date","focal"="FocalName")) %>%
   left_join(tmp2,by=c("automaticDate"="Date","focal"="FocalName")) %>%
@@ -593,7 +591,7 @@ SUAQ_waypoints_11all20 <- SUAQ_waypoints_11all20 %>%
   mutate(follow=if_else(is.na(follow),tmp_FollowNumber_M_followname2,follow)) %>% 
   dplyr::select(-tmp_FollowNumber_M_followname2)
   
-#### manually adding follownumber for cases where join with followlog didn't retrieve one  
+##### manually adding follownumber for cases where join with followlog didn't retrieve one  
 SUAQ_waypoints_11all20 <-SUAQ_waypoints_11all20 %>% 
   mutate(
     follow=if_else(fileN=="20100921_Ibu_Unk_NL",1000001,follow),
@@ -636,34 +634,37 @@ SUAQ_waypoints_11all20 <-SUAQ_waypoints_11all20 %>%
 names(SUAQ_followlog) <- paste0("SUAQ_followlog.", names(SUAQ_followlog))
 SUAQ_waypoints_11all20 <- SUAQ_waypoints_11all20 %>%
   left_join(SUAQ_followlog[,c(2,4,14,16,17,19,20,21,22,23,25,29,30,31,32,33,34,35,36,38,39,40,41,42,43,46,55,56,57,58,59,60,61,62,63,64,65,66,67:74)],by=c("follow"="SUAQ_followlog.FollowNumber"),suffix = c("", "_fromFollowlog"))
-########### FINISH ADDING FOLLOWNUMBER (JOIN) ################
-##### JOINING ORANGUTANS INFO ##### 
+
+
+
+
+## 5. Adding informative attributes and finishing data frame
+### 5.1. Joining orangutans info
 names(SUAQ_orangutans) <- paste0("SUAQ_orangutans.", names(SUAQ_orangutans))
 SUAQ_waypoints_11all20 <-
   SUAQ_waypoints_11all20 %>% left_join(SUAQ_orangutans[,1:10], by = c("focal" = "SUAQ_orangutans.orangutanname"))
-# Create project dataframes
-#### waypoints all already saved
-#### Only keep gps points within Bounding box of 330000-360000N / 323000-328000E because some points are wrong probably the N and the E variable are the same (accidently copied)
+
+### 5.2. Create new variables like Sinuosity, DJL, Edge Speed
+SUAQ_waypoints_11all20 <- SUAQ_waypoints_11all20 %>% left_join()
+
+### 5.3. Only keep gps points within Bounding box of 330000-360000N / 323000-328000E because some points are wrong probably the N and the E variable are the same (accidently copied)
 SUAQ_waypoints_11all20 <- SUAQ_waypoints_11all20 %>% filter(E>323000 & 
                                                             E<328000 & 
                                                             N>330000 & 
                                                             N<360000)
-#### save all waypoints as sf
+
+### 5.4. Create project Master-Dataframes
+##### save all waypoints as sf
 SUAQ_waypoints_11all20_sf <-  st_as_sf(SUAQ_waypoints_11all20, 
                           coords = c("E","N"), 
                           crs = 32647)
-#### waypoints of female orangutans in SUAQ (attention here the defined gender by the followlog is taken)
+##### waypoints of female orangutans in SUAQ (attention here the defined gender by the followlog is taken)
 SUAQ_waypoints_fem_sf<- SUAQ_waypoints_11all20_sf %>% filter(SUAQ_orangutans.Sex=="female")
 SUAQ_waypoints_fem <- SUAQ_waypoints_11all20 %>% filter(SUAQ_orangutans.Sex=="female")
 
 
-####
-write_csv(SUAQ_waypoints_11all20,path="data/backup/SUAQ_waypoints_11_20_backup.csv")
-
-# für shiny
+##### Shiny
 write_csv(SUAQ_waypoints_11all20,path="shinyapp/orangapp/data/SUAQ_waypoints_11all20_backup.csv")
-SUAQ_pathnetwork<- read_GPX(file="data/SUAQ_Peta_WithLines.GPX",layers = c("routes"))
-
 
 
 ```
@@ -922,7 +923,7 @@ tmp_SUAQ_waypoints_morethan50gps_11all20.geo <- data.frame(tmp_SUAQ_waypoints_mo
                           id = tmp_SUAQ_waypoints_morethan50gps_11all20.spgeo@data$focal )
 
 mcp_map_95 <- ggmap(mybasemap) + 
-  geom_polygon(data = fortify(tmp_SUAQ_waypoints_morethan50gps_11all20.mcpgeo),  
+  geom_polygon(data =     fortify(tmp_SUAQ_waypoints_morethan50gps_11all20.mcpgeo),  
                # Polygon layer needs to be "fortified" to add geometry to the dataframe
               aes(long, lat, colour = id, fill = id),
               alpha = 0.3) + # alpha sets the transparency
@@ -933,14 +934,37 @@ mcp_map_95 <- ggmap(mybasemap) +
   labs(x = "Longitude", y = "Latitude")
 mcp_map_95
 
-
-
 mcp(tmp_SUAQ_waypoints_morethan50gps_11all20.sp,percent = 95)
 graphics.off() 
 par("mar") 
 par(mar=c(1,1,1,1))
-hrs <- mcp.area(tmp_SUAQ_waypoints_morethan50gps_11all20.sp, percent = seq(20, 100, by = 5))
+mcp.area(tmp_SUAQ_waypoints_morethan50gps_11all20.sp, percent = seq(20, 100, by = 5))
 hrs
+
+
+#### Plot mcp with ggplot
+mcp_map_95 <- ggmap(mybasemap) +
+  geom_polygon(
+    data =     fortify(tmp_SUAQ_waypoints_morethan50gps_11all20.mcpgeo),
+    # Polygon layer needs to be "fortified" to add geometry to the dataframe
+    aes(long, lat, colour = id, fill = id),
+    alpha = 0.3
+  ) + # alpha sets the transparency
+  geom_point(
+    data = tmp_SUAQ_waypoints_morethan50gps_11all20.geo,
+    aes(
+      x = E,
+      y = N,
+      colour =
+        id
+    )
+  )  +
+  theme(legend.position = c(0.15, 0.80)) +
+  labs(x = "Longitude", y = "Latitude")
+ggplotly(mcp_map_95)
+
+
+
 #### Create kernelUD
 SUAQ_HR_kernelUD<- kernelUD(tmp_SUAQ_waypoints_morethan50gps_11all20.sp, h = "href", grid = 60,
              same4all = FALSE, hlim = c(0.1, 1.5),
@@ -950,20 +974,26 @@ plot(SUAQ_HR_kernelUD$ellie)
 
 
 #### Create dBBMM
-tmp_SUAQ_mosttrackedfemales_test <- tmp_SUAQ_mosttrackedfemales %>% 
-  filter(!is.na(.$manualDatetime)&!is.na(focal)) %>% group_by(follow) %>% 
+tmp_SUAQ_mosttrackedfemales_test <- tmp_SUAQ_mosttrackedfemales %>%
+  filter(!is.na(.$manualDatetime) &
+           !is.na(focal)) %>% group_by(follow) %>%
   arrange(manualDatetime) %>%
-  group_by(focal) %>% 
-  distinct(manualDatetime,focal,.keep_all = TRUE)
-tmp_SUAQ_mosttrackedfemales_test <- tmp_SUAQ_mosttrackedfemales_test %>%
+  group_by(focal) %>%
+  distinct(manualDatetime, focal, .keep_all = TRUE)
+tmp_SUAQ_mosttrackedfemales_test <-
+  tmp_SUAQ_mosttrackedfemales_test %>%
   group_by(focal)
 data2 <- move(
-             x=tmp_SUAQ_mosttrackedfemales_test$E, 
-             y=tmp_SUAQ_mosttrackedfemales_test$N, 
-             time=tmp_SUAQ_mosttrackedfemales_test$manualDatetime, 
-             proj=CRS("+proj=utm +zone=47 +datum=WGS84 +units=m +no_defs"),
-             animal=tmp_SUAQ_mosttrackedfemales_test$focal)
-plot(data, type="b", pch=20)
+  x = tmp_SUAQ_mosttrackedfemales_test$E,
+  y = tmp_SUAQ_mosttrackedfemales_test$N,
+  time = tmp_SUAQ_mosttrackedfemales_test$manualDatetime,
+  proj = CRS("+proj=utm +zone=47 +datum=WGS84 +units=m +no_defs"),
+  animal = tmp_SUAQ_mosttrackedfemales_test$focal
+)
+plot(data, type = "b", pch = 20)
+
+
+
 #### GENDER:
 plot_gender_map<- SUAQ_waypoints_11all20 %>%
   group_by(follow) %>%
