@@ -34,8 +34,13 @@ library('spdplyr')
 library('adehabitatHR')
 library('ggplot2')
 
+setwd("/Users/stefgr/Nextcloud/12_Semester/20200313_Masterthesis/R/shinyapp/orangapp")
+
 
 # All sessions data
+SUAQ_waypoints_11_20_male <- read_csv("data/20201020_MaleGPSToAdd.csv")
+levels(as.factor(SUAQ_waypoints_11_20_male$Focal))
+
 SUAQ_waypoints_11_20_backup<- read_csv("data/SUAQ_waypoints_11all20_backup.csv")
 
 SUAQ_waypoints_11_20_backup_sf <-  st_as_sf(SUAQ_waypoints_11_20_backup, 

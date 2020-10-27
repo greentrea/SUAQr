@@ -181,8 +181,9 @@ SUAQ_followlog <-
          )
 SUAQ_followlog <- SUAQ_followlog %>%
   mutate(Date =if_else(is.na(Date),as.Date(paste(as.numeric(Day),as.numeric(Month),as.numeric(Year)),format = "%d %m %Y"),Date))
-SUAQ_followlog<- SUAQ_followlog %>% filter(!is.na(FollowNumber)|!is.na(Date)) ## only keep if one of the 2 attributes are available
+SUAQ_followlog<- SUAQ_followlog %>% filter(!is.na(FollowNumber)&!is.na(Date)) ## only keep if one of the 2 attributes are available
 SUAQ_followlog <- SUAQ_followlog[,(colSums(is.na(SUAQ_followlog))<nrow(SUAQ_followlog))]
+
 #### How many GPS follows should be available? How many do I have? because 140 are not found automatically in the followlog.
 SUAQ_followlog %>% filter(.$Date>as_date("01-01-2010")) %>% nrow()
 
@@ -265,7 +266,7 @@ SUAQ_pathnetwork<- read_GPX(file="data/SUAQ_Peta_WithLines.GPX",layers = c("rout
 ## 1. Getting data from excel/csv files for year 2017/18
 SUAQ_waypoints_17_18 <- read_csv2("data/20200415_Master_GPS_Suaq_2017_Mar18_SH.csv")
 SUAQ_waypoints_17_18<- SUAQ_waypoints_17_18[,1:16] # drop last collumns
-SUAQ_waypoints_17_18 <- SUAQ_waypoints_17_18 %>% mutate(Focal=tolower(Focal))
+SUAQ_waypoints_17_18 <- SUAQ_waypoints_17_18 %>% mutate(Focal=tolower(Focal), source="Excel data from Caroline 2017 & 2018")
 
 ##### CRS Code: EPSG 32647
 ##### Create SF Points
@@ -295,6 +296,7 @@ print(start_time-end_time)
 
 SUAQ_waypoints_11_20 <-
   SUAQ_waypoints_11_20 %>% mutate(
+    source="GPX files for follows of 2010-2020 (without 2017 & 2018)",
     filedate = str_extract(fileN, "\\d{8}"),
     orangutanname = tolower(substr(
       str_extract(fileN, "\\d{8}_[A-Z][a-z]+"),
@@ -494,8 +496,33 @@ SUAQ_waypoints_11_20<- SUAQ_waypoints_11_20 %>%  mutate(
 ) %>% dplyr::select(-PtType_individual)
 
 
-## 3. Combine Datasets 
-### 3.1. Merging 2017-2018 data with the rest
+## 3.  SUAQ TRACKS DATA 2020
+SUAQ_waypoints_11_20_male <- read_csv("data/20201020_MaleGPSToAdd.csv")
+
+SUAQ_waypoints_11_20_male <-
+  SUAQ_waypoints_11_20_male %>% mutate(
+    PtType="range",
+    source = "Male GPS from Caroline for 2018",
+    focal = tolower(.$Focal),
+    automaticDatetime = mdy_hm(timestamp, tz = "Asia/Pontianak"),
+    automaticDate=date(automaticDatetime),
+    automaticTime=hms::as_hms(automaticDatetime)
+  ) %>% dplyr::select(-timestamp,-Focal,-sensor.type )
+
+#CREATE SF OBJECT
+SUAQ_waypoints_11_20_male_sf<- st_as_sf(SUAQ_waypoints_11_20_male, 
+                          coords = c("location.long","location.lat"), 
+                          crs = 4326)
+
+SUAQ_waypoints_11_20_male_sf <- st_transform(SUAQ_waypoints_11_20_male_sf,32647)
+coordinates_tmp <- st_coordinates(SUAQ_waypoints_11_20_male_sf)
+colnames(coordinates_tmp) <- c("E","N")
+SUAQ_waypoints_11_20_male_sf <- cbind(SUAQ_waypoints_11_20_male_sf,coordinates_tmp)
+SUAQ_waypoints_11_20_male<- st_drop_geometry(SUAQ_waypoints_11_20_male_sf)
+
+
+## 4. Combine Datasets 
+### 4.1. Merging 2017-2018 data with the rest
 ##### CRS Code: EPSG 32647
 ##### Create SF Points
 SUAQ_waypoints_11_20<- st_set_crs(SUAQ_waypoints_11_20,4326)
@@ -504,7 +531,7 @@ coordinates_tmp <- st_coordinates(SUAQ_waypoints_11_20_sf)
 colnames(coordinates_tmp) <- c("E","N")
 SUAQ_waypoints_11_20_sf <- cbind(SUAQ_waypoints_11_20_sf,coordinates_tmp)
 SUAQ_waypoints_11_20<- st_drop_geometry(SUAQ_waypoints_11_20_sf)
-SUAQ_waypoints_11_20
+
 SUAQ_waypoints_17_18 <- SUAQ_waypoints_17_18 %>% 
   mutate(automaticDatetime=dmy_hms(paste(.$Date,.$Actual.Time), tz = "Asia/Pontianak"),
          manualDatetime=dmy_hms(paste(.$Date,.$Time), tz = "Asia/Pontianak"),
@@ -548,18 +575,19 @@ SUAQ_waypoints_11_20 <-
   ) %>% 
 dplyr::select(-orangutanname)
 typeof(SUAQ_waypoints_11_20$manualDate)
-SUAQ_waypoints_11all20<- SUAQ_waypoints_11_20 %>%  bind_rows(SUAQ_waypoints_17_18)
+SUAQ_waypoints_11all20<- SUAQ_waypoints_11_20 %>%  bind_rows(SUAQ_waypoints_17_18) %>% bind_rows(SUAQ_waypoints_11_20_male)
 SUAQ_waypoints_11all20 <- SUAQ_waypoints_11all20%>%
   dplyr::select(-Date,
          -FollowIndData,
          -cmt,
          -desc
          )
-## 4. ADDING FOLLOWNUMBER (JOIN) 
-### 4.2. Joining 2011-2020 data with followlog and add information to gps file
+
+## 5. ADDING FOLLOWNUMBER (JOIN) 
+### 5.2. Joining 2011-2020 data with followlog and add information to gps file
 ##### for the first two follows which are not joined with the followlog it seams the date in the filename is wrong! --> should be 2011 not 2010. This is the case for many more! maybe look on the automatic date!
 ##### PROBLEMS
-specs_AutomaticManualDateNotEqual<- SUAQ_waypoints_11all20 %>% filter(.$manualDate!=.$automaticDate) %>% group_by(.$fileN) %>% summarise(count=n()) # date automatic and manual not the same
+specs_AutomaticManualDateNotEqual<- SUAQ_waypoints_11all20 %>% filter(.$manualDate!=.$automaticDate) %>% group_by(.$fileN) %>%   summarise(count=n()) # date automatic and manual not the same
 tmp<- SUAQ_followlog[,c(2,4,14)] %>% mutate(tmp_FollowNumber_M_focal=.$FollowNumber) %>%
   dplyr::select(-FollowNumber)
 tmp2<- SUAQ_followlog[,c(2,4,14)] %>% mutate(tmp_FollowNumber_M_focal_automatic=.$FollowNumber) %>% dplyr::select(-FollowNumber)
@@ -571,12 +599,16 @@ tmp5<- SUAQ_followlog[,c(2,4,20)] %>% mutate(tmp_FollowNumber_M_followname2=.$Fo
   dplyr::select(-FollowNumber)
 
 ##### Join followlog 
+SUAQ_waypoints_11all20 <- SUAQ_waypoints_11all20 %>% 
+  left_join(y=tmp,by=c("manualDate"="Date","focal"="FocalName")) # Problem some of them match with multiple points
 SUAQ_waypoints_11all20 <- SUAQ_waypoints_11all20 %>%
-  left_join(tmp,by=c("manualDate"="Date","focal"="FocalName")) %>%
-  left_join(tmp2,by=c("automaticDate"="Date","focal"="FocalName")) %>%
-  left_join(tmp3,by=c("manualDate"="Date","infantname"="FocalName")) %>% 
-  left_join(tmp4,by=c("manualDate"="Date","followername"="Observer1")) %>% 
-  left_join(tmp5,by=c("manualDate"="Date","followername"="Observer2"))
+  left_join(y=tmp2,by=c("automaticDate"="Date","focal"="FocalName"),keep = FALSE)
+SUAQ_waypoints_11all20 <- SUAQ_waypoints_11all20 %>%
+  left_join(y=tmp3,by=c("manualDate"="Date","infantname"="FocalName"),keep = FALSE)
+SUAQ_waypoints_11all20 <- SUAQ_waypoints_11all20 %>%
+  left_join(y=tmp4,by=c("manualDate"="Date","followername"="Observer1"),keep = FALSE)
+SUAQ_waypoints_11all20 <- SUAQ_waypoints_11all20 %>%
+  left_join(y=tmp5,by=c("manualDate"="Date","followername"="Observer2"),keep = FALSE)
   
 SUAQ_waypoints_11all20 <- SUAQ_waypoints_11all20 %>%
   mutate(follow=as.numeric(follow)) %>% 
@@ -590,7 +622,12 @@ SUAQ_waypoints_11all20 <- SUAQ_waypoints_11all20 %>%
   dplyr::select(-tmp_FollowNumber_M_followname) %>% 
   mutate(follow=if_else(is.na(follow),tmp_FollowNumber_M_followname2,follow)) %>% 
   dplyr::select(-tmp_FollowNumber_M_followname2)
-  
+
+SUAQ_waypoints_11all20<- SUAQ_waypoints_11all20 %>% distinct() # 60 GPS points are added because of the above joins. This means that some added Follownumbers match multiple GPS points in the waypoints dataset.
+
+tmp<- SUAQ_waypoints_11all20 %>% group_by(name,manualDate,automaticDate,E,N,focal,follow,manualTime,automaticTime) %>% summarise(count=n())
+
+
 ##### manually adding follownumber for cases where join with followlog didn't retrieve one  
 SUAQ_waypoints_11all20 <-SUAQ_waypoints_11all20 %>% 
   mutate(
@@ -638,22 +675,22 @@ SUAQ_waypoints_11all20 <- SUAQ_waypoints_11all20 %>%
 
 
 
-## 5. Adding informative attributes and finishing data frame
-### 5.1. Joining orangutans info
+## 6. Adding informative attributes and finishing data frame
+### 6.1. Joining orangutans info
 names(SUAQ_orangutans) <- paste0("SUAQ_orangutans.", names(SUAQ_orangutans))
 SUAQ_waypoints_11all20 <-
   SUAQ_waypoints_11all20 %>% left_join(SUAQ_orangutans[,1:10], by = c("focal" = "SUAQ_orangutans.orangutanname"))
 
-### 5.2. Create new variables like Sinuosity, DJL, Edge Speed
-SUAQ_waypoints_11all20 <- SUAQ_waypoints_11all20 %>% left_join()
+### 6.2. Create new variables like Sinuosity, DJL, Edge Speed
+#SUAQ_waypoints_11all20 <- SUAQ_waypoints_11all20 %>% left_join()
 
-### 5.3. Only keep gps points within Bounding box of 330000-360000N / 323000-328000E because some points are wrong probably the N and the E variable are the same (accidently copied)
+### 6.3. Only keep gps points within Bounding box of 330000-360000N / 323000-328000E because some points are wrong probably the N and the E variable are the same (accidently copied)
 SUAQ_waypoints_11all20 <- SUAQ_waypoints_11all20 %>% filter(E>323000 & 
                                                             E<328000 & 
                                                             N>330000 & 
                                                             N<360000)
 
-### 5.4. Create project Master-Dataframes
+### 6.4. Create project Master-Dataframes
 ##### save all waypoints as sf
 SUAQ_waypoints_11all20_sf <-  st_as_sf(SUAQ_waypoints_11all20, 
                           coords = c("E","N"), 
