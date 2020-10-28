@@ -503,8 +503,8 @@ SUAQ_waypoints_11_20_male <-
   SUAQ_waypoints_11_20_male %>% mutate(
     PtType="range",
     source = "Male GPS from Caroline for 2018",
-    focal = tolower(.$Focal),
-    automaticDatetime = mdy_hm(timestamp, tz = "Asia/Pontianak"),
+    focal = tolower(Focal),
+    automaticDatetime = parse_date_time(timestamp,orders=c("%d.%m.%y %H%M","%m/%d/%y %H%M"),tz = "Asia/Pontianak"), # takes two different formats which are occuring in the given excelsheet
     automaticDate=date(automaticDatetime),
     automaticTime=hms::as_hms(automaticDatetime)
   ) %>% dplyr::select(-timestamp,-Focal,-sensor.type )
@@ -574,7 +574,7 @@ SUAQ_waypoints_11_20 <-
     "altitude"=as.character(altitude)
   ) %>% 
 dplyr::select(-orangutanname)
-typeof(SUAQ_waypoints_11_20$manualDate)
+
 SUAQ_waypoints_11all20<- SUAQ_waypoints_11_20 %>%  bind_rows(SUAQ_waypoints_17_18) %>% bind_rows(SUAQ_waypoints_11_20_male)
 SUAQ_waypoints_11all20 <- SUAQ_waypoints_11all20%>%
   dplyr::select(-Date,
@@ -583,11 +583,22 @@ SUAQ_waypoints_11all20 <- SUAQ_waypoints_11all20%>%
          -desc
          )
 
+# Adding unique identifier
+
+
 ## 5. ADDING FOLLOWNUMBER (JOIN) 
 ### 5.2. Joining 2011-2020 data with followlog and add information to gps file
 ##### for the first two follows which are not joined with the followlog it seams the date in the filename is wrong! --> should be 2011 not 2010. This is the case for many more! maybe look on the automatic date!
 ##### PROBLEMS
 specs_AutomaticManualDateNotEqual<- SUAQ_waypoints_11all20 %>% filter(.$manualDate!=.$automaticDate) %>% group_by(.$fileN) %>%   summarise(count=n()) # date automatic and manual not the same
+
+
+# Temporary files from followlog for joining follownumber (all only checking on two attributes)
+# would there be a better approach? Need an algorithm/function which takes several attributes and looks if there is a match for all, all-1,all-2,all-3 until a minima f.e. matching at least followname and followdate.
+tmp6 <- SUAQ_followlog[,c(2,4,14,19)] %>% mutate(tmp_FollowNumber_M_focal_followname=.$FollowNumber) %>%
+  dplyr::select(-FollowNumber)
+tmp7 <- SUAQ_followlog[,c(2,4,14,20)] %>% mutate(tmp_FollowNumber_M_focal_followname2=.$FollowNumber) %>%
+  dplyr::select(-FollowNumber)
 tmp<- SUAQ_followlog[,c(2,4,14)] %>% mutate(tmp_FollowNumber_M_focal=.$FollowNumber) %>%
   dplyr::select(-FollowNumber)
 tmp2<- SUAQ_followlog[,c(2,4,14)] %>% mutate(tmp_FollowNumber_M_focal_automatic=.$FollowNumber) %>% dplyr::select(-FollowNumber)
@@ -598,20 +609,38 @@ tmp4<- SUAQ_followlog[,c(2,4,19)] %>% mutate(tmp_FollowNumber_M_followname=.$Fol
 tmp5<- SUAQ_followlog[,c(2,4,20)] %>% mutate(tmp_FollowNumber_M_followname2=.$FollowNumber) %>%
   dplyr::select(-FollowNumber)
 
+
+
+
+
 ##### Join followlog 
+SUAQ_waypoints_11all20 <- SUAQ_waypoints_11all20 %>%
+  left_join(y=tmp6,by=c("manualDate"="Date","focal"="FocalName","followername"="Observer1"),keep = FALSE,na_matches = "never")
+SUAQ_waypoints_11all20 <- SUAQ_waypoints_11all20 %>%
+  left_join(y=tmp7,by=c("manualDate"="Date","focal"="FocalName","followername"="Observer2"),keep = FALSE,na_matches = "never")
 SUAQ_waypoints_11all20 <- SUAQ_waypoints_11all20 %>% 
-  left_join(y=tmp,by=c("manualDate"="Date","focal"="FocalName")) # Problem some of them match with multiple points
+  left_join(y=tmp,by=c("manualDate"="Date","focal"="FocalName"),na_matches = "never") # Problem some of them match with multiple points (n=+114) adding more hirarchy see above if matching 3 attributes --> more sure which one. "2019-02-08	yulia" n=40 entries also + 20 welche nicht existierten. Follow existiert ähnlich zwei mal aber observername unterschied sich --> Lösung tmp6 und tmp7 zur unterscheidung dieser sehr ähnlichen Followdaten.
 SUAQ_waypoints_11all20 <- SUAQ_waypoints_11all20 %>%
-  left_join(y=tmp2,by=c("automaticDate"="Date","focal"="FocalName"),keep = FALSE)
+  left_join(y=tmp2,by=c("automaticDate"="Date","focal"="FocalName"),keep = FALSE,na_matches = "never")
 SUAQ_waypoints_11all20 <- SUAQ_waypoints_11all20 %>%
-  left_join(y=tmp3,by=c("manualDate"="Date","infantname"="FocalName"),keep = FALSE)
+  left_join(y=tmp3,by=c("manualDate"="Date","infantname"="FocalName"),keep = FALSE,na_matches = "never")
 SUAQ_waypoints_11all20 <- SUAQ_waypoints_11all20 %>%
-  left_join(y=tmp4,by=c("manualDate"="Date","followername"="Observer1"),keep = FALSE)
+  left_join(y=tmp4,by=c("manualDate"="Date","followername"="Observer1"),keep = FALSE,na_matches = "never")
 SUAQ_waypoints_11all20 <- SUAQ_waypoints_11all20 %>%
-  left_join(y=tmp5,by=c("manualDate"="Date","followername"="Observer2"),keep = FALSE)
-  
+  left_join(y=tmp5,by=c("manualDate"="Date","followername"="Observer2"),keep = FALSE,na_matches = "never")
+
+
+temp1<- SUAQ_waypoints_11all20 %>% filter(automaticDate==as.POSIXct("2020-07-03",format = "%Y-%m-%d",
+      tz = "Asia/Pontianak"))
+
+
+
 SUAQ_waypoints_11all20 <- SUAQ_waypoints_11all20 %>%
-  mutate(follow=as.numeric(follow)) %>% 
+  mutate(follow=as.numeric(follow)) %>%
+  mutate(follow=if_else(is.na(follow),as.numeric(tmp_FollowNumber_M_focal_followname),follow)) %>%
+  dplyr::select(-tmp_FollowNumber_M_focal_followname) %>%
+  mutate(follow=if_else(is.na(follow),as.numeric(tmp_FollowNumber_M_focal_followname2),follow)) %>%
+  dplyr::select(-tmp_FollowNumber_M_focal_followname2) %>%
   mutate(follow=if_else(is.na(follow),as.numeric(tmp_FollowNumber_M_focal),follow)) %>%
   dplyr::select(-tmp_FollowNumber_M_focal) %>% 
   mutate(follow=if_else(is.na(follow),as.numeric(tmp_FollowNumber_M_focal_automatic),follow)) %>%
@@ -624,6 +653,24 @@ SUAQ_waypoints_11all20 <- SUAQ_waypoints_11all20 %>%
   dplyr::select(-tmp_FollowNumber_M_followname2)
 
 SUAQ_waypoints_11all20<- SUAQ_waypoints_11all20 %>% distinct() # 60 GPS points are added because of the above joins. This means that some added Follownumbers match multiple GPS points in the waypoints dataset.
+
+
+#tmpanalysis
+temp <- SUAQ_waypoints_11all20 %>% group_by(.$altitude,.$time,.$name,.$sym,.$fileN,.$source,.$filedate,.$infantname,.$followername,.$followtype,.$automaticDatetime,.$manualDatetime,.$manualDate,.$manualTime,.$automaticDate,.$automaticTime,.$PtType,.$E,.$N,.$focal,.$AgeSex,.$Activity) %>% summarise(gpscount=n()) 
+temp<- temp %>% filter(as.integer(gpscount)>1)
+
+
+temp <- SUAQ_waypoints_11all20 %>% group_by(fileN,manualDatetime,automaticDatetime,E,N,focal) %>% summarise(gpscount=n())
+temp1 <- SUAQ_waypoints_11all20 %>% group_by(fileN,manualDatetime,automaticDatetime,E,N,focal,follow) %>% summarise(gpscount=n())
+temp1<- temp1 %>% filter(as.integer(gpscount)>1)
+temp<- temp %>% filter(as.integer(gpscount)>1)
+
+temp <- temp %>% left_join(temp1,by=c("fileN"="fileN","E"="E","N"="N","manualDatetime"="manualDatetime"))
+
+temp2<- temp %>% group_by(automaticDate,focal) %>% summarise(count=n(),sumGPS=sum(gpscount))
+
+#tmpanalysis
+
 
 tmp<- SUAQ_waypoints_11all20 %>% group_by(name,manualDate,automaticDate,E,N,focal,follow,manualTime,automaticTime) %>% summarise(count=n())
 
