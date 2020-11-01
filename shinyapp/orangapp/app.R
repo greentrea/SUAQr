@@ -38,9 +38,6 @@ setwd("/Users/stefgr/Nextcloud/12_Semester/20200313_Masterthesis/R/shinyapp/oran
 
 
 # All sessions data
-SUAQ_waypoints_11_20_male <- read_csv("data/20201020_MaleGPSToAdd.csv")
-levels(as.factor(SUAQ_waypoints_11_20_male$Focal))
-
 SUAQ_waypoints_11_20_backup<- read_csv("data/SUAQ_waypoints_11all20_backup.csv")
 
 SUAQ_waypoints_11_20_backup_sf <-  st_as_sf(SUAQ_waypoints_11_20_backup, 
@@ -65,7 +62,7 @@ tmp_SUAQ_waypoints_morethan50gps_11all20<- SUAQ_waypoints_11_20_backup %>%
   filter(orangutan_tot_num_of_gps>=50)
 
 
-tmp_SUAQ_waypoints_morethan50gps_11all20.sp<- tmp_SUAQ_waypoints_morethan50gps_11all20[,c(24,25,26)]
+tmp_SUAQ_waypoints_morethan50gps_11all20.sp<- tmp_SUAQ_waypoints_morethan50gps_11all20 %>% dplyr::select(focal,E,N)
 coordinates(tmp_SUAQ_waypoints_morethan50gps_11all20.sp) <- c("E","N")
 proj4string(tmp_SUAQ_waypoints_morethan50gps_11all20.sp) <- CRS( "+proj=utm +zone=47 +datum=WGS84 +units=m +no_defs" )
 
@@ -150,8 +147,8 @@ server <- function(input, output) {
       mcp_map_95 <- ggplot() + 
         geom_polygon(data = fortify(tmp_SUAQ_waypoints_morethan50gps_11all20.mcpgeo),  
                      # Polygon layer needs to be "fortified" to add geometry to the dataframe
-                     aes(long, lat, colour = id,fill=id,alpha=0.1),
-                     alpha = 1) + # alpha sets the transparency
+                     aes(long, lat, colour = id),
+                     alpha = 1,size=0.4,fill=NA) + # alpha sets the transparency
         geom_point(data = tmp_SUAQ_waypoints_morethan50gps_11all20.geo, 
                    aes(x = tmp_SUAQ_waypoints_morethan50gps_11all20.geo$E, y = tmp_SUAQ_waypoints_morethan50gps_11all20.geo$N, colour = 
                          tmp_SUAQ_waypoints_morethan50gps_11all20.geo$id))  +

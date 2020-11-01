@@ -111,13 +111,50 @@ st_kde <- function(points,cellsize, bandwith, extent = NULL){
   matrix <- kde2d(coords[,1],coords[,2],h = bandwith,n = c(n_x,n_y),lims = extent_vec)
   raster(matrix)
 }
-read_GPX_waypoints <- function(flnm){
-    file <- read_GPX(flnm)
-    if(typeof(file)!="list"){file <- file$waypoints}
-    file<- file %>%  # add file name as an attribute
-        mutate(filename = flnm)
-  return(out)
+
+test<- st_read("/Users/stefgr/Nextcloud/12_Semester/20200313_Masterthesis/R/data/20200717_All_stedit/gpx/20190113_Lisa_Saidi_NN.gpx", layer = "track_points")
+class(test)
+test_df<- as.data.frame(test)
+test_df<- as.data.frame( sf::st_coordinates(test))
+plot(test)
+
+st_read_GPX_followertracks <- function(flnm){
+    out <- tryCatch(
+        { message("Try to read file")
+            file <- data.frame()
+            start <- Sys.time()
+            file <- as.data.frame(st_read(flnm,layer = "track_points")) # better than read_GPX
+            #if(class(file)[1]=="list"){file <- file$waypoints} # only use if read_GPX is used
+            end <- Sys.time()
+            processduration <- end-start
+            file <- file %>% #Skip the first 16 rows because see below
+              mutate(fileN=substr(flnm, 33,(nchar(flnm)+1)-5))
+            
+            return(file)
+        },
+        error=function(cond) {
+            message(paste("File seems not to exist: ", flnm))
+            message("Here's the original error message:")
+            message(cond)
+            # Choose a return value in case of error
+            return(data.frame()) # use dataframe as return instead of NA --> See here why, without it throws an error. https://stackoverflow.com/questions/48512461/error-in-bind-rows-x-id-argument-1-must-have-names-using-map-df-in-purrr
+        },
+        warning=function(cond) {
+            message(paste("Loading file didn't work", flnm))
+            message("Here's the original warning message:")
+            message(cond)
+            # Choose a return value in case of warning
+            return(data.frame())
+        },
+        finally={
+            message(paste("Processed URL: ", flnm," Duration: ",processduration))
+            message("Finished")
+        }
+    )    
+    return(out)
 }
+
+
 st_read_GPX_waypoints <- function(flnm){
     out <- tryCatch(
         { message("Try to read file")
@@ -290,6 +327,12 @@ SUAQ_waypoints_11_20<- suaq_gpx_list%>%
 end_time <- Sys.time()
 print(start_time-end_time)
 ##### Two follows throw an error --> 20200225_Lois_Ahmad_FN, 20200225_Otto_Armas_FN are empty --> deleted from data files (not from delivery files)
+
+start_time <- Sys.time()
+SUAQ_followertracks_11_20<- suaq_gpx_list%>% 
+  map_df(~st_read_GPX_followertracks(.))
+end_time <- Sys.time()
+print(start_time-end_time)
 
 ### 2.2 Tidying the attributes and values
 ##### extract the 5 attributes from filename: filedate, orangutanname, infant name, followername, followtype. "Adress" in the first field is left in the list to identify the start of a new list.
