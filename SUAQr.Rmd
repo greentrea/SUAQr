@@ -790,6 +790,13 @@ SUAQ_waypoints_11all20 <- SUAQ_waypoints_11all20 %>% filter(E>323000 &
                                                             N>330000 & 
                                                             N<360000)
 
+#### For trackpoints aswell
+SUAQ_followertracks_11_20 <-
+  SUAQ_followertracks_11_20 %>% filter(E > 323000 &
+                                         E < 328000 &
+                                         N > 336000 &
+                                         N < 365000)
+
 ### 6.4. Create project Master-Dataframes
 ##### save all waypoints as sf
 SUAQ_waypoints_11all20_sf <-  st_as_sf(SUAQ_waypoints_11all20, 
