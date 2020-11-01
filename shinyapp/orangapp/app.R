@@ -34,7 +34,7 @@ library('spdplyr')
 library('adehabitatHR')
 library('ggplot2')
 
-setwd("/Users/stefgr/Nextcloud/12_Semester/20200313_Masterthesis/R/shinyapp/orangapp")
+#setwd("/Users/stefgr/Nextcloud/12_Semester/20200313_Masterthesis/R/shinyapp/orangapp")
 
 
 # All sessions data
@@ -59,7 +59,7 @@ SUAQ_pathnetwork <- st_transform(SUAQ_pathnetwork, 4326)
 # with mcp
 tmp_SUAQ_waypoints_morethan50gps_11all20<- SUAQ_waypoints_11_20_backup %>% 
   left_join(specs_orangutan_tot_num_of_gps[,c(1:3)],by=c("focal"="focal"))%>% 
-  filter(orangutan_tot_num_of_gps>=50)
+  filter(orangutan_tot_num_of_gps>=20)
 
 
 tmp_SUAQ_waypoints_morethan50gps_11all20.sp<- tmp_SUAQ_waypoints_morethan50gps_11all20 %>% dplyr::select(focal,E,N)
@@ -122,7 +122,7 @@ ui <- fluidPage(
     ),
 
     hr(),
-    print("Considered Data: 2010-2020 | MCP calculated with 98 percent of GPS points"),br(),
+    print("Considered Data: 2010-2020 | MCP calculated with 98 percent of GPS points | Only focals with more than 20 GPS fixes are considered"),br(),
     print("® Data is owned by the University of Zurich and is not allowed to use. Further information @stefan.grafen@gmail.com")
 )
 
