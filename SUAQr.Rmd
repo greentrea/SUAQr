@@ -213,6 +213,7 @@ SUAQ_followlog <-
          Observer3 = tolower(Observer3),
          Observer4 = tolower(Observer4),
          Observer5 = tolower(Observer5),
+         ClassFocal = if_else(ClassFocal=="fl. male","fl.male",ClassFocal),
          FocalName = if_else(grepl("\\(prob\\)",FocalName),
                              str_remove(FocalName,"\\(prob\\)"),FocalName)
          )

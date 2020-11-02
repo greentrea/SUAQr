@@ -809,14 +809,15 @@ sample <- sample %>% filter(!is.na(N),!is.na(E),!is.na(ele)) %>%
 #sample <- sample %>% mutate(ele=log(ele))
 names(sample) <- c("x","y","z")
 e <- extent(sample[,1:2])
-r <- raster(e, ncol=60, nrow=70, crs= "+proj=longlat +datum=WGS84")
-r_new <- rasterize(sample[,1:2], r, sample[,3], fun=median)
+r <- raster(e, ncol=60, nrow=70, crs= "+proj=utm +zone=47 +datum=WGS84 +units=m +no_defs")
+r_new <- rasterize(sample[,1:2], r, sample[,3], fun=mean)
 
 rgb.pal <- colorRampPalette(c("snow1","snow2","light blue","blue","dark blue", "orange","red"), space = "rgb")
 
 png(paste("raster_zhh",".png",sep=""))
 plot(r_new, col=rgb.pal(200), xlab="Lon", ylab="Lat", main=paste("Digital elevation model from automatic GPS points"),
      legend.args=list(text=paste0("Height [m]"), side=4, font=2, line=2.5, cex=0.8))
+writeRaster(r_new,'20201101_ele_60x70_0bis100_mean.tif')
 #the data have about, 270000 cells. that is how the number of ncol and nrow specified. 
 
 r_new <- rasterize(data.df[,1:2], r, data.df[,3], fun=mean)
