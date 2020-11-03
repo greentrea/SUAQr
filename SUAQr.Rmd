@@ -1051,7 +1051,8 @@ ggplotly(plot_SUAQ_mosttrackedfemales_chulls_centroid)
 tmp_SUAQ_waypoints_morethan50gps_11all20<- SUAQ_waypoints_11all20 %>% 
   left_join(specs_orangutan_tot_num_of_gps[,c(1:3)],by=c("focal"="focal"))%>% 
   filter(orangutan_tot_num_of_gps>=50)
-tmp_SUAQ_waypoints_morethan50gps_11all20.sp<- tmp_SUAQ_waypoints_morethan50gps_11all20[,c(24,25,26)]
+tmp_SUAQ_waypoints_morethan50gps_11all20.sp<- tmp_SUAQ_waypoints_morethan50gps_11all20 %>% 
+  dplyr::select(focal,E,N)
 coordinates(tmp_SUAQ_waypoints_morethan50gps_11all20.sp) <- c("E","N")
 proj4string(tmp_SUAQ_waypoints_morethan50gps_11all20.sp) <- CRS( "+proj=utm +zone=47 +datum=WGS84 +units=m +no_defs" )
 

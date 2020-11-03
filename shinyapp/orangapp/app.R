@@ -83,8 +83,9 @@ mybasemap <- get_stamenmap(bbox = c(left = min(tmp_SUAQ_waypoints_morethan50gps_
 
 
 tmp_SUAQ_waypoints_morethan50gps_11all20_unflmale <- tmp_SUAQ_waypoints_morethan50gps_11all20 %>% filter(SUAQ_followlog.ClassFocal %in% c("unfl.male"))
-tmp_SUAQ_waypoints_morethan50gps_11all20_others <- tmp_SUAQ_waypoints_morethan50gps_11all20 %>% filter(SUAQ_followlog.ClassFocal %in% c("ad.female","mother","infant","juvenile","unk"))
+tmp_SUAQ_waypoints_morethan50gps_11all20_others <- tmp_SUAQ_waypoints_morethan50gps_11all20 %>% filter(SUAQ_followlog.ClassFocal %in% c("infant","juvenile","unk"))
 tmp_SUAQ_waypoints_morethan50gps_11all20_flmale <- tmp_SUAQ_waypoints_morethan50gps_11all20 %>% filter(SUAQ_followlog.ClassFocal %in% c("fl.male"))
+tmp_SUAQ_waypoints_morethan50gps_11all20_adfemales <- tmp_SUAQ_waypoints_morethan50gps_11all20 %>% filter(SUAQ_followlog.ClassFocal %in% c("ad.female","mother"))
 
 # Define UI for application that draws a histogram
 ui <- fluidPage(
@@ -105,9 +106,11 @@ ui <- fluidPage(
                       "Dates: (minimum 14 days)",
                       min = as.Date("2010-01-01","%Y-%m-%d"),
                       max = as.Date("2020-12-01","%Y-%m-%d"),
-                      value=c(as.Date("2010-12-01"),as.Date("2016-12-01")),
+                      value=c(as.Date("2010-01-01"),as.Date("2020-12-01")),
                       timeFormat="%Y-%m-%d"),
           numericInput("mcppercentage","How many points should be considered for MCP? [0-100%]", value = 98),
+          checkboxInput(inputId="pointsactive","Show GPS points", TRUE),
+          
           # dateRangeInput("daterange", "Date range:",
           #                start = min(tmp_SUAQ_waypoints_morethan50gps_11all20$manualDate, na.rm = TRUE),
           #                end   = max(tmp_SUAQ_waypoints_morethan50gps_11all20$manualDate, na.rm = TRUE)),
@@ -124,8 +127,10 @@ ui <- fluidPage(
                                "Unflannged males",levels(as.factor(tmp_SUAQ_waypoints_morethan50gps_11all20_unflmale$focal)),levels(as.factor(tmp_SUAQ_waypoints_morethan50gps_11all20_unflmale$focal))[1],inline = T),
             checkboxGroupInput(inputId = "focalids_flmale",
                              "Flanged males",levels(as.factor(tmp_SUAQ_waypoints_morethan50gps_11all20_flmale$focal)),levels(as.factor(tmp_SUAQ_waypoints_morethan50gps_11all20_flmale$focal))[1],inline = T),
-            checkboxGroupInput(inputId = "focalids_female",
-                             "Others (Juvenile, ad. female, mother, infant, unknown)",levels(as.factor(tmp_SUAQ_waypoints_morethan50gps_11all20_others$focal)),levels(as.factor(tmp_SUAQ_waypoints_morethan50gps_11all20_others$focal))[1],inline = T),
+            checkboxGroupInput(inputId = "focalids_adfemales",
+                             "Adult females",levels(as.factor(tmp_SUAQ_waypoints_morethan50gps_11all20_adfemales$focal)),levels(as.factor(tmp_SUAQ_waypoints_morethan50gps_11all20_adfemales$focal))[1],inline = T),
+            checkboxGroupInput(inputId = "focalids_others",
+                             "Others (Juvenile, infant, unknown)",levels(as.factor(tmp_SUAQ_waypoints_morethan50gps_11all20_others$focal)),levels(as.factor(tmp_SUAQ_waypoints_morethan50gps_11all20_others$focal))[1],inline = T),
           width = 3
         ),
         # Show a plot of the generated distribution
@@ -144,7 +149,7 @@ ui <- fluidPage(
 # Define server logic required to draw a histogram
 server <- function(input, output) {
   output$mapPlot <- renderPlotly({
-    selected <- c(input$focalids_unflmale,input$focalids_flmale,input$focalids_female) 
+    selected <- c(input$focalids_unflmale,input$focalids_flmale,input$focalids_adfemales,input$focalids_others) 
     # make sure end date later than start date
     validate(
       need(input$daterange[2] > input$daterange[1], "end date is earlier than start date"
@@ -184,18 +189,30 @@ server <- function(input, output) {
         #     geom_sf(data = SUAQ_pathnetwork,aes(fill = "path-network"))+
         #     labs(col="Focal")+
         #     theme(legend.title = element_blank(),legend.position = "bottom",plot.caption = element_text(hjust=0.5, size=rel(1.2)))
-   mcp_map_95 <- ggplot() + 
+    mcp_map_wPoints <- ggplot() + 
         geom_polygon(data = fortify(tmp_SUAQ_waypoints_morethan50gps_11all20.mcpgeo),  
                      # Polygon layer needs to be "fortified" to add geometry to the dataframe
                      aes(long, lat, colour = id),
                      alpha = 1,size=0.4,fill=NA) + # alpha sets the transparency
         geom_point(data = tmp_SUAQ_waypoints_morethan50gps_11all20.geo, 
-                   aes(x = tmp_SUAQ_waypoints_morethan50gps_11all20.geo$E, y = tmp_SUAQ_waypoints_morethan50gps_11all20.geo$N, colour = 
-                         tmp_SUAQ_waypoints_morethan50gps_11all20.geo$id),size=0.3,alpha=0.6)  +
-        theme(legend.position = c(0.15, 0.80),plot.title =element_blank()) +
+                                                               aes(x = tmp_SUAQ_waypoints_morethan50gps_11all20.geo$E, y = tmp_SUAQ_waypoints_morethan50gps_11all20.geo$N, colour = 
+                                                                     tmp_SUAQ_waypoints_morethan50gps_11all20.geo$id),size=0.3,alpha=0.6)  +
+         theme(legend.position = c(0.15, 0.80),plot.title =element_blank()) +
         labs(x = "Longitude", y = "Latitude")+
         geom_sf(data = SUAQ_pathnetwork, inherit.aes = FALSE,size=0.1)
-      ggplotly(mcp_map_95)
+    
+    mcp_map_oPoints <- ggplot() + 
+      geom_polygon(data = fortify(tmp_SUAQ_waypoints_morethan50gps_11all20.mcpgeo),  
+                   # Polygon layer needs to be "fortified" to add geometry to the dataframe
+                   aes(long, lat, colour = id),
+                   alpha = 1,size=0.4,fill=NA) + # alpha sets the transparency
+      theme(legend.position = c(0.15, 0.80),plot.title =element_blank()) +
+      labs(x = "Longitude", y = "Latitude")+
+      geom_sf(data = SUAQ_pathnetwork, inherit.aes = FALSE,size=0.1)
+        
+        
+    if(input$pointsactive){ggplotly(mcp_map_wPoints)}else{ggplotly(mcp_map_oPoints)}
+        
     })
 }
 
