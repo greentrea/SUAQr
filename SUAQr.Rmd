@@ -657,7 +657,7 @@ specs_AutomaticManualDateNotEqual<- SUAQ_waypoints_11all20 %>% filter(.$manualDa
 
 # Temporary files from followlog for joining follownumber (all only checking on two attributes)
 # would there be a better approach? Need an algorithm/function which takes several attributes and looks if there is a match for all, all-1,all-2,all-3 until a minima f.e. matching at least followname and followdate.
-tmp6 <- SUAQ_followlog[,c(2,4,14,19)] %>% mutate(tmp_FollowNumber_M_focal_followname=.$FollowNumber) %>%
+tmp6 <- SUAQ_followlog[,c(2,4,14,19)] %>% mutate(tmp_FollowNumber_M_focal_followname=FollowNumber) %>%
   dplyr::select(-FollowNumber)
 tmp7 <- SUAQ_followlog[,c(2,4,14,20)] %>% mutate(tmp_FollowNumber_M_focal_followname2=.$FollowNumber) %>%
   dplyr::select(-FollowNumber)
@@ -727,8 +727,6 @@ SUAQ_waypoints_11all20 <- SUAQ_waypoints_11all20 %>%
   filter(!(id %in% c(4743,4744,4745,4746,4747,4748,4749) & follow==1107))
   
 
-
-
 ##### manually adding follownumber for cases where join with followlog didn't retrieve one  
 SUAQ_waypoints_11all20 <-SUAQ_waypoints_11all20 %>% 
   mutate(
@@ -774,6 +772,16 @@ SUAQ_waypoints_11all20 <- SUAQ_waypoints_11all20 %>%
   left_join(SUAQ_followlog[,c(2,4,14,16,17,19,20,21,22,23,25,29,30,31,32,33,34,35,36,38,39,40,41,42,43,46,55,56,57,58,59,60,61,62,63,64,65,66,67:74)],by=c("follow"="SUAQ_followlog.FollowNumber"),suffix = c("", "_fromFollowlog"))
 
 
+#### Finding potential falsly joined follownumbers
+##### FN with multiple dates. Only FN: 9999 which is wrong has fuzzy dates
+specs_FNwithUnUniqueDatesAfterJoin <- SUAQ_waypoints_11all20[FALSE,]
+for(i in levels(as.factor(SUAQ_waypoints_11all20$follow))){
+  df <- SUAQ_waypoints_11all20 %>% filter(SUAQ_waypoints_11all20$follow==i)
+  print(paste0("Follownumber to check if unique: ",i))
+  print((length(unique(df$manualDate)) == 1))
+  if(length(unique(df$manualDate)) != 1){specs_FNwithUnUniqueDatesAfterJoin <- specs_FNwithUnUniqueDatesAfterJoin %>% bind_rows(df)}
+}
+
 
 
 ## 6. Adding informative attributes and finishing data frame
@@ -798,7 +806,31 @@ SUAQ_followertracks_11_20 <-
                                          N > 336000 &
                                          N < 365000)
 
-### 6.4. Create project Master-Dataframes
+### 6.4. Cleaning important attributes
+##### Sexes overview
+levels(as.factor(SUAQ_waypoints_11all20$SUAQ_followlog.ClassFocal))
+levels(as.factor(SUAQ_waypoints_11all20$SUAQ_followlog.SexFocal))
+levels(as.factor(SUAQ_waypoints_11all20$SUAQ_orangutans.Sex))
+levels(as.factor(SUAQ_waypoints_11all20$SUAQ_orangutans.Class))
+levels(as.factor(SUAQ_waypoints_11all20$SUAQ_orangutans.AgeClass))
+                  
+SUAQ_waypoints_11all20<- SUAQ_waypoints_11all20 %>% mutate(SUAQ_followlog.ClassFocal=if_else(SUAQ_followlog.ClassFocal=="ad.female","adult female",SUAQ_followlog.ClassFocal))
+SUAQ_waypoints_11all20<- SUAQ_waypoints_11all20 %>% mutate(SUAQ_followlog.ClassFocal=if_else(SUAQ_followlog.ClassFocal=="fl.male","flanged male",SUAQ_followlog.ClassFocal))
+SUAQ_waypoints_11all20<- SUAQ_waypoints_11all20 %>% mutate(SUAQ_followlog.ClassFocal=if_else(SUAQ_followlog.ClassFocal=="unfl.male","unflanged male",SUAQ_followlog.ClassFocal))
+SUAQ_waypoints_11all20<- SUAQ_waypoints_11all20 %>% mutate(SUAQ_followlog.ClassFocal=if_else(SUAQ_followlog.ClassFocal=="mother","adult female",SUAQ_followlog.ClassFocal))
+##### To do: if ClassFocal is unk --> get Class from Orangutan information log.
+
+
+
+#inspect
+specs_FollowlogOrangutanlog_sexdifference <- SUAQ_waypoints_11all20 %>% group_by(follow,focal,manualDate,SUAQ_followlog.SexFocal,SUAQ_orangutans.Sex) %>% summarise(count=n()) %>%  filter(SUAQ_followlog.SexFocal!=SUAQ_orangutans.Sex) # there are 788 difference in sex between joined info
+specs_FollowlogOrangutanlog_ClassDifference <- SUAQ_waypoints_11all20 %>% group_by(follow,focal,manualDate,SUAQ_followlog.ClassFocal,SUAQ_orangutans.Class) %>% summarise(count=n()) %>% filter(SUAQ_followlog.ClassFocal!=SUAQ_orangutans.Class) 
+
+
+tmp<- SUAQ_followlog %>% filter(SUAQ_followlog.FollowNumber==1638)
+
+
+### 6.5. Create project Master-Dataframes
 ##### save all waypoints as sf
 SUAQ_waypoints_11all20_sf <-  st_as_sf(SUAQ_waypoints_11all20, 
                           coords = c("E","N"), 
@@ -972,7 +1004,9 @@ plot_orangutan_followhisto_best
 
 
 ```{r Visualization gps on map}
-# 
+#
+
+
 # Grouping and visualize it
 plot1<- SUAQ_waypoints_11all20 %>%
   group_by(follow) %>%

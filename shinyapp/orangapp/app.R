@@ -100,6 +100,7 @@ ui <- fluidPage(
     # Sidebar with a slider input for number of bins
     sidebarLayout(position = "right",
           sidebarPanel(
+          tags$head(tags$style("#mapPlot{height:100vh !important;}")),
           style='background-color:#e5feff',
           br(),
           sliderInput("daterange",
@@ -114,14 +115,6 @@ ui <- fluidPage(
           # dateRangeInput("daterange", "Date range:",
           #                start = min(tmp_SUAQ_waypoints_morethan50gps_11all20$manualDate, na.rm = TRUE),
           #                end   = max(tmp_SUAQ_waypoints_morethan50gps_11all20$manualDate, na.rm = TRUE)),
-          tags$style(".well {background-color:white;border-width:0px}"),
-          tags$head(tags$script('$(document).on("shiny:connected", function(e) {
-                            Shiny.onInputChange("innerWidth", window.innerWidth);
-                            });
-                            $(window).resize(function(e) {
-                            Shiny.onInputChange("innerWidth", window.innerWidth);
-                            });
-                            ')),
             
             checkboxGroupInput(inputId = "focalids_unflmale",
                                "Unflannged males",levels(as.factor(tmp_SUAQ_waypoints_morethan50gps_11all20_unflmale$focal)),levels(as.factor(tmp_SUAQ_waypoints_morethan50gps_11all20_unflmale$focal))[1],inline = T),
@@ -135,8 +128,7 @@ ui <- fluidPage(
         ),
         # Show a plot of the generated distribution
         mainPanel(
-           plotlyOutput("mapPlot",width = "100%",
-                      height = "100%"),width = 9
+           plotlyOutput("mapPlot"),width = 9
         ),
         
     ),
@@ -208,12 +200,13 @@ server <- function(input, output) {
                    alpha = 1,size=0.4,fill=NA) + # alpha sets the transparency
       theme(legend.position = c(0.15, 0.80),plot.title =element_blank()) +
       labs(x = "Longitude", y = "Latitude")+
-      geom_sf(data = SUAQ_pathnetwork, inherit.aes = FALSE,size=0.1)
+      geom_sf(data = SUAQ_pathnetwork, inherit.aes = FALSE,size=0.1) 
         
         
     if(input$pointsactive){ggplotly(mcp_map_wPoints)}else{ggplotly(mcp_map_oPoints)}
         
-    })
+    }
+    )
 }
 
 # Run the application 
