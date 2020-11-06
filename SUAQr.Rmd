@@ -817,9 +817,124 @@ levels(as.factor(SUAQ_waypoints_11all20$SUAQ_orangutans.AgeClass))
 SUAQ_waypoints_11all20<- SUAQ_waypoints_11all20 %>% mutate(SUAQ_followlog.ClassFocal=if_else(SUAQ_followlog.ClassFocal=="ad.female","adult female",SUAQ_followlog.ClassFocal))
 SUAQ_waypoints_11all20<- SUAQ_waypoints_11all20 %>% mutate(SUAQ_followlog.ClassFocal=if_else(SUAQ_followlog.ClassFocal=="fl.male","flanged male",SUAQ_followlog.ClassFocal))
 SUAQ_waypoints_11all20<- SUAQ_waypoints_11all20 %>% mutate(SUAQ_followlog.ClassFocal=if_else(SUAQ_followlog.ClassFocal=="unfl.male","unflanged male",SUAQ_followlog.ClassFocal))
-SUAQ_waypoints_11all20<- SUAQ_waypoints_11all20 %>% mutate(SUAQ_followlog.ClassFocal=if_else(SUAQ_followlog.ClassFocal=="mother","adult female",SUAQ_followlog.ClassFocal))
-##### To do: if ClassFocal is unk --> get Class from Orangutan information log.
 
+
+
+
+
+
+#SUAQ_waypoints_11all20<- SUAQ_waypoints_11all20 %>% mutate(SUAQ_followlog.ClassFocal=if_else(SUAQ_followlog.ClassFocal=="mother","adult female",SUAQ_followlog.ClassFocal))
+##### To do: if ClassFocal is unk --> get Class from Orangutan information
+temp1<- SUAQ_waypoints_11all20 %>% filter(.$SUAQ_followlog.ClassFocal=="unk")
+
+SUAQ_waypoints_11all20<- SUAQ_waypoints_11all20 %>% # replace any SexClass value which is unk or NA to the temporally nearest other Sex Class value for this orangutan
+  mutate(SUAQ_followlog.ClassFocal=if_else((SUAQ_followlog.ClassFocal=="unk")|is.na(SUAQ_followlog.ClassFocal),
+                                           SUAQ_waypoints_11all20$SUAQ_followlog.ClassFocal[which.min(abs(.$manualDate-SUAQ_waypoints_11all20[SUAQ_waypoints_11all20$focal==.$focal,]$manualDate))],
+                                           SUAQ_followlog.ClassFocal))
+
+SUAQ_waypoints_11all20<- SUAQ_waypoints_11all20 %>% # replace any SexClass value which is unk or NA to the temporally nearest other Sex Class value for this orangutan
+  mutate(SUAQ_followlog.ClassFocal=if_else((SUAQ_followlog.ClassFocal=="unk")|is.na(SUAQ_followlog.ClassFocal),
+    own_valuefinder(.,id,"id","unk","SUAQ_followlog.ClassFocal","temporally","manualDate"),
+    SUAQ_followlog.ClassFocal))
+
+own_valuefinder(SUAQ_waypoints_11all20,4876,"id","unk","SUAQ_followlog.ClassFocal","temporally","manualDate")
+
+options(max.print=100000)
+
+
+SUAQ_waypoints_11all20[which(SUAQ_waypoints_11all20$id == 21897),]$manualDate
+
+SUAQ_waypoints_11all20[which(SUAQ_waypoints_11all20$id == 21896),]$manualDate
+
+own_valuefinder <- function(df,pk,replaceterm,pkcol,targetcol,lookuptype,datecol){
+    out <- tryCatch(
+        { message("Try to find value in target collumn which as temporally/tabullary nearest and not the mentioned to 'replaceterm' or is the most abundant value")
+          pk <- as.integer(pk)
+            targetvalue <- replaceterm
+            if(missing(datecol)) {
+              print("Searching in df distance")
+              if(lookuptype=="frequency"){
+                print("freq search")
+                df_forcorrsponvalue<- df %>% filter(targetcol==df$targetcol[which(df$id == pk),])
+                targetvalue <- tail(names(sort(table(df_forcorrsponvalue$targetcol))), 1)
+              }
+              if(lookuptype=="next"){
+                print("next row search")
+                df_forcorrsponvalue<- df %>% filter(targetcol==df$targetcol[which(df$id == pk),])
+                index <- which(df_forcorrsponvalue$pkcol == pk)
+                for(i in c(1:(nrow(df_forcorrsponvalue)-index))){
+                  if(is.na(targetvalue)|(targetvalue==replaceterm)){targetvalue<- df_forcorrsponvalue[index+i,targetcol]
+                  paste(print("found target value"),targetvalue)
+                  }
+                }
+              }
+              if(lookuptype=="last"){
+                print("last row search")
+                df_forcorrsponvalue<- df %>% filter(targetcol==df$targetcol[which(df$id == pk),])
+                index <- which(df_forcorrsponvalue$pkcol == pk)
+                for(i in c(1:(index-1))){
+                  if(is.na(targetvalue)|(targetvalue==replaceterm)){targetvalue<- df_forcorrsponvalue[index-i,targetcol]
+                  paste(print("found target value"),targetvalue)
+                  }
+                }
+              }
+            } else {
+              if(lookuptype=="temporally"){
+                #print("Searching temporally")
+                #print(paste(pk,"temp pk"))
+                #print(pk)
+                date<- df[which(df$id == pk),]$datecol
+                #print(paste(df$datecol[pk],"temp date"))
+                df_forcorrsponvalue<- df %>% filter(targetcol==df[which(df$id == pk),]$targetcol)
+                df_forcorrsponvalue <-  df_forcorrsponvalue %>% mutate(diff_todate=abs(date-datecol))
+                df_forcorrsponvalue <-  df_forcorrsponvalue %>% arrange(diff_todate)
+                for(i in c(1:nrow(df_forcorrsponvalue))){
+                  print("Hello")
+                  if(is.na(targetvalue)|(targetvalue==replaceterm)){
+                    targetvalue<- df_forcorrsponvalue[i,targetcol]
+                    paste(print("found target value"),targetvalue)
+                    }
+                }
+              }
+            }
+          
+            return("hello")
+        },
+        error=function(cond) {
+            message("Error")
+            message("Here's the original error message:")
+            message(cond)
+            # Choose a return value in case of error
+            return(replaceterm) # use dataframe as return instead of NA --> See here why, without it throws an error. https://stackoverflow.com/questions/48512461/error-in-bind-rows-x-id-argument-1-must-have-names-using-map-df-in-purrr
+        },
+        warning=function(cond) {
+            message("Warning")
+            message("Here's the original warning message:")
+            message(cond)
+            # Choose a return value in case of warning
+            return(replaceterm)
+        },
+        finally={
+            if(targetvalue==replaceterm){message("Didn't find a value")}
+            if(targetvalue!=replaceterm){message("Found a value")}
+            message("Finished")
+        }
+    )    
+    return(out)
+}
+
+
+
+
+abs(SUAQ_waypoints_11all20$manualDate[1]-SUAQ_waypoints_11all20[SUAQ_waypoints_11all20$focal=="sarabi",]$manualDate)
+which.min(abs(SUAQ_waypoints_11all20$manualDate[1]-SUAQ_waypoints_11all20[SUAQ_waypoints_11all20$focal=="sarabi",]$manualDate))
+SUAQ_waypoints_11all20$SUAQ_followlog.ClassFocal[which.min(abs(SUAQ_waypoints_11all20$manualDate[1]-SUAQ_waypoints_11all20[SUAQ_waypoints_11all20$focal=="sarabi",]$manualDate))]
+SUAQ_waypoints_11all20$SUAQ_followlog.ClassFocal[which.min(abs(SUAQ_waypoints_11all20$manualDate[1]-SUAQ_waypoints_11all20[SUAQ_waypoints_11all20$focal=="sarabi",]$manualDate))]
+
+
+temp<- SUAQ_waypoints_11all20 %>% filter(is.na(SUAQ_followlog.ClassFocal))
+
+temp<- SUAQ_waypoints_11all20 %>% filter((SUAQ_followlog.ClassFocal=="unk")|is.na(SUAQ_followlog.ClassFocal))
 
 
 #inspect
