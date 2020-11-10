@@ -727,7 +727,8 @@ SUAQ_waypoints_11all20 <- SUAQ_waypoints_11all20 %>%
   filter(!(id %in% c(4743,4744,4745,4746,4747,4748,4749) & follow==1107))
   
 
-##### manually adding follownumber for cases where join with followlog didn't retrieve one  
+##### manually adding follownumber for cases where join with followlog didn't retrieve one
+
 SUAQ_waypoints_11all20 <-SUAQ_waypoints_11all20 %>% 
   mutate(
     follow=if_else(fileN=="20100921_Ibu_Unk_NL",1000001,follow),
@@ -792,6 +793,8 @@ SUAQ_waypoints_11all20 <-
 
 ### 6.2. Create new variables like Sinuosity, DJL, Edge Speed
 #SUAQ_waypoints_11all20 <- SUAQ_waypoints_11all20 %>% left_join()
+SUAQ_waypoints_11all20<- SUAQ_waypoints_11all20 %>%  
+  mutate(focal=if_else(is.na(focal),SUAQ_followlog.FocalName,focal)) # get missing focal names from SUAQ followlog.
 
 ### 6.3. Only keep gps points within Bounding box of 330000-360000N / 323000-328000E because some points are wrong probably the N and the E variable are the same (accidently copied)
 SUAQ_waypoints_11all20 <- SUAQ_waypoints_11all20 %>% filter(E>323000 & 
@@ -825,32 +828,67 @@ SUAQ_waypoints_11all20<- SUAQ_waypoints_11all20 %>% mutate(SUAQ_followlog.ClassF
 
 #SUAQ_waypoints_11all20<- SUAQ_waypoints_11all20 %>% mutate(SUAQ_followlog.ClassFocal=if_else(SUAQ_followlog.ClassFocal=="mother","adult female",SUAQ_followlog.ClassFocal))
 ##### To do: if ClassFocal is unk --> get Class from Orangutan information
-temp1<- SUAQ_waypoints_11all20 %>% filter(.$SUAQ_followlog.ClassFocal=="unk")
 
-SUAQ_waypoints_11all20<- SUAQ_waypoints_11all20 %>% # replace any SexClass value which is unk or NA to the temporally nearest other Sex Class value for this orangutan
-  mutate(SUAQ_followlog.ClassFocal=if_else((SUAQ_followlog.ClassFocal=="unk")|is.na(SUAQ_followlog.ClassFocal),
-                                           SUAQ_waypoints_11all20$SUAQ_followlog.ClassFocal[which.min(abs(.$manualDate-SUAQ_waypoints_11all20[SUAQ_waypoints_11all20$focal==.$focal,]$manualDate))],
-                                           SUAQ_followlog.ClassFocal))
+for (i in c(1:nrow(SUAQ_waypoints_11all20))) {
+  targetcol <- "SUAQ_followlog.ClassFocal"
+  replaceterm <- "unk"
+  look_at_id <- SUAQ_waypoints_11all20$id[i]
+  if(SUAQ_waypoints_11all20$SUAQ_followlog.ClassFocal[i]%in%c(replaceterm)){
+    print(paste("found",counter,". row with term to replace with id:", i))
+    replacevalue <- own_valuefinder(
+                                          df = SUAQ_waypoints_11all20,
+                                          pk = look_at_id,
+                                          pkcol = "id",
+                                          replaceterm = "unk",
+                                          startcol = "focal",
+                                          targetcol = "SUAQ_followlog.ClassFocal",
+                                          lookuptype = "temporally",
+                                          datecol = "manualDate"
+                                        )
+    SUAQ_waypoints_11all20$SUAQ_followlog.ClassFocal[i]<- replacevalue
+    print(paste("replaced with value",replacevalue))
+    counter<- counter+1
+  }
+}
 
-SUAQ_waypoints_11all20<- SUAQ_waypoints_11all20 %>% # replace any SexClass value which is unk or NA to the temporally nearest other Sex Class value for this orangutan
-  mutate(SUAQ_followlog.ClassFocal=if_else((SUAQ_followlog.ClassFocal=="unk")|is.na(SUAQ_followlog.ClassFocal),
-    own_valuefinder(.,id,"id","unk","SUAQ_followlog.ClassFocal","temporally","manualDate"),
-    SUAQ_followlog.ClassFocal))
-
-own_valuefinder(SUAQ_waypoints_11all20,4876,"id","unk","SUAQ_followlog.ClassFocal","temporally","manualDate")
-
-options(max.print=100000)
 
 
-SUAQ_waypoints_11all20[which(SUAQ_waypoints_11all20$id == 21897),]$manualDate
+test<- SUAQ_waypoints_11all20 %>% filter(SUAQ_followlog.ClassFocal%in%c("unk"))
+print("Hello")
 
-SUAQ_waypoints_11all20[which(SUAQ_waypoints_11all20$id == 21896),]$manualDate
 
-own_valuefinder <- function(df,pk,replaceterm,pkcol,targetcol,lookuptype,datecol){
+SUAQ_waypoints_11all20 <-
+  SUAQ_waypoints_11all20 %>% # replace any SexClass value which is unk or NA to the temporally nearest other Sex Class value for this orangutan
+  mutate(
+    SUAQ_followlog.ClassFocal = if_else((SUAQ_followlog.ClassFocal%in%c("unk")),
+                                        own_valuefinder(
+                                          SUAQ_waypoints_11all20,
+                                          id,
+                                          "id",
+                                          "unk",
+                                          "focal",
+                                          "SUAQ_followlog.ClassFocal",
+                                          "temporally",
+                                          "manualDate"
+                                        ),
+                                        SUAQ_followlog.ClassFocal
+    )
+  )
+
+
+
+
+
+# test<- own_valuefinder(df=SUAQ_waypoints_11all20,pk=4876,pkcol="id",replaceterm="unk",startcol = "focal",targetcol="SUAQ_followlog.ClassFocal",lookuptype="temporally",datecol="manualDate")
+
+
+
+own_valuefinder <- function(df,pk,pkcol,replaceterm,startcol,targetcol,lookuptype,datecol){
     out <- tryCatch(
         { message("Try to find value in target collumn which as temporally/tabullary nearest and not the mentioned to 'replaceterm' or is the most abundant value")
           pk <- as.integer(pk)
-            targetvalue <- replaceterm
+          print(pk)
+          targetvalue <- replaceterm
             if(missing(datecol)) {
               print("Searching in df distance")
               if(lookuptype=="frequency"){
@@ -880,25 +918,21 @@ own_valuefinder <- function(df,pk,replaceterm,pkcol,targetcol,lookuptype,datecol
               }
             } else {
               if(lookuptype=="temporally"){
-                #print("Searching temporally")
-                #print(paste(pk,"temp pk"))
-                #print(pk)
-                date<- df[which(df$id == pk),]$datecol
-                #print(paste(df$datecol[pk],"temp date"))
-                df_forcorrsponvalue<- df %>% filter(targetcol==df[which(df$id == pk),]$targetcol)
-                df_forcorrsponvalue <-  df_forcorrsponvalue %>% mutate(diff_todate=abs(date-datecol))
+                date<- df[id==pk,datecol]
+                df_row <- df[id==pk,]
+                startcol_value <- df_row[,startcol]
+                df_forcorrsponvalue<- df %>% filter(df$focal==startcol_value)
+                df_forcorrsponvalue <-  df_forcorrsponvalue %>% mutate(diff_todate=abs(date-df_forcorrsponvalue[,datecol]))
                 df_forcorrsponvalue <-  df_forcorrsponvalue %>% arrange(diff_todate)
                 for(i in c(1:nrow(df_forcorrsponvalue))){
-                  print("Hello")
                   if(is.na(targetvalue)|(targetvalue==replaceterm)){
                     targetvalue<- df_forcorrsponvalue[i,targetcol]
-                    paste(print("found target value"),targetvalue)
                     }
                 }
               }
             }
           
-            return("hello")
+            return(targetvalue)
         },
         error=function(cond) {
             message("Error")
@@ -915,16 +949,15 @@ own_valuefinder <- function(df,pk,replaceterm,pkcol,targetcol,lookuptype,datecol
             return(replaceterm)
         },
         finally={
-            if(targetvalue==replaceterm){message("Didn't find a value")}
-            if(targetvalue!=replaceterm){message("Found a value")}
+            if(targetvalue%in%c(replaceterm)){message("Didn't found a value")}
+            if(!(targetvalue%in%c(replaceterm))){message(paste("found target value",targetvalue))}
             message("Finished")
         }
     )    
     return(out)
 }
 
-
-
+"jello"%in%c(NA)
 
 abs(SUAQ_waypoints_11all20$manualDate[1]-SUAQ_waypoints_11all20[SUAQ_waypoints_11all20$focal=="sarabi",]$manualDate)
 which.min(abs(SUAQ_waypoints_11all20$manualDate[1]-SUAQ_waypoints_11all20[SUAQ_waypoints_11all20$focal=="sarabi",]$manualDate))
