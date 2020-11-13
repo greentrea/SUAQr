@@ -82,10 +82,10 @@ mybasemap <- get_stamenmap(bbox = c(left = min(tmp_SUAQ_waypoints_morethan50gps_
 # API key: https://maps.googleapis.com/maps/api/directions/json?origin=Toronto&destination=Montreal&key=AIzaSyABLRgWSFHCKuSyFF7QgZpa9ZgIqc9izZg
 
 
-tmp_SUAQ_waypoints_morethan50gps_11all20_unflmale <- tmp_SUAQ_waypoints_morethan50gps_11all20 %>% filter(SUAQ_followlog.ClassFocal %in% c("unfl.male"))
+tmp_SUAQ_waypoints_morethan50gps_11all20_unflmale <- tmp_SUAQ_waypoints_morethan50gps_11all20 %>% filter(SUAQ_followlog.ClassFocal %in% c("unflanged male"))
 tmp_SUAQ_waypoints_morethan50gps_11all20_others <- tmp_SUAQ_waypoints_morethan50gps_11all20 %>% filter(SUAQ_followlog.ClassFocal %in% c("infant","juvenile","unk"))
-tmp_SUAQ_waypoints_morethan50gps_11all20_flmale <- tmp_SUAQ_waypoints_morethan50gps_11all20 %>% filter(SUAQ_followlog.ClassFocal %in% c("fl.male"))
-tmp_SUAQ_waypoints_morethan50gps_11all20_adfemales <- tmp_SUAQ_waypoints_morethan50gps_11all20 %>% filter(SUAQ_followlog.ClassFocal %in% c("ad.female","mother"))
+tmp_SUAQ_waypoints_morethan50gps_11all20_flmale <- tmp_SUAQ_waypoints_morethan50gps_11all20 %>% filter(SUAQ_followlog.ClassFocal %in% c("flanged male"))
+tmp_SUAQ_waypoints_morethan50gps_11all20_adfemales <- tmp_SUAQ_waypoints_morethan50gps_11all20 %>% filter(SUAQ_followlog.ClassFocal %in% c("adult female","mother"))
 
 # Define UI for application that draws a histogram
 ui <- fluidPage(
