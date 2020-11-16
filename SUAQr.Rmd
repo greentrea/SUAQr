@@ -229,8 +229,7 @@ SUAQ_followlog <-
 SUAQ_followlog <-
   SUAQ_followlog[, (colSums(is.na(SUAQ_followlog)) < nrow(SUAQ_followlog))]
 
-#### How many GPS follows should be available? How many do I have? because 140 are not found automatically in the followlog.
-SUAQ_followlog %>% filter(.$Date>as_date("01-01-2010")) %>% nrow()
+
 
 
 
@@ -323,9 +322,9 @@ SUAQ_waypoints_17_18 <- SUAQ_waypoints_17_18 %>%
          Age.Sex = if_else(`Age Sex`=="adolescent","juvenile",`Age Sex`),
          automaticDatetime=dmy_hms(paste(.$Date,.$`Actual Time`), tz = "Asia/Pontianak"),
          manualDatetime=dmy_hms(paste(.$Date,.$Time), tz = "Asia/Pontianak"),
-         manualDate=dmy(paste(.$Date), tz = "Asia/Pontianak"),
+         manualDate=date(dmy(paste(.$Date), tz = "Asia/Pontianak")),
          manualTime=hms::as_hms(.$Time), # returns a difftime as hopefully the tz isn't important or its saved in the right way.
-         automaticDate=dmy(paste(.$Date), tz = "Asia/Pontianak"),
+         automaticDate=date(dmy(paste(.$Date), tz = "Asia/Pontianak")),
          automaticTime=hms::as_hms(.$`Actual Time`),
          `Follow #`=as.character(`Follow #`),
          fileN=as.character(`Follow #`),
@@ -367,11 +366,11 @@ end_time <- Sys.time()
 print(start_time-end_time)
 ##### Two follows throw an error --> 20200225_Lois_Ahmad_FN, 20200225_Otto_Armas_FN are empty --> deleted from data files (not from delivery files)
 
-start_time <- Sys.time()
-SUAQ_followertracks_11_20<- suaq_gpx_list%>% 
-  map_df(~st_read_GPX_followertracks(.))
-end_time <- Sys.time()
-print(start_time-end_time)
+# start_time <- Sys.time()
+# SUAQ_followertracks_11_20<- suaq_gpx_list%>% 
+#   map_df(~st_read_GPX_followertracks(.))
+# end_time <- Sys.time()
+# print(start_time-end_time)
 
 ### 2.2 Tidying the attributes and values
 ##### extract the 5 attributes from filename: filedate, orangutanname, infant name, followername, followtype. "Adress" in the first field is left in the list to identify the start of a new list.
@@ -419,6 +418,7 @@ SUAQ_waypoints_11_20 <-SUAQ_waypoints_11_20 %>% slice(1:nrow(SUAQ_waypoints_11_2
 st_geometry(SUAQ_waypoints_11_20) <- SUAQ_waypoints_11_20$geometry
 SUAQ_waypoints_11_20 <- SUAQ_waypoints_11_20[,(colSums(is.na(SUAQ_waypoints_11_20))<nrow(SUAQ_waypoints_11_20))]
 #### 2.2.3 creating automatic Datetime (from gps collumn time or collumn cmt) and manual Datetime (from input user GPS Device and from name of Data file)
+
 SUAQ_waypoints_11_20 <-
   SUAQ_waypoints_11_20 %>%
   mutate(
@@ -433,18 +433,23 @@ SUAQ_waypoints_11_20 <-
     manualDate = date(as.POSIXct(ymd(filedate),
                             format = "%Y-%m-%d",
                             tz = "Asia/Pontianak")),
-    manualTime = hms::as_hms(str_extract(name, "^\\d{4}")),
-
+    manualTime = hms::as_hms(as.POSIXct(
+      paste0(str_extract(name, "^\\d{4}")),
+      format = "%H%M",
+      tz = "Asia/Pontianak"
+    )),
   ) %>% 
   mutate(
     automaticDatetime= if_else(is.na(automaticDatetime),ymd_hms(cmt, tz = "Asia/Pontianak"),automaticDatetime),
-    manualTime=if_else(is.na(manualTime),ymd_hms(hms::as_hms(manualDatetime),manualTime)),
-    manualDate=if_else(is.na(manualDate),date(manualDatetime),manualDatetime)) %>% 
+    manualTime=if_else(is.na(manualTime),hms::as_hms(manualDatetime),manualTime),
+    manualDate=if_else(is.na(manualDate),date(manualDatetime),manualDate)
+    ) %>% 
   mutate(
     automaticDate = date(automaticDatetime),
     automaticTime = hms::as_hms(automaticDatetime),
     name=str_extract(name, "[^\\d{4} ].*") # not matching the digits in the beginning plus whitespace but everything after
   )
+
 ##### adding automatic datetime if 
 SUAQ_waypoints_11_20[is.na(SUAQ_waypoints_11_20$automaticDatetime),] %<>% mutate(automaticDatetime = cmt) # piping forth and back. In documentation its written x %<>% foo %>% bar,  its the same as x <- x %>% foo %>% bar. In this case thats not correct!
 
@@ -628,14 +633,14 @@ SUAQ_waypoints_11_20_sf <- cbind(SUAQ_waypoints_11_20_sf,coordinates_tmp)
 SUAQ_waypoints_11_20<- st_drop_geometry(SUAQ_waypoints_11_20_sf)
 
 
-##### Create SF Points Dataset trackpoints 2010-2020
-SUAQ_followertracks_11_20<- st_as_sf(SUAQ_followertracks_11_20, 
-                          crs = 4326)
-SUAQ_followertracks_11_20_sf <- st_transform(SUAQ_followertracks_11_20,32647)
-coordinates_tmp <- st_coordinates(SUAQ_followertracks_11_20_sf)
-colnames(coordinates_tmp) <- c("E","N")
-SUAQ_followertracks_11_20_sf <- cbind(SUAQ_followertracks_11_20_sf,coordinates_tmp)
-SUAQ_followertracks_11_20<- st_drop_geometry(SUAQ_followertracks_11_20_sf)
+# ##### Create SF Points Dataset trackpoints 2010-2020
+# SUAQ_followertracks_11_20<- st_as_sf(SUAQ_followertracks_11_20, 
+#                           crs = 4326)
+# SUAQ_followertracks_11_20_sf <- st_transform(SUAQ_followertracks_11_20,32647)
+# coordinates_tmp <- st_coordinates(SUAQ_followertracks_11_20_sf)
+# colnames(coordinates_tmp) <- c("E","N")
+# SUAQ_followertracks_11_20_sf <- cbind(SUAQ_followertracks_11_20_sf,coordinates_tmp)
+# SUAQ_followertracks_11_20<- st_drop_geometry(SUAQ_followertracks_11_20_sf)
 
 
 ##### Preparing 2017-18 dataset (is already in right coordinate system)
@@ -660,7 +665,9 @@ SUAQ_waypoints_11_20 <-
   ) %>% 
 dplyr::select(-orangutanname)
 
-SUAQ_waypoints_11all20<- SUAQ_waypoints_11_20 %>%  bind_rows(SUAQ_waypoints_17_18) %>% bind_rows(SUAQ_waypoints_11_20_male)
+SUAQ_waypoints_11all20<- SUAQ_waypoints_11_20 %>%  
+  bind_rows(SUAQ_waypoints_17_18) %>% 
+  bind_rows(SUAQ_waypoints_11_20_male)
 SUAQ_waypoints_11all20 <- SUAQ_waypoints_11all20%>%
   dplyr::select(-Date,
          -FollowIndData,
@@ -820,13 +827,7 @@ specs_noFN <- SUAQ_waypoints_11all20 %>%
   group_by(fileN,focal,.$manualDate,.$automaticDate,.$follow,.$tmp_FollowNumber_M_focal_followname,.$tmp_FollowNumber_M_focal_followname2,.$tmp_FollowNumber_M_focal,.$tmp_FollowNumber_M_focal_concDate,.$tmp_FollowNumber_M_focal_automatic,.$tmp_FollowNumber_M_infant,.$tmp_FollowNumber_M_followname,.$tmp_FollowNumber_M_followname2) %>% 
   summarise(count=n())
 
-test1 <- SUAQ_waypoints_11all20 %>% filter(fileN=="20100115_Ellie_Unk_FL")
 
-
-test <- SUAQ_followlog %>% filter(.$SUAQ_followlog.Date==as.POSIXct("2011-01-15",
-                            format = "%Y-%m-%d",
-                            tz = "Asia/Pontianak"))
-test <- SUAQ_followlog %>% filter((.$SUAQ_followlog.FocalName=="ellie")&(SUAQ_followlog.GPS=="Yes"))
 
 #### Quality check for Followlog join: Finding potential falsly joined follownumbers
 ##### FN with multiple dates. Only FN: 9999 which is wrong has fuzzy dates
@@ -845,14 +846,13 @@ names(SUAQ_followlog) <- paste0("SUAQ_followlog.", names(SUAQ_followlog))
 SUAQ_waypoints_11all20 <- SUAQ_waypoints_11all20 %>%
   left_join(SUAQ_followlog[,c(2,4,14,16,17,19,20,21,22,23,25,29,30,31,32,33,34,35,36,38,39,40,41,42,43,46,55,56,57,58,59,60,61,62,63,64,65,66,67:74)],by=c("follow"="SUAQ_followlog.FollowNumber"),suffix = c("", "_fromFollowlog"))
 
-
-
+id <- rownames(SUAQ_orangutans)
+SUAQ_orangutans <- cbind(id=id, SUAQ_orangutans)
 
 
 ################################################################################################################################
 #### Find places where wrong FN was given. Mostly because an orangutans FN is not given because it was followed during a FN under anothers OU Name f.e. because the GPS is from an infant of the followlogs orangutanname.
-id <- rownames(SUAQ_orangutans)
-SUAQ_orangutans <- cbind(id=id, SUAQ_orangutans)
+
 
 tmp_colnames<- colnames(SUAQ_waypoints_11all20)
 view(as.data.frame(tmp_colnames))
@@ -887,8 +887,8 @@ SUAQ_waypoints_11all20_test <- SUAQ_waypoints_11all20_test %>%
 test <- SUAQ_waypoints_11all20 %>% filter(focal!=SUAQ_followlog.FocalName)
 test_df<- SUAQ_waypoints_11all20_test %>% filter(focal=="cissy")
 test <- SUAQ_waypoints_11all20_test %>% group_by(focal,manualDate,SUAQ_followlog.FocalName,.$follownr_reliability,follow,missmatch_or_FNambiguity) %>% summarise(count=n())
-test_df <- test %>% left_join(SUAQ_orangutans[,c(1,4,8)],by=c("focal"="SUAQ_orangutans.orangutanname","SUAQ_followlog.FocalName"="SUAQ_orangutans.Mother"),keep = FALSE,na_matches = "never",suffix=c("","infantMother."))
-test_df <- test_df %>% left_join(SUAQ_orangutans[,c(1,4,8)],by=c("focal"="SUAQ_orangutans.Mother","SUAQ_followlog.FocalName"="SUAQ_orangutans.orangutanname"),keep = FALSE,na_matches = "never",suffix=c("","motherInfant."))
+test_df <- test %>% left_join(SUAQ_orangutans[,c(2,3,6)],by=c("focal"="SUAQ_orangutans.orangutanname","SUAQ_followlog.FocalName"="SUAQ_orangutans.Mother"),keep = FALSE,na_matches = "never",suffix=c("","infantMother."))
+test_df <- test_df %>% left_join(SUAQ_orangutans[,c(2,3,6)],by=c("focal"="SUAQ_orangutans.Mother","SUAQ_followlog.FocalName"="SUAQ_orangutans.orangutanname"),keep = FALSE,na_matches = "never",suffix=c("","motherInfant."))
 colnames(SUAQ_followlog)
 
 test2<- SUAQ_waypoints_11all20 %>% filter(follow==2811)
@@ -919,12 +919,12 @@ id <- rownames(SUAQ_waypoints_11all20)
 SUAQ_waypoints_11all20 <- SUAQ_waypoints_11all20 %>% dplyr::select(-id)
 SUAQ_waypoints_11all20 <- cbind(id=id, SUAQ_waypoints_11all20)
 
-#### For trackpoints aswell
-SUAQ_followertracks_11_20 <-
-  SUAQ_followertracks_11_20 %>% filter(E > 323000 &
-                                         E < 328000 &
-                                         N > 336000 &
-                                         N < 365000)
+# #### For trackpoints aswell
+# SUAQ_followertracks_11_20 <-
+#   SUAQ_followertracks_11_20 %>% filter(E > 323000 &
+#                                          E < 328000 &
+#                                          N > 336000 &
+#                                          N < 365000)
 
 ### 6.4. Cleaning important attributes
 ##### Find double saved waypoints/ways? due to data flow.
@@ -1038,24 +1038,24 @@ own_valuefinder <- function(df,pk,pkcol,replaceterm,startcol,targetcol,lookuptyp
     return(out)
 }
 
-SUAQ_waypoints_11all20 <-
-  SUAQ_waypoints_11all20 %>% # replace any SexClass value which is unk or NA to the temporally nearest other Sex Class value for this orangutan
-  rowwise()%>% 
-  mutate(
-    SUAQ_followlog.ClassFocal_new = if_else((SUAQ_followlog.ClassFocal%in%c("unk")),
-                                        own_valuefinder(
-                                          SUAQ_waypoints_11all20,
-                                          id,
-                                          "id",
-                                          "unk",
-                                          "focal",
-                                          "SUAQ_followlog.ClassFocal",
-                                          "temporally",
-                                          "manualDate"
-                                        ),
-                                        SUAQ_followlog.ClassFocal
-    )
-  )
+# SUAQ_waypoints_11all20 <-
+#   SUAQ_waypoints_11all20 %>% # replace any SexClass value which is unk or NA to the temporally nearest other Sex Class value for this orangutan
+#   rowwise()%>% 
+#   mutate(
+#     SUAQ_followlog.ClassFocal_new = if_else((SUAQ_followlog.ClassFocal%in%c("unk")),
+#                                         own_valuefinder(
+#                                           SUAQ_waypoints_11all20,
+#                                           id,
+#                                           "id",
+#                                           "unk",
+#                                           "focal",
+#                                           "SUAQ_followlog.ClassFocal",
+#                                           "temporally",
+#                                           "manualDate"
+#                                         ),
+#                                         SUAQ_followlog.ClassFocal
+#     )
+#   )
 
 
 
