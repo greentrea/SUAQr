@@ -187,6 +187,47 @@ st_read_GPX_waypoints <- function(flnm){
     )    
     return(out)
 }
+
+
+
+#### Custom functions for analysis
+clockS = function(t){hour(t)*3600+minute(t)*60+second(t)}
+
+
+euclid <- function(x1,y1,x2,y2){
+  return(sqrt((x1-x2)^2+(y1-y2)^2))
+}
+
+turning_angle <- function(x,y,lead_lag = 1){ 
+  if(length(x) < 3){return(NA)}
+  if(length(x) != length(y)){stop("x and y must be of the same length")}
+  p1x <- lag(x,lead_lag)
+  p1y <- lag(y,lead_lag)
+  p2x <- x
+  p2y <- y
+  p3x <- lead(x,lead_lag)
+  p3y <- lead(y,lead_lag)
+  p12 <- euclid(p1x,p1y,p2x,p2y)
+  p13 <- euclid(p1x,p1y,p3x,p3y)
+  p23 <- euclid(p2x,p2y,p3x,p3y)
+  rad <- acos((p12^2+p23^2-p13^2)/(2*p12*p23))
+  grad <- (rad*180)/pi
+  grad[p12 == 0 | p23 == 0] <- NA
+  d <-  (p3x-p1x)*(p2y-p1y)-(p3y-p1y)*(p2x-p1x)
+  d <- ifelse(d == 0,1,d)
+  d[d>0] <- 1
+  d[d<0] <- -1
+  d[d==0] <- 1
+  turning <- grad*d*-1+180
+  return(turning)
+}
+
+# Source https://exploratory.io/note/kanaugust/1701090969905358
+calculate_mode <- function(x) {
+  uniqx <- unique(na.omit(x))
+  uniqx[which.max(tabulate(match(x, uniqx)))]
+}
+
 ```
 
 #### SUAQ research site
@@ -233,8 +274,19 @@ SUAQ_followlog <-
 
 
 
+
+
 ### 0.2 Orangutans names and information
 SUAQ_orangutans<- read_csv2("data/20200920_Orangutan_ID.csv")
+
+SUAQ_matriline<- read_csv2("data/20201117_matriline.csv")
+SUAQ_matriline <- SUAQ_matriline %>% rename_all(tolower)
+names(SUAQ_matriline) <- paste0("SUAQ_matriline.", names(SUAQ_matriline))
+
+SUAQ_offspring<- read_csv2("data/20201117_offspring.csv")
+SUAQ_offspring <- SUAQ_offspring %>% rename_all(tolower)
+names(SUAQ_offspring) <- paste0("SUAQ_offspring.", names(SUAQ_offspring))
+
 SUAQ_orangutans<- SUAQ_orangutans[rowSums(is.na(SUAQ_orangutans)) != ncol(SUAQ_orangutans),]
 #### delete empty collumns of orangutan list
 SUAQ_orangutans <- SUAQ_orangutans[,(colSums(is.na(SUAQ_orangutans))<nrow(SUAQ_orangutans))]
@@ -267,6 +319,10 @@ SUAQ_orangutans <- SUAQ_orangutans %>%
            "SetBirthDateForAnalyses"="Set birth date for analyses",
            "FeetOrToes"="Feet/toes")
          )
+SUAQ_orangutans <- SUAQ_orangutans %>% left_join(SUAQ_matriline, by=c("orangutanname"="SUAQ_matriline.focal"))
+SUAQ_orangutans <- SUAQ_orangutans %>% left_join(SUAQ_offspring, by=c("orangutanname"="SUAQ_offspring.focal"))
+
+
 #### Adding occurences of other unofficial orangutannames written in the followlog
 ##### Look what combinations are available for sex and name combinations. Result has f.e. double occuring OU where the sex was falsly categorized but also general annotations like "infant, male" & "infant, female" therefore we wanna keep the alias which were used for f.e. infant both male and female but we wanna get rid of double occuring names with two sexes.
 SUAQ_followlog_orangutanlevels_sex<-SUAQ_followlog %>% 
@@ -311,6 +367,18 @@ SUAQ_orangutans<- SUAQ_orangutans %>% drop_na(orangutanname) %>%
 ### 0.3 GPX of path network in SUAQ
 
 SUAQ_pathnetwork<- read_GPX(file="data/SUAQ_Peta_WithLines.GPX",layers = c("routes"))
+
+
+### 0.4 FAI data 
+SUAQ_fai<- read_csv2("data/20201117_FAI.csv")
+SUAQ_fai <- SUAQ_fai %>% rename_all(tolower)
+names(SUAQ_fai) <- paste0("SUAQ_fai", names(SUAQ_fai))
+
+### 0.4 Weather data 
+SUAQ_weather<- read_csv2("data/20201117_SUAQ_weather.csv")
+SUAQ_offspring <- SUAQ_weather %>% rename_all(tolower)
+names(SUAQ_weather) <- paste0("SUAQ_weather.", names(SUAQ_weather))
+
 
 ## 1. Getting data from excel/csv files for year 2017/18
 SUAQ_waypoints_17_18 <- read_csv2("data/20200415_Master_GPS_Suaq_2017_Mar18_SH.csv")
@@ -700,13 +768,12 @@ tmp4 <- SUAQ_followlog[,c(2,5,6,7,14)] %>% mutate(tmp_FollowNumber_M_focal_concD
   mutate(Date=as.Date(paste0(Year,"-",Month,"-",Day),format = "%Y-%m-%d",tz = "Asia/Pontianak"))%>%
   dplyr::select(-FollowNumber,-Day,-Month,-Year)
 tmp5<- SUAQ_followlog[,c(2,4,14)] %>% mutate(tmp_FollowNumber_M_focal_automatic=.$FollowNumber) %>% dplyr::select(-FollowNumber)
-tmp6<- SUAQ_followlog[,c(2,4,14)] %>% mutate(tmp_FollowNumber_M_infant=.$FollowNumber) %>%
+tmp6<- SUAQ_followlog[,c(2,4,19)] %>% mutate(tmp_FollowNumber_M_followname=.$FollowNumber) %>%
   dplyr::select(-FollowNumber)
-tmp7<- SUAQ_followlog[,c(2,4,19)] %>% mutate(tmp_FollowNumber_M_followname=.$FollowNumber) %>%
+tmp7<- SUAQ_followlog[,c(2,4,20)] %>% mutate(tmp_FollowNumber_M_followname2=.$FollowNumber) %>%
   dplyr::select(-FollowNumber)
-tmp8<- SUAQ_followlog[,c(2,4,20)] %>% mutate(tmp_FollowNumber_M_followname2=.$FollowNumber) %>%
+tmp8<- SUAQ_followlog[,c(2,4,14)] %>% mutate(tmp_FollowNumber_M_infant=.$FollowNumber) %>%
   dplyr::select(-FollowNumber)
-
 
 ##### Join followlog 
 SUAQ_waypoints_11all20 <- SUAQ_waypoints_11all20 %>%
@@ -720,11 +787,11 @@ SUAQ_waypoints_11all20 <- SUAQ_waypoints_11all20 %>%
 SUAQ_waypoints_11all20 <- SUAQ_waypoints_11all20 %>%
   left_join(y=tmp5,by=c("automaticDate"="Date","focal"="FocalName"),keep = FALSE,na_matches = "never")
 SUAQ_waypoints_11all20 <- SUAQ_waypoints_11all20 %>%
-  left_join(y=tmp6,by=c("manualDate"="Date","infantname"="FocalName"),keep = FALSE,na_matches = "never")
+  left_join(y=tmp6,by=c("manualDate"="Date","followername"="Observer1"),keep = FALSE,na_matches = "never")
 SUAQ_waypoints_11all20 <- SUAQ_waypoints_11all20 %>%
-  left_join(y=tmp7,by=c("manualDate"="Date","followername"="Observer1"),keep = FALSE,na_matches = "never")
+  left_join(y=tmp7,by=c("manualDate"="Date","followername"="Observer2"),keep = FALSE,na_matches = "never")
 SUAQ_waypoints_11all20 <- SUAQ_waypoints_11all20 %>%
-  left_join(y=tmp8,by=c("manualDate"="Date","followername"="Observer2"),keep = FALSE,na_matches = "never")
+  left_join(y=tmp8,by=c("manualDate"="Date","infantname"="FocalName"),keep = FALSE,na_matches = "never")
 
 
 temp <- SUAQ_waypoints_11all20 %>% filter(id %in% c(12184,12185,12186,12187,12188,12189,12190,12191,12192,12193,12194,12195,12196,12197,12198,12199,12200,12201,12202,12203,12204,29043,29044,29045,29046,29047,29048,29049,29050,4743,4744,4745,4746,4747,4748,4749))
@@ -732,37 +799,38 @@ temp <- SUAQ_waypoints_11all20 %>% filter(id %in% c(12184,12185,12186,12187,1218
 
 SUAQ_waypoints_11all20 <- SUAQ_waypoints_11all20 %>%
   mutate(follow=as.numeric(follow)) %>%
+  mutate(follownr_reliability=if_else((!is.na(follow)),"high: FN already given in GPS","low: unknown")) %>%
   mutate(follow=if_else(is.na(follow),as.numeric(tmp_FollowNumber_M_focal_followname),follow)) %>%
   #dplyr::select(-tmp_FollowNumber_M_focal_followname) %>%
-  mutate(follownr_reliability=if_else(!is.na(follow),"high: date, name, observer or more","low: unknown")) %>%
+  mutate(follownr_reliability=if_else((!is.na(follow))&(follownr_reliability=="low: unknown"),"high: date, name, observer or more",follownr_reliability)) %>%
   
   mutate(follow=if_else(is.na(follow),as.numeric(tmp_FollowNumber_M_focal_followname2),follow)) %>%
   #dplyr::select(-tmp_FollowNumber_M_focal_followname2) %>%
-  mutate(follownr_reliability=if_else(!is.na(follow),"high: date, name, observer2","low: unknown")) %>%
+  mutate(follownr_reliability=if_else((!is.na(follow))&(follownr_reliability=="low: unknown"),"high: date, name, observer2",follownr_reliability)) %>%
   
   mutate(follow=if_else(is.na(follow),as.numeric(tmp_FollowNumber_M_focal_concDate),follow)) %>%
   #dplyr::select(-tmp_FollowNumber_M_focal_concDate) %>% 
-  mutate(follownr_reliability=if_else(!is.na(follow),"high: concDate, name","low: unknown")) %>%
+  mutate(follownr_reliability=if_else((!is.na(follow))&(follownr_reliability=="low: unknown"),"high: concDate, name",follownr_reliability)) %>%
   
   mutate(follow=if_else(is.na(follow),as.numeric(tmp_FollowNumber_M_focal),follow)) %>%
   #dplyr::select(-tmp_FollowNumber_M_focal) %>% 
-  mutate(follownr_reliability=if_else(!is.na(follow),"high: date, name","low: unknown")) %>%
+  mutate(follownr_reliability=if_else((!is.na(follow))&(follownr_reliability=="low: unknown"),"high: date, name",follownr_reliability)) %>%
   
   mutate(follow=if_else(is.na(follow),as.numeric(tmp_FollowNumber_M_focal_automatic),follow)) %>%
   #dplyr::select(-tmp_FollowNumber_M_focal_automatic) %>%
-  mutate(follownr_reliability=if_else(!is.na(follow),"medium: aDate, name","low: unknown")) %>%
+  mutate(follownr_reliability=if_else((!is.na(follow))&(follownr_reliability=="low: unknown"),"medium: aDate, name",follownr_reliability)) %>%
   
   mutate(follow=if_else(is.na(follow),tmp_FollowNumber_M_followname,follow)) %>% 
   #dplyr::select(-tmp_FollowNumber_M_followname) %>% 
-  mutate(follownr_reliability=if_else(!is.na(follow),"low: date, followername=observer1","low: unknown")) %>%
+  mutate(follownr_reliability=if_else((!is.na(follow))&(follownr_reliability=="low: unknown"),"low: date, followername=observer1",follownr_reliability)) %>%
   
   mutate(follow=if_else(is.na(follow),tmp_FollowNumber_M_followname2,follow)) %>% 
   #dplyr::select(-tmp_FollowNumber_M_followname2) %>%
-  mutate(follownr_reliability=if_else(!is.na(follow),"low: date, followername=observer2","low: unknown")) %>%
+  mutate(follownr_reliability=if_else((!is.na(follow))&(follownr_reliability=="low: unknown"),"low: date, followername=observer2",follownr_reliability)) %>%
 
   mutate(follow=if_else(is.na(follow),tmp_FollowNumber_M_infant,follow)) %>%
   #dplyr::select(-tmp_FollowNumber_M_infant) %>% 
-  mutate(follownr_reliability=if_else(!is.na(follow),"low: Date, infantname","low: unknown"))
+  mutate(follownr_reliability=if_else((!is.na(follow))&(follownr_reliability=="low: unknown"),"low: Date, infantname",follownr_reliability))
 
 
 #### Delete manually wrongly duplicated follows where multiple followlogs matched (better would be to make the regex etc and descripton or database better not having these problems)
@@ -771,7 +839,10 @@ SUAQ_waypoints_11all20<- SUAQ_waypoints_11all20 %>% distinct() # 60 GPS points a
 
 ##### find duplicates
 temp <- SUAQ_waypoints_11all20 %>% group_by(id) %>% summarise(gpscount=n())
-temp<- temp %>% filter(as.integer(gpscount)>1)
+temp<- temp %>% filter(as.integer(gpscount)>1) # if this df is not empty --> Look at duplicates they somehow duplicated atfer join.
+
+##### 
+test <- SUAQ_waypoints_11all20 %>% filter(follow==717)
 
 ##### delete them
 SUAQ_waypoints_11all20 <- SUAQ_waypoints_11all20 %>% 
@@ -822,12 +893,16 @@ SUAQ_waypoints_11all20 <-SUAQ_waypoints_11all20 %>%
     )
 
 #### Which ones don't have a follownumber. Add a dummy FN.
-specs_noFN <- SUAQ_waypoints_11all20 %>% 
+specs_noFNAfterJoinAndManualAdj <- SUAQ_waypoints_11all20 %>% 
   filter(is.na(follow)) %>% 
   group_by(fileN,focal,.$manualDate,.$automaticDate,.$follow,.$tmp_FollowNumber_M_focal_followname,.$tmp_FollowNumber_M_focal_followname2,.$tmp_FollowNumber_M_focal,.$tmp_FollowNumber_M_focal_concDate,.$tmp_FollowNumber_M_focal_automatic,.$tmp_FollowNumber_M_infant,.$tmp_FollowNumber_M_followname,.$tmp_FollowNumber_M_followname2) %>% 
-  summarise(count=n())
+  summarise(count=n()) # new follows without a follownumber
 
-
+#### Giving a random FN
+SUAQ_waypoints_11all20<- SUAQ_waypoints_11all20 %>% ungroup() %>% 
+  group_by(fileN,focal,.$manualDate,.$automaticDate,.$follow,.$tmp_FollowNumber_M_focal_followname,.$tmp_FollowNumber_M_focal_followname2,.$tmp_FollowNumber_M_focal,.$tmp_FollowNumber_M_focal_concDate,.$tmp_FollowNumber_M_focal_automatic,.$tmp_FollowNumber_M_infant,.$tmp_FollowNumber_M_followname,.$tmp_FollowNumber_M_followname2) %>% 
+  mutate(follow = if_else(is.na(follow),as.numeric(row_number()+1100018),follow))%>% ungroup()
+# Todo: Get them a random FN!
 
 #### Quality check for Followlog join: Finding potential falsly joined follownumbers
 ##### FN with multiple dates. Only FN: 9999 which is wrong has fuzzy dates
@@ -857,8 +932,8 @@ SUAQ_orangutans <- cbind(id=id, SUAQ_orangutans)
 tmp_colnames<- colnames(SUAQ_waypoints_11all20)
 view(as.data.frame(tmp_colnames))
 ##### Filter all rows where focal not matching focal name in followlog. Look if any other attribute contains the focal Name of the GPS entry.
-SUAQ_waypoints_11all20_test <- mutate_all(SUAQ_waypoints_11all20, .funs=str_to_lower)
-SUAQ_waypoints_11all20_test <- SUAQ_waypoints_11all20_test %>%
+tmp_SUAQ_waypoints_11all20 <- mutate_all(SUAQ_waypoints_11all20, .funs=str_to_lower)
+tmp_SUAQ_waypoints_11all20 <- tmp_SUAQ_waypoints_11all20 %>%
   filter(focal != SUAQ_followlog.FocalName) %>% rowwise() %>% 
   mutate(
     missmatch_or_FNambiguity = if_else(
@@ -885,13 +960,15 @@ SUAQ_waypoints_11all20_test <- SUAQ_waypoints_11all20_test %>%
     )
   )
 test <- SUAQ_waypoints_11all20 %>% filter(focal!=SUAQ_followlog.FocalName)
-test_df<- SUAQ_waypoints_11all20_test %>% filter(focal=="cissy")
-test <- SUAQ_waypoints_11all20_test %>% group_by(focal,manualDate,SUAQ_followlog.FocalName,.$follownr_reliability,follow,missmatch_or_FNambiguity) %>% summarise(count=n())
-test_df <- test %>% left_join(SUAQ_orangutans[,c(2,3,6)],by=c("focal"="SUAQ_orangutans.orangutanname","SUAQ_followlog.FocalName"="SUAQ_orangutans.Mother"),keep = FALSE,na_matches = "never",suffix=c("","infantMother."))
-test_df <- test_df %>% left_join(SUAQ_orangutans[,c(2,3,6)],by=c("focal"="SUAQ_orangutans.Mother","SUAQ_followlog.FocalName"="SUAQ_orangutans.orangutanname"),keep = FALSE,na_matches = "never",suffix=c("","motherInfant."))
-colnames(SUAQ_followlog)
+test_df<- tmp_SUAQ_waypoints_11all20 %>% filter(focal=="cissy")
+test <- tmp_SUAQ_waypoints_11all20 %>% group_by(focal,manualDate,SUAQ_followlog.FocalName,.$follownr_reliability,follow,missmatch_or_FNambiguity,.$) %>% summarise(count=n())
 
-test2<- SUAQ_waypoints_11all20 %>% filter(follow==2811)
+test_df <- test %>% left_join(SUAQ_orangutans[,c(2,3,6)],by=c("focal"="orangutanname","SUAQ_followlog.FocalName"="Mother"),keep = FALSE,na_matches = "never",suffix=c("","infantMother."))
+specstest_FocalNameNotMatching <- test_df %>% left_join(SUAQ_orangutans[,c(2,3,6)],by=c("focal"="Mother","SUAQ_followlog.FocalName"="orangutanname"),keep = FALSE,na_matches = "never",suffix=c("","motherInfant."))
+
+
+
+# TODO: Delete all the joined Followlog attributes for the found ambigous match of AgeClass and fill the empty fields with own function.
 ####################################################################################################################
 
 
@@ -1064,10 +1141,7 @@ own_valuefinder <- function(df,pk,pkcol,replaceterm,startcol,targetcol,lookuptyp
 specs_FollowlogOrangutanlog_sexdifference <- SUAQ_waypoints_11all20 %>% group_by(follow,focal,manualDate,SUAQ_followlog.SexFocal,SUAQ_orangutans.Sex) %>% summarise(count=n()) %>%  filter(SUAQ_followlog.SexFocal!=SUAQ_orangutans.Sex) # there are 788 difference in sex between joined info
 specs_FollowlogOrangutanlog_ClassDifference <- SUAQ_waypoints_11all20 %>% group_by(follow,focal,manualDate,SUAQ_followlog.ClassFocal,SUAQ_orangutans.Class) %>% summarise(count=n()) %>% filter(SUAQ_followlog.ClassFocal!=SUAQ_orangutans.Class) 
 
-
-
-  
-  
+test<- SUAQ_waypoints_11all20 %>%ungroup() %>%  filter(.$follow==1934)
 
 ### 6.5. Create project Master-Dataframes
 ##### save all waypoints as sf
@@ -1088,7 +1162,7 @@ write_csv(SUAQ_waypoints_11all20,path="shinyapp/orangapp/data/SUAQ_waypoints_11a
 
 
 ```{r R-specific preparation}
-##### DATA WRANGLING ######
+##### Create analysis collumns ######
 # Create timelag
 SUAQ_waypoints_11all20_sf<- SUAQ_waypoints_11all20_sf %>% 
   group_by(follow)%>% arrange(manualTime,.by_group = TRUE) %>% 
@@ -1100,9 +1174,51 @@ SUAQ_waypoints_11all20_sf %>% ggplot(aes(.$timelag))+geom_histogram(binwidth = 3
 #suaq_orangutan_follows_2020_sf<- suaq_orangutan_follows_2020_sf %>%  arrange(desc(datetime))
 #SUAQ_data<- SUAQ_data %>%  arrange(desc(.$CreationTime))
 #### Laufnummer für GPS Punkt erstellen
-SUAQ_waypoints_11all20_sf %>% ggplot(aes(manualTime))+geom_histogram()
-SUAQ_waypoints_11all20_sf %>% filter(is.na(manualTime)) %>% ggplot(aes(hms::as_hms(automaticTime)))+geom_histogram() # time before conversion
-specs_follows_points_in_night<- SUAQ_waypoints_11all20_sf %>% filter(manualTime<lubridate::hms("04:00:00")) # probably one outlier and one track in the night. Or wrong time settings
+SUAQ_waypoints_11all20_sf %>% ggplot(aes(manualTime))+geom_histogram(bins = 1000)
+SUAQ_waypoints_11all20_sf %>% filter(is.na(manualTime)) %>% 
+  ggplot(aes(hms::as_hms(automaticTime)))+geom_histogram(bins = 1000) # time before conversion
+specs_follows_points_in_night<- SUAQ_waypoints_11all20_sf %>% 
+  filter(is.na(manualTime)&(automaticTime<lubridate::hms("04:00:00"))) # probably one outlier and one track in the night. Or wrong time settings
+
+
+## DJL
+#### Create timelag to last waypoints #### 
+SUAQ_waypoints_11all20<- SUAQ_waypoints_11all20 %>% 
+  group_by(follow)%>% arrange(manualTime,.by_group = TRUE) %>% 
+  mutate(timelag=as.numeric(difftime(as.POSIXlt(manualTime),
+                                     as.POSIXlt(lag(manualTime)),units 
+                                     ="secs")),
+         # calculate distance with approach number 1 --> st_distance but to do that we need to calculate lead first because the lead function doesnt work within st distance (not same datatype (df))
+         manual_distTolast=sqrt((E-lag(E))^2+(N-lag(N))^2),
+         speed = manual_distTolast/timelag,
+         turningAngle=turning_angle(E,N)
+         )
+SUAQ_waypoints_11all20 %>% ggplot(aes(.$timelag))+geom_histogram(bins = 1000)+scale_y_log10()
+SUAQ_waypoints_11all20 %>% ggplot(aes(.$manual_distTolast))+geom_histogram(bins = 1000)+scale_y_log10()
+
+DJL_follows<- SUAQ_waypoints_11all20 %>% 
+  filter(followtype=="NN") %>% 
+  group_by(follow,focal,SUAQ_followlog.ClassFocal) %>% 
+  summarise(DJL=sum(as.numeric(manual_distTolast), na.rm = TRUE),count=n()) %>% 
+  arrange(SUAQ_followlog.ClassFocal) %>% ungroup() %>% 
+  mutate(focal = fct_reorder(focal, SUAQ_followlog.ClassFocal))
+
+?reorder()
+tmp_SUAQ_waypoints_11all20$focal = with(tmp_SUAQ_waypoints_11all20,
+                                        reorder(focal, orangutan_tot_num_of_gps, length))
+
+DJL_follows %>% 
+  ggplot( aes(x=focal, y=DJL)) +
+    geom_boxplot(aes(x=focal, y=DJL, fill=focal)) +
+    scale_fill_viridis(discrete = TRUE, alpha=0.6) +
+    geom_jitter(color="black", size=0.4, alpha=0.9,aes(fill=SUAQ_followlog.ClassFocal)) +
+    ggtitle("Day journey length for NN follows in Suaq grouped by orangutans") +
+    xlab("")+
+    coord_cartesian(ylim=c(0, 5000))+
+    theme(legend.position = "none")+
+    theme(axis.text.x = element_text(angle = 90))
+
+
 ```
 
 
