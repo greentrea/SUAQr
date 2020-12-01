@@ -1256,7 +1256,9 @@ SUAQ_waypoints_11all20<- SUAQ_waypoints_11all20 %>%
                                      ="secs")),
          # calculate distance with approach number 1 --> st_distance but to do that we need to calculate lead first because the lead function doesnt work within st distance (not same datatype (df))
          manual_distTolast=sqrt((E-lag(E))^2+(N-lag(N))^2),
-         speed = manual_distTolast/timelag,
+         manual_distToNext=sqrt((E-lead(E))^2+(N-lead(N))^2),
+         speed_last = manual_distTolast/timelag,
+         speed_next = manual_distToNext/timelag,
          turningAngle=turning_angle(E,N)
          )
 SUAQ_waypoints_11all20 %>% ggplot(aes(.$timelag))+geom_histogram(bins = 1000)+scale_y_log10()
@@ -1484,45 +1486,59 @@ plot_orangutan_followhisto_best<- tmp_SUAQ_waypoints_11all20 %>%
 plot_orangutan_followhisto_best
 
 
-ggMarginal(plot_orangutan_followperiods, type="histogram")
+
+
 
 p1 <- tmp_SUAQ_waypoints_11all20 %>%
   filter(!is.na(focal)) %>%
   filter(SUAQ_orangutans.Sex=="female") %>% 
+  group_by(focal,manualDate,follow) %>% summarise() %>% 
   ggplot(aes(manualDate, focal)) +
-  geom_point(aes(colour = focal)) +
+  annotate("rect", xmin=as.Date("2010-01-01"), xmax=as.Date("2010-12-31"), ymin=-Inf, ymax=Inf, alpha=0.1, fill="coral4")+
+  annotate("rect", xmin=as.Date("2012-01-01"), xmax=as.Date("2012-12-31"), ymin=-Inf, ymax=Inf, alpha=0.1, fill="coral4")+
+  annotate("rect", xmin=as.Date("2014-01-01"), xmax=as.Date("2014-12-31"), ymin=-Inf, ymax=Inf, alpha=0.1, fill="coral4")+
+  annotate("rect", xmin=as.Date("2016-01-01"), xmax=as.Date("2016-12-31"), ymin=-Inf, ymax=Inf, alpha=0.1, fill="coral4")+
+  annotate("rect", xmin=as.Date("2018-01-01"), xmax=as.Date("2018-12-31"), ymin=-Inf, ymax=Inf, alpha=0.1, fill="coral4")+
+  annotate("rect", xmin=as.Date("2020-01-01"), xmax=as.Date("2020-12-31"), ymin=-Inf, ymax=Inf, alpha=0.1, fill="coral4")+
+  geom_point(aes(colour = focal,stroke=0.3),shape =4,size=1.5) +
   labs( x = "date", y =
          "orangutanname") +
   theme(legend.position = "none",
-        plot.margin = unit(c(0,0,1,1), "cm"))+
-  theme(axis.ticks.x = element_blank(),
+        plot.margin = unit(c(1,0.05,0.02,1), "cm"))+
+  theme(#axis.ticks.x = element_blank(),
         axis.ticks.y = element_blank(),
-        axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1),
+        axis.text.x = element_text(angle = 45, vjust = 0.6, hjust=0),
         axis.title.y = element_blank())+
-  labs(x="Date")
-  
+  scale_x_date(position = "top",breaks = scales::pretty_breaks(n = 10))+
+  labs(x="")
 
 
 p2 <- tmp_SUAQ_waypoints_11all20 %>%
   filter(!is.na(focal)) %>%
   filter(SUAQ_orangutans.Sex=="female") %>% 
-  ggplot(aes(x=focal ,y=orangutan_num_of_follows,fill = focal)) +
-  geom_bar(stat="identity",na.rm = TRUE)+
+  mutate(orangutan_num_of_follows_log=log10(orangutan_num_of_follows),orangutan_num_of_follows_percentage=(orangutan_num_of_follows/nrow(result_totnumfollows)) ) %>%  # if i want log scales
+  group_by(focal,orangutan_num_of_follows,orangutan_num_of_follows_percentage,orangutan_num_of_follows_log) %>% summarise() %>% 
+  ggplot() +
+  geom_bar(aes(x=orangutan_num_of_follows_percentage ,y=focal,fill = focal),stat= "identity",na.rm = TRUE,width = 0.4)+
+  geom_text(aes(label = scales::percent(orangutan_num_of_follows_percentage,accuracy = .001), # show two decimals
+                   x=orangutan_num_of_follows_percentage ,y=focal),size=1.5, stat= "identity", hjust = -0.5) +
   theme(legend.position = "none")+
   theme_minimal()+
   theme(axis.text.y = element_blank(),
-        axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1),
-        axis.ticks.y = element_blank(),
-        axis.ticks.x = element_blank(),
+        #axis.text.x = element_text(angle = 90,size=12),
+        axis.text.x = element_blank(),
+        #axis.ticks.y = element_blank(),
+        #axis.ticks.x = element_blank(),
         axis.title.y = element_blank(),
-        axis.title.x = element_blank(),
         plot.background = element_blank(),
-        title= element_text(angle = 0))+
-  scale_y_continuous(labels = fancy_scientific)+
-  coord_flip()+
+        #axis.title.x= element_text(angle = -45,hjust = 1.2))+
+        axis.title.x= element_blank())+
+  scale_x_continuous(labels = percent_format(),position = "top")+
+  labs(y="# Follows") +
   theme(legend.position = "none",
-        plot.margin = unit(c(0,1,1,0), "cm"))+
-  labs(title="# Follows")
+        plot.margin = unit(c(0,1,2.06,0), "cm"))+
+  xlim(0,0.2)
+
 
 p3 <- tmp_SUAQ_waypoints_11all20 %>%
   filter(!is.na(focal)) %>%
@@ -1530,35 +1546,50 @@ p3 <- tmp_SUAQ_waypoints_11all20 %>%
   ggplot(aes(x=manualDate)) +
   geom_histogram(bins = 120)+ # bins for every 3 month
   theme_minimal()+
+  annotate("rect", xmin=as.Date("2010-01-01"), xmax=as.Date("2010-12-31"), ymin=-Inf, ymax=Inf, alpha=0.1, fill="coral4")+
+  annotate("rect", xmin=as.Date("2012-01-01"), xmax=as.Date("2012-12-31"), ymin=-Inf, ymax=Inf, alpha=0.1, fill="coral4")+
+  annotate("rect", xmin=as.Date("2014-01-01"), xmax=as.Date("2014-12-31"), ymin=-Inf, ymax=Inf, alpha=0.1, fill="coral4")+
+  annotate("rect", xmin=as.Date("2016-01-01"), xmax=as.Date("2016-12-31"), ymin=-Inf, ymax=Inf, alpha=0.1, fill="coral4")+
+  annotate("rect", xmin=as.Date("2018-01-01"), xmax=as.Date("2018-12-31"), ymin=-Inf, ymax=Inf, alpha=0.1, fill="coral4")+
+  annotate("rect", xmin=as.Date("2020-01-01"), xmax=as.Date("2020-12-31"), ymin=-Inf, ymax=Inf, alpha=0.1, fill="coral4")+
   theme(legend.position = "none")+
   theme(axis.text.x = element_blank(),
         axis.ticks.x = element_blank(),
         axis.title.x = element_blank(),
         axis.title.y = element_blank(),
         plot.background = element_blank(),
+        axis.text.y = element_text(size=5),
         legend.position = "none",
-        plot.margin = unit(c(1,0,0,0), "cm"))+
-  scale_y_continuous()
+        plot.margin = unit(c(0,0,1,0.56), "cm"))+
+  scale_y_continuous()+
+  scale_x_date(breaks = scales::pretty_breaks(n = 10))+
+  scale_y_reverse()
 
 
-blank <- grid.rect(gp=gpar(col="white"))
-grid.arrange(
+blank <- grid.rect(gp=gpar(col="white")) # create empty white plots to make margins afterwards
+p<- arrangeGrob( # Use only grobs to save it
   arrangeGrob(
-    arrangeGrob(blank, p3, ncol = 2, widths = c(5 / 40, 35 / 40)),
     p1,
-    heights = c(2 / 8, 6 / 8),
+    arrangeGrob(blank, p3, ncol = 2, widths = c(4.8 / 40, 35.2 / 40)),
+    heights = c(6.5 / 8, 1.5 / 8),
     nrow = 2
   ),
-  arrangeGrob(blank, p2, heights = c(3 / 16, 13 / 16), nrow = 2),
+  arrangeGrob(blank, p2, heights = c(3.27 / 16, 12.83 / 16), nrow = 2),
   ncol = 2,
-  widths = c(5, 1)
-)
+  widths = c(3, 1)
+) 
+ggsave(filename = paste(
+  paste(
+    "/Users/stefgr/Dropbox/Apps/Overleaf/Msc_Thesis_frombeginning/figures/",
+    format(Sys.Date(), "%Y%m%d"),
+    "_Data_FemaleOrangutansFollowDensityTemporal",
+    sep = ""
+  ),
+  "pdf",
+  sep = "."
+), plot = p)
 
 
-
-
-p1 <- ggMarginal(p1,type = "densigram")
-p2
 
 
 ```
@@ -1576,6 +1607,8 @@ plot1<- SUAQ_waypoints_11all20 %>%
   geom_path(aes(color=SUAQ_waypoints_11all20$focal), alpha = 0.2,size=0.3)+
   theme(legend.position = "none")
 plot1
+
+
 # Zoom-Panable map of tracks
 plot2<- SUAQ_waypoints_11all20 %>%
   group_by(follow) %>%
@@ -1583,6 +1616,7 @@ plot2<- SUAQ_waypoints_11all20 %>%
   geom_point(aes(color=SUAQ_waypoints_11all20$focal),size=0.3)+
   geom_path(aes(color=SUAQ_waypoints_11all20$focal), alpha = 0.2,size=0.3)
 ggplotly(plot2)
+
 #### FEMALE: Map of female gps tracks
 # Zoom-Panable map of tracks of females with over 200 GPS points
 tmp_SUAQ_mosttrackedfemales <- SUAQ_waypoints_11all20 %>%
@@ -1593,7 +1627,14 @@ tmp_SUAQ_mosttrackedfemales <- SUAQ_waypoints_11all20 %>%
       "friska",
       "ellie",
       "cissy",
-      "lilly"
+      "lilly",
+      "yulia",
+      "raffi",
+      "sarabi",
+      "trident",
+      "alice",
+      "mocca",
+      "cinnamon"
     )
   )
 tmp_SUAQ_mosttrackedfemales_sf <- SUAQ_waypoints_11all20_sf %>%
@@ -1610,6 +1651,7 @@ tmp_SUAQ_mosttrackedfemales_sf <- SUAQ_waypoints_11all20_sf %>%
       "sarabi",
       "trident",
       "alice",
+      "mocca",
       "cinnamon"
     )
   )
@@ -1620,6 +1662,23 @@ plot2<-tmp_SUAQ_mosttrackedfemales %>%
   geom_point(aes(color=focal),size=0.3)+
   geom_path(aes(color=focal), alpha = 0.2,size=0.3)
 ggplotly(plot2)
+
+### find wrong gps points
+plot_gps_pttype<-tmp_SUAQ_mosttrackedfemales %>% 
+  group_by(follow) %>%
+  ggplot(aes(E,N))+
+  geom_point(aes(color=tmp_SUAQ_mosttrackedfemales$PtType),size=0.3)
+  #geom_path(aes(color=focal), alpha = 0.2,size=0.3)
+ggplotly(plot_gps_pttype)
+
+##### show points where edge length is high
+plot_distToLats_over_300<-tmp_SUAQ_mosttrackedfemales %>% 
+  filter((manual_distToNext>300) |( manual_distTolast >300)) %>% 
+  group_by(follow) %>%
+  ggplot(aes(E,N))+
+  geom_point(aes(color=PtType),size=1)+
+  geom_path(aes(color=as.factor(follow)), alpha = 0.8,size=0.6)
+ggplotly(plot_distToLats_over_300)
 
 
 #### create convex hulls on points of each most tracked female orangutan
