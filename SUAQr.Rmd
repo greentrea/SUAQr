@@ -30,6 +30,17 @@ knitr::opts_chunk$set(echo = TRUE)
 # Filter out impossible steplengths and steps
 
 
+
+# Update Todo:
+# Follows where focal names of followlog and GPS doesnt match after processing
+# Follows where multiple focal names occur for one follownumber FN720 1102, 2915, 9999, and all FN of automatically given numbers above 1100019
+# Looking at edges and distances of over 100, 200, 300m maybe some of them getting rid of by solving the above
+
+
+
+
+
+
 # Markings:
 #### Quality check: --> are quality checks of chunks executed before
 ########### DELETE ############--> are chunks to delete
@@ -687,10 +698,10 @@ SUAQ_waypoints_11_20_male <-
     PtType="range",
     source = "Male GPS from Caroline for 2018",
     focal = tolower(Focal),
-    automaticDatetime = parse_date_time(timestamp,orders=c("%d.%m.%y %H%M","%m/%d/%y %H%M"),tz = "Asia/Pontianak"), # takes two different formats which are occuring in the given excelsheet
-    automaticDate=date(automaticDatetime),
-    automaticTime=hms::as_hms(automaticDatetime))%>% 
-  mutate(fileN=group_indices(.,automaticDate,focal)) %>% mutate(fileN=as.character(fileN)) %>% 
+    manualDatetime = parse_date_time(timestamp,orders=c("%d.%m.%y %H%M","%m/%d/%y %H%M"),tz = "Asia/Pontianak"), # takes two different formats which are occuring in the given excelsheet
+    manualDate=date(manualDatetime),
+    manualTime=hms::as_hms(manualDatetime))%>% 
+  mutate(fileN=group_indices(.,manualDate,focal)) %>% mutate(fileN=as.character(fileN)) %>% 
   dplyr::select(-timestamp,-Focal,-sensor.type )
 
 #### Create sf object
@@ -816,37 +827,48 @@ temp <- SUAQ_waypoints_11all20 %>% filter(id %in% c(12184,12185,12186,12187,1218
 SUAQ_waypoints_11all20 <- SUAQ_waypoints_11all20 %>%
   mutate(follow=as.numeric(follow)) %>%
   mutate(follownr_reliability=if_else((!is.na(follow)),"high: FN already given in GPS","low: unknown")) %>%
-  mutate(follow=if_else(is.na(follow),as.numeric(tmp_FollowNumber_M_focal_followname),follow)) %>%
-  dplyr::select(-tmp_FollowNumber_M_focal_followname) %>%
-  mutate(follownr_reliability=if_else((!is.na(follow))&(follownr_reliability=="low: unknown"),"high: date, name, observer or more",follownr_reliability)) %>%
-  
-  mutate(follow=if_else(is.na(follow),as.numeric(tmp_FollowNumber_M_focal_followname2),follow)) %>%
-  dplyr::select(-tmp_FollowNumber_M_focal_followname2) %>%
-  mutate(follownr_reliability=if_else((!is.na(follow))&(follownr_reliability=="low: unknown"),"high: date, name, observer2",follownr_reliability)) %>%
-  
-  mutate(follow=if_else(is.na(follow),as.numeric(tmp_FollowNumber_M_focal_concDate),follow)) %>%
-  dplyr::select(-tmp_FollowNumber_M_focal_concDate) %>% 
-  mutate(follownr_reliability=if_else((!is.na(follow))&(follownr_reliability=="low: unknown"),"high: concDate, name",follownr_reliability)) %>%
-  
-  mutate(follow=if_else(is.na(follow),as.numeric(tmp_FollowNumber_M_focal),follow)) %>%
-  dplyr::select(-tmp_FollowNumber_M_focal) %>% 
-  mutate(follownr_reliability=if_else((!is.na(follow))&(follownr_reliability=="low: unknown"),"high: date, name",follownr_reliability)) %>%
-  
-  mutate(follow=if_else(is.na(follow),as.numeric(tmp_FollowNumber_M_focal_automatic),follow)) %>%
-  dplyr::select(-tmp_FollowNumber_M_focal_automatic) %>%
-  mutate(follownr_reliability=if_else((!is.na(follow))&(follownr_reliability=="low: unknown"),"medium: aDate, name",follownr_reliability)) %>%
-  
-  mutate(follow=if_else(is.na(follow),tmp_FollowNumber_M_followname,follow)) %>% 
-  dplyr::select(-tmp_FollowNumber_M_followname) %>% 
-  mutate(follownr_reliability=if_else((!is.na(follow))&(follownr_reliability=="low: unknown"),"low: date, followername=observer1",follownr_reliability)) %>%
-  
-  mutate(follow=if_else(is.na(follow),tmp_FollowNumber_M_followname2,follow)) %>% 
-  dplyr::select(-tmp_FollowNumber_M_followname2) %>%
-  mutate(follownr_reliability=if_else((!is.na(follow))&(follownr_reliability=="low: unknown"),"low: date, followername=observer2",follownr_reliability)) %>%
+  mutate(follow=if_else((is.na(follow))&!(follow %in% SUAQ_waypoints_11all20$follow),as.numeric(tmp_FollowNumber_M_focal_followname),follow)) %>% # control if FN not already existing somewhere in the dataset because then its probably already given to a follow. But maybe single gps points with missing information about date focal or observer is not matched so hopefully every gps point within the gps follows have the same information and not suddenly some with missing information otherwise they get sorted out here.
+  mutate(follownr_reliability=if_else((!is.na(follow))&(follownr_reliability=="low: unknown"),"high: date, name, observer or more",follownr_reliability))
 
+SUAQ_waypoints_11all20 <- SUAQ_waypoints_11all20 %>%
+  mutate(follow=if_else(is.na(follow),as.numeric(tmp_FollowNumber_M_focal_followname2),follow)) %>%
+  mutate(follownr_reliability=if_else((!is.na(follow))&(follownr_reliability=="low: unknown"),"high: date, name, observer2",follownr_reliability))
+
+SUAQ_waypoints_11all20 <- SUAQ_waypoints_11all20 %>%
+  mutate(follow=if_else(is.na(follow),as.numeric(tmp_FollowNumber_M_focal_concDate),follow)) %>%
+  mutate(follownr_reliability=if_else((!is.na(follow))&(follownr_reliability=="low: unknown"),"high: concDate, name",follownr_reliability)) 
+
+SUAQ_waypoints_11all20 <- SUAQ_waypoints_11all20 %>%
+  mutate(follow=if_else(is.na(follow),as.numeric(tmp_FollowNumber_M_focal),follow)) %>%
+  mutate(follownr_reliability=if_else((!is.na(follow))&(follownr_reliability=="low: unknown"),"high: date, name",follownr_reliability)) 
+
+SUAQ_waypoints_11all20 <- SUAQ_waypoints_11all20 %>%
+  mutate(follow=if_else(is.na(follow),as.numeric(tmp_FollowNumber_M_focal_automatic),follow)) %>%
+  mutate(follownr_reliability=if_else((!is.na(follow))&(follownr_reliability=="low: unknown"),"medium: aDate, name",follownr_reliability)) 
+
+SUAQ_waypoints_11all20 <- SUAQ_waypoints_11all20 %>%
+  mutate(follow=if_else(is.na(follow),tmp_FollowNumber_M_followname,follow)) %>% 
+  mutate(follownr_reliability=if_else((!is.na(follow))&(follownr_reliability=="low: unknown"),"low: date, followername=observer1",follownr_reliability)) 
+
+SUAQ_waypoints_11all20 <- SUAQ_waypoints_11all20 %>%
+  mutate(follow=if_else(is.na(follow),tmp_FollowNumber_M_followname2,follow)) %>% 
+  mutate(follownr_reliability=if_else((!is.na(follow))&(follownr_reliability=="low: unknown"),"low: date, followername=observer2",follownr_reliability)) 
+
+SUAQ_waypoints_11all20 <- SUAQ_waypoints_11all20 %>%
   mutate(follow=if_else(is.na(follow),tmp_FollowNumber_M_infant,follow)) %>%
-  dplyr::select(-tmp_FollowNumber_M_infant) %>% 
   mutate(follownr_reliability=if_else((!is.na(follow))&(follownr_reliability=="low: unknown"),"low: Date, infantname",follownr_reliability))
+
+
+#### Delete helper collumns
+SUAQ_waypoints_11all20 <- SUAQ_waypoints_11all20 %>%
+  dplyr::select(-tmp_FollowNumber_M_focal_followname) %>%
+  dplyr::select(-tmp_FollowNumber_M_focal_followname2) %>%
+  dplyr::select(-tmp_FollowNumber_M_focal_concDate) %>% 
+  dplyr::select(-tmp_FollowNumber_M_focal) %>% 
+  dplyr::select(-tmp_FollowNumber_M_focal_automatic) %>%
+  dplyr::select(-tmp_FollowNumber_M_followname) %>% 
+  dplyr::select(-tmp_FollowNumber_M_followname2) %>%
+  dplyr::select(-tmp_FollowNumber_M_infant)
 
 
 #### Delete manually wrongly duplicated follows where multiple followlogs matched (better would be to make the regex etc and descripton or database better not having these problems)
@@ -914,8 +936,12 @@ specs_noFNAfterJoinAndManualAdj <- SUAQ_waypoints_11all20 %>%
   summarise(count=n()) # new follows without a follownumber
 
 #### Giving a random FN
+SUAQ_waypoints_11all20 <- SUAQ_waypoints_11all20 %>% mutate(follow= if_else((follow>1100018),NA_real_,follow))
+
+tmp <- SUAQ_waypoints_11all20 %>% filter(follow>1100018)
+
 SUAQ_waypoints_11all20<- SUAQ_waypoints_11all20 %>% ungroup() %>% 
-  group_by(fileN,focal,.$manualDate,.$automaticDate,.$follow) %>% 
+  group_by(fileN,focal,manualDate,follow) %>% 
   mutate(follow = if_else(is.na(follow),as.numeric(row_number()+1100018),follow))%>% ungroup()
 # Todo: Get them a random FN!
 
@@ -928,6 +954,27 @@ for(i in levels(as.factor(SUAQ_waypoints_11all20$follow))){
   print((length(unique(df$manualDate)) == 1)) # check if the date of the selected FN-row is unique?
   if(length(unique(df$manualDate)) != 1){specs_FNwithUnUniqueDatesAfterJoin <- specs_FNwithUnUniqueDatesAfterJoin %>% bind_rows(df)} # add if not unique
 }
+
+##### FN with multiple focals?
+specs_FNwithUnUniqueFocalAfterJoin <- SUAQ_waypoints_11all20[FALSE,]
+SUAQ_waypoints_11all20 <- SUAQ_waypoints_11all20 %>% ungroup()
+for(i in levels(as.factor(SUAQ_waypoints_11all20$follow))){
+  df <- SUAQ_waypoints_11all20 %>% filter(SUAQ_waypoints_11all20$follow==i)
+  print(paste0("Follownumber to check if unique: ",i))
+  print((length(unique(df$focal)) == 1)) # check if the date of the selected FN-row is unique?
+  if(length(unique(df$focal)) != 1){specs_FNwithUnUniqueFocalAfterJoin <- specs_FNwithUnUniqueFocalAfterJoin %>% bind_rows(df)} # add if not unique
+}
+specs_FNwithUnUniqueFocalAfterJoin <- specs_FNwithUnUniqueFocalAfterJoin %>% group_by(follow,focal,manualDate) %>% summarise(count=n())
+
+
+########################
+######################## temp
+tmp <- SUAQ_followlog %>% filter(SUAQ_followlog.FollowNumber==720)
+
+########################
+######################## temp
+
+
 
 #### Joining rest of Followlog (after finding all Follownumbers)
 names(SUAQ_followlog) <- paste0("SUAQ_followlog.", names(SUAQ_followlog))
@@ -1239,15 +1286,17 @@ write_csv(SUAQ_waypoints_11all20,path="shinyapp/orangapp/data/SUAQ_waypoints_11a
 # Begründung: In den Tracks kommen teilweise Punkte vor welche zu einer viel späteren Zeit gemacht wurden. Oder wurde Zeit falsch gespeichert (bzw. lief umwandlung in Indonesische Zeitzone falsch)
 #suaq_orangutan_follows_2020_sf<- suaq_orangutan_follows_2020_sf %>%  arrange(desc(datetime))
 #SUAQ_data<- SUAQ_data %>%  arrange(desc(.$CreationTime))
-#### Laufnummer für GPS Punkt erstellen
+#### Laufnummer für GPS Punkt erstellen ####
 SUAQ_waypoints_11all20_sf %>% ggplot(aes(manualTime))+geom_histogram(bins = 1000)
 SUAQ_waypoints_11all20_sf %>% filter(is.na(manualTime)) %>% 
   ggplot(aes(hms::as_hms(automaticTime)))+geom_histogram(bins = 1000) # time before conversion
 specs_follows_points_in_night<- SUAQ_waypoints_11all20_sf %>% 
   filter(is.na(manualTime)&(automaticTime<lubridate::hms("04:00:00"))) # probably one outlier and one track in the night. Or wrong time settings
 
+# todo
 
-## DJL
+
+## DJL ##
 #### Create timelag to last waypoints in not spatial dataframe #### 
 SUAQ_waypoints_11all20<- SUAQ_waypoints_11all20 %>% 
   group_by(follow)%>% arrange(manualTime,.by_group = TRUE) %>% 
@@ -1289,13 +1338,13 @@ DJL_follows %>%
 
 
 
-### Make Project variables
-##### save all waypoints as sf
+### Make Project variables ### 
+##### save all waypoints as sf ##### 
 SUAQ_waypoints_11all20_sf <-  st_as_sf(SUAQ_waypoints_11all20, 
                           coords = c("E","N"), 
                           crs = 32647) # can also do that in the new sricpts
 
-##### Project starter
+##### Project starter ##### 
 write_csv(SUAQ_waypoints_11all20, path = paste(
   paste(
     "/Users/stefgr/Nextcloud/UZH/12_Semester/20200313_Masterthesis/R/data/Processed_data",
@@ -1354,7 +1403,7 @@ write_csv(SUAQ_weather, path = paste(
 ## First visuals SUAQ
 ```{r Visualization social relationships}
 ##### VISUALIZE ######
-#### number of follows
+#### number of follows ####
 result_numoffollows<- SUAQ_waypoints_11all20 %>% group_by(follow,focal) %>% summarize(count=n()) %>% group_by(focal) %>% summarize(count=n())
 
 result_totnumfollows <- SUAQ_waypoints_11all20 %>% 
@@ -1362,7 +1411,7 @@ result_totnumfollows <- SUAQ_waypoints_11all20 %>%
 result_totnumNNfollows <- SUAQ_waypoints_11all20 %>% filter(followtype=="NN") %>% 
   group_by(follow) %>% summarise(count=n()) # 636 Follows
 
-#### number of points per individual no matter if its as a infant or focal
+#### number of points per individual no matter if its as a infant or focal ####
 SUAQ_tracksperorangutanfocal_sf <-
   SUAQ_waypoints_11all20_sf %>% 
   group_by(follow,focal,infantname) %>% 
@@ -1380,7 +1429,8 @@ SUAQ_tracksperorangutaninfant_sf <-
 SUAQ_tracksperorangutanfocal<- st_drop_geometry(SUAQ_tracksperorangutanfocal_sf)
 SUAQ_tracksperorangutaninfant<- st_drop_geometry(SUAQ_tracksperorangutaninfant_sf)
 SUAQ_tracksperorangutan<- SUAQ_tracksperorangutanfocal %>% left_join(SUAQ_tracksperorangutaninfant,by=c("focal"="infantname")) %>% mutate(NumPointsPerFocal=ifelse(is.na(.$count_infant),.$count_focal,.$count_infant+.$count_focal))
-#### Orangutan hirarchy
+
+#### Orangutan hirarchy ####
 SUAQ_family<- data.frame(SUAQ_orangutans$SUAQ_orangutans.orangutanname, 
                          SUAQ_orangutans$SUAQ_orangutans.Mother,
                          SUAQ_orangutans$SUAQ_orangutans.Sex,stringsAsFactors = FALSE)
@@ -1413,15 +1463,14 @@ plot.igraph(network, layout=layout,edge.width=2,edge.size=2,vertex.size=5,vertex
 ```
 
 ```{r Visualization observation duration}
-tmp<- SUAQ_waypoints_11all20 %>% 
-  filter(!is.na(.$SUAQ_followlog.SexFocal),is.na(.$SUAQ_orangutans.Sex))
-#### Visualize Observation duration for individuals
+
+#### Visualize Observation duration for individuals ####
 specs_orangutan_tot_num_of_gps <-SUAQ_waypoints_11all20 %>% 
   group_by(focal) %>%
   summarise(n()) %>% left_join(result_numoffollows,by=c('focal'='focal'))
 colnames(specs_orangutan_tot_num_of_gps) <- c("focal",
                                            "orangutan_tot_num_of_gps","orangutan_num_of_follows")
-#### Number of GPS points
+#### Number of GPS points ####
 tmp_SUAQ_waypoints_11all20 <- SUAQ_waypoints_11all20
 tmp<- specs_orangutan_tot_num_of_gps
 tmp_SUAQ_waypoints_11all20 <-tmp_SUAQ_waypoints_11all20 %>% 
@@ -1440,7 +1489,7 @@ plot_orangutan_followperiods <- tmp_SUAQ_waypoints_11all20 %>%
   theme(legend.position = "none")
 plot_orangutan_followperiods
 
-#### Histogram of orangutans and their number of follows
+#### Histogram of orangutans and their number of follows ####
 specs_orangutan_tot_num_of_gps<- specs_orangutan_tot_num_of_gps %>%
   left_join(SUAQ_orangutans[,c(1:5)],by=c("focal"="SUAQ_orangutans.orangutanname"))
 specs_orangutan_tot_num_of_gps %>% 
@@ -1448,7 +1497,7 @@ specs_orangutan_tot_num_of_gps %>%
   ggplot(aes(reorder(focal, -orangutan_num_of_follows),x =orangutan_num_of_follows))+
   geom_bar(stat="identity")
 
-#### Histogram of number of gps per individual
+#### Histogram of number of gps per individual #### 
 plot_orangutan_followhisto<- tmp_SUAQ_waypoints_11all20 %>%
   filter(!is.na(focal)) %>%
   filter(SUAQ_orangutans.Sex=="female") %>% 
@@ -1466,7 +1515,7 @@ plot_orangutan_followhisto<- tmp_SUAQ_waypoints_11all20 %>%
   theme(legend.position = "none")
 plot_orangutan_followhisto
 
-#### Histogram of number of gps per individual for the 10
+#### Histogram of number of gps per individual for the 10 most tracked females #### 
 plot_orangutan_followhisto_best<- tmp_SUAQ_waypoints_11all20 %>%
   filter(!is.na(focal)) %>%
   filter(SUAQ_orangutans.Sex=="female") %>% 
@@ -1596,10 +1645,7 @@ ggsave(filename = paste(
 
 
 ```{r Visualization gps on map}
-#
-
-
-# Grouping and visualize it
+##### Grouping follows and visualize it #####
 plot1<- SUAQ_waypoints_11all20 %>%
   group_by(follow) %>%
   ggplot(aes(E,N))+
@@ -1609,7 +1655,7 @@ plot1<- SUAQ_waypoints_11all20 %>%
 plot1
 
 
-# Zoom-Panable map of tracks
+#####  Zoom-Panable map of tracks based on follow attribute ##### 
 plot2<- SUAQ_waypoints_11all20 %>%
   group_by(follow) %>%
   ggplot(aes(E,N))+
@@ -1617,7 +1663,7 @@ plot2<- SUAQ_waypoints_11all20 %>%
   geom_path(aes(color=SUAQ_waypoints_11all20$focal), alpha = 0.2,size=0.3)
 ggplotly(plot2)
 
-#### FEMALE: Map of female gps tracks
+#### FEMALE: Map of female gps tracks ####
 # Zoom-Panable map of tracks of females with over 200 GPS points
 tmp_SUAQ_mosttrackedfemales <- SUAQ_waypoints_11all20 %>%
   filter(!(SUAQ_orangutans.Sex == "male")) %>%
@@ -1663,7 +1709,7 @@ plot2<-tmp_SUAQ_mosttrackedfemales %>%
   geom_path(aes(color=focal), alpha = 0.2,size=0.3)
 ggplotly(plot2)
 
-### find wrong gps points
+#### Find wrong gps points #### 
 plot_gps_pttype<-tmp_SUAQ_mosttrackedfemales %>% 
   group_by(follow) %>%
   ggplot(aes(E,N))+
@@ -1671,17 +1717,30 @@ plot_gps_pttype<-tmp_SUAQ_mosttrackedfemales %>%
   #geom_path(aes(color=focal), alpha = 0.2,size=0.3)
 ggplotly(plot_gps_pttype)
 
+
+
+
+
 ##### show points where edge length is high
-plot_distToLats_over_300<-tmp_SUAQ_mosttrackedfemales %>% 
-  filter((manual_distToNext>300) |( manual_distTolast >300)) %>% 
-  group_by(follow) %>%
+ggplot()
+
+tmp_SUAQ_gpsOfFollowsCOntainingAbnormalEdgeLengths<-SUAQ_waypoints_11all20 %>% 
+  filter(follow<5000) %>% 
+  filter((manual_distToNext>150)|( manual_distTolast >150)) %>% 
+  group_by(manualDate,focal,follow,followername) %>% 
+  summarise()
+
+plot_distToLats_over_300<-SUAQ_waypoints_11all20 %>% 
+  filter((manual_distToNext>100)&( manual_distTolast >100)) %>% 
+  group_by(focal,manualDate,follow) %>%
   ggplot(aes(E,N))+
   geom_point(aes(color=PtType),size=1)+
   geom_path(aes(color=as.factor(follow)), alpha = 0.8,size=0.6)
 ggplotly(plot_distToLats_over_300)
 
 
-#### create convex hulls on points of each most tracked female orangutan
+
+#### Create convex hulls on points of each most tracked female orangutan #### 
 tmp_SUAQ_mosttrackedfemales_chulls <- tmp_SUAQ_mosttrackedfemales_sf %>%
   group_by(focal) %>% 
   summarise(geometry = st_combine(geometry) ) %>%
@@ -1701,7 +1760,7 @@ plot_SUAQ_mosttrackedfemales_chulls_centroid <-
                                                fill = NA,colour = "black")
 ggplotly(plot_SUAQ_mosttrackedfemales_chulls_centroid)
 
-#### Create MCP with percentage
+#### Create MCP with percentage #### 
 tmp_SUAQ_waypoints_morethan50gps_11all20<- SUAQ_waypoints_11all20 %>% 
   left_join(specs_orangutan_tot_num_of_gps[,c(1:3)],by=c("focal"="focal"))%>% 
   filter(orangutan_tot_num_of_gps>=50)
@@ -1744,7 +1803,7 @@ mcp.area(tmp_SUAQ_waypoints_morethan50gps_11all20.sp, percent = seq(20, 100, by 
 hrs
 
 
-#### Plot mcp with ggplot
+#### Plot mcp with ggplot ####
 mcp_map_95 <- ggmap(mybasemap) +
   geom_polygon(
     data =     fortify(tmp_SUAQ_waypoints_morethan50gps_11all20.mcpgeo),
@@ -1767,7 +1826,7 @@ ggplotly(mcp_map_95)
 
 
 
-#### Create kernelUD
+#### Create kernelUD #### 
 SUAQ_HR_kernelUD<- kernelUD(tmp_SUAQ_waypoints_morethan50gps_11all20.sp, h = "href", grid = 60,
              same4all = FALSE, hlim = c(0.1, 1.5),
              kern = c("bivnorm", "epa"), extent = 1,
@@ -1775,7 +1834,7 @@ SUAQ_HR_kernelUD<- kernelUD(tmp_SUAQ_waypoints_morethan50gps_11all20.sp, h = "hr
 plot(SUAQ_HR_kernelUD$ellie)
 
 
-#### Create dBBMM
+#### Create dBBMM #### 
 tmp_SUAQ_mosttrackedfemales_test <- tmp_SUAQ_mosttrackedfemales %>%
   filter(!is.na(.$manualDatetime) &
            !is.na(focal)) %>% group_by(follow) %>%
@@ -1796,17 +1855,17 @@ plot(data, type = "b", pch = 20)
 
 
 
-#### GENDER:
+#### GENDER: #### 
 plot_gender_map<- SUAQ_waypoints_11all20 %>%
   group_by(follow) %>%
   ggplot(aes(E,N))+
-  geom_point(aes(color=SUAQ_orangutans.Sex),size=0.3)+
-  geom_path(aes(color=SUAQ_orangutans.Sex), alpha = 0.2,size=0.3)
+  geom_point(aes(color=SUAQ_orangutans.Sex),size=0.3)
+  #geom_path(aes(color=SUAQ_orangutans.Sex), alpha = 0.2,size=0.3)
 ggplotly(plot_gender_map)
 
 
 
-# Map with tiles (leaflet)
+####  Map with tiles (leaflet) #### 
 pal <- colorFactor(get_palette(palette = "default", 42), domain = levels(as.factor(SUAQ_waypoints_11all20_sf$focal)))
 
 plot2<- leaflet(data = st_transform(SUAQ_waypoints_11all20_sf, crs = 4326)) %>% 
