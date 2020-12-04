@@ -1,0 +1,436 @@
+---
+title: "Projekt"
+author: "Stefan Graf"
+date: "28 3 2020"
+output: html_document
+---
+
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+# Markings:
+#### Quality check: --> are quality checks of chunks executed before
+########### DELETE ############--> are chunks to delete
+## Title --> are titles for sections
+### explanations of the following chunk
+##### SUAQ TRACKS 2018 & 2019 ##### --> Code sections to understand code better
+
+```{r import, echo= 'F',results='hide'}
+# CLASSICAL PACKAGE IMPORTER (Stefan Graf & Tobias Frey)
+packages_checker <- function(packages_list){
+  for (package in packages_list){
+    if (!require(package, character.only = T)) {
+      install.packages(package)
+    }
+    library(package, character.only = T)
+  }
+}
+packages_checker(
+  c('tmaptools',# read_gpx function
+    'plotKML',# read GPX to dataframe
+    'lubridate',
+    'zoo',
+    'data.tree',
+    'hR',# making realtionships of orangutans
+    'dbplyr',
+    'plyr',
+    'dplyr',
+    'tidyr',
+    'tidyverse',
+    'sf', # Simple feature --> super spatial data handling structure
+    'raster', # For raster data
+    'ggspatial',
+    'rgdal',
+    'data.table',
+    'RColorBrewer', # color schemas from color brewer web
+    'ggraph', # visualization
+    'igraph',
+    'tmap',
+    'scales',
+    'trajr',
+    'plotly', # zoomable, pannable ggplot
+    'mapview',
+    'ggmap', # easier interactive ggmaps 
+    'leaflet', # Javascript library (originally) for plotting on a maptile interactive map
+    'tmap',
+    'stringr',
+    'remotes', # geom_convexhull function
+    'magrittr',
+    'ggridges',
+    'forcats',
+    'move',# Brownian Bridge Movement Model
+    'adehabitatHR',
+    'ggpubr',
+    'htmlwidgets',
+    'gridExtra',# additional to ggplot, can add a density plot on the side of a histogram "marginal plot"
+    'grid',
+    'ggExtra'
+    ))
+rm(list = ls())
+getwd()
+
+
+### CUSTOM FUNCTIONS ###
+
+# Function for displaying scale labels in ggplot not as f.e. 4e+05
+fancy_scientific <- function(l) {
+     # turn in to character string in scientific notation
+     l <- format(l, scientific = TRUE)
+     # quote the part before the exponent to keep all the digits
+     l <- gsub("^(.*)e", "'\\1'e", l)
+     # turn the 'e+' into plotmath format
+     l <- gsub("e", "%*%10^", l)
+     # return this as an expression
+     parse(text=l)
+}
+
+
+clockS = function(t){hour(t)*3600+minute(t)*60+second(t)}
+st_kde <- function(points,cellsize, bandwith, extent = NULL){
+  require(MASS)
+  require(raster)
+  require(sf)
+  if(is.null(extent)){
+    extent_vec <- st_bbox(points)[c(1,3,2,4)]
+  } else{
+    extent_vec <- st_bbox(extent)[c(1,3,2,4)]
+  }
+  
+  n_y <- ceiling((extent_vec[4]-extent_vec[3])/cellsize)
+  n_x <- ceiling((extent_vec[2]-extent_vec[1])/cellsize)
+  
+  extent_vec[2] <- extent_vec[1]+(n_x*cellsize)-cellsize
+  extent_vec[4] <- extent_vec[3]+(n_y*cellsize)-cellsize
+  
+  coords <- st_coordinates(points)
+  matrix <- kde2d(coords[,1],coords[,2],h = bandwith,n = c(n_x,n_y),lims = extent_vec)
+  raster(matrix)
+}
+
+
+
+
+#### Custom functions for analysis
+clockS = function(t){hour(t)*3600+minute(t)*60+second(t)}
+
+
+euclid <- function(x1,y1,x2,y2){
+  return(sqrt((x1-x2)^2+(y1-y2)^2))
+}
+
+turning_angle <- function(x,y,lead_lag = 1){ 
+  if(length(x) < 3){return(NA)}
+  if(length(x) != length(y)){stop("x and y must be of the same length")}
+  p1x <- lag(x,lead_lag)
+  p1y <- lag(y,lead_lag)
+  p2x <- x
+  p2y <- y
+  p3x <- lead(x,lead_lag)
+  p3y <- lead(y,lead_lag)
+  p12 <- euclid(p1x,p1y,p2x,p2y)
+  p13 <- euclid(p1x,p1y,p3x,p3y)
+  p23 <- euclid(p2x,p2y,p3x,p3y)
+  rad <- acos((p12^2+p23^2-p13^2)/(2*p12*p23))
+  grad <- (rad*180)/pi
+  grad[p12 == 0 | p23 == 0] <- NA
+  d <-  (p3x-p1x)*(p2y-p1y)-(p3y-p1y)*(p2x-p1x)
+  d <- ifelse(d == 0,1,d)
+  d[d>0] <- 1
+  d[d<0] <- -1
+  d[d==0] <- 1
+  turning <- grad*d*-1+180
+  return(turning)
+}
+
+# Source https://exploratory.io/note/kanaugust/1701090969905358
+calculate_mode <- function(x) {
+  uniqx <- unique(na.omit(x))
+  uniqx[which.max(tabulate(match(x, uniqx)))]
+}
+
+```
+
+#### SUAQ research site
+## Preprocessing
+1. Getting data from excel/csv files
+2. Getting data from gpx files, clean and order it
+3. Merge Files
+```{r GPS Loader}
+### Load Project variables ### 
+##### waypoints ##### 
+SUAQ_waypoints_11all20_loc <- read_csv("data/Processed_data/SUAQ_waypoints_11all20.csv")
+
+##### Weather and FAI #####
+SUAQ_weather <- read_csv("data/Processed_data/SUAQ_weather.csv")
+SUAQ_weather <- SUAQ_weather %>% rowwise() %>% 
+  mutate(avg_temperature_tot=mean(c(SUAQ_weather.min_temp_average,SUAQ_weather.max_temp_average),na.rm=TRUE),
+         rainfall_avg=mean(c(as.numeric(SUAQ_weather.rainfall_ml_morning),as.numeric(SUAQ_weather.rainfall_ml_evening)),na.rm=TRUE))
+SUAQ_weather_monthly<-SUAQ_weather %>% 
+  group_by(SUAQ_weather.year,SUAQ_weather.month) %>% 
+  summarise_all(funs(mean))
+SUAQ_weather_monthly<- SUAQ_weather_monthly%>% dplyr::select(-SUAQ_weather.weather_id,-SUAQ_weather.day,-SUAQ_weather.daymonthyear)
+
+
+
+
+
+SUAQ_fai <- read_csv("data/Processed_data/SUAQ_fai.csv")
+
+##### Joining info based on date #####
+SUAQ_waypoints_11all20_loc <- SUAQ_waypoints_11all20_loc %>% left_join(SUAQ_weather,by=c("manualDate"="SUAQ_weather.daymonthyear"))
+
+autoplot(SUAQ_waypoints_11all20_loc)
+
+lm<- lm(manual_distTolast~rainfall_avg,SUAQ_waypoints_11all20_loc)
+summary(lm)
+
+
+##### Selection only pointtypes which are taken on the orangutan way? is this true for all? ##### 
+SUAQ_rangepoints_11all20_loc <- SUAQ_waypoints_11all20_loc %>% filter(SUAQ_waypoints_11all20_loc$PtType %in% c("range","foun","lost","mornnest","nightnest","daynest"))
+
+
+
+##### Project attributes to calculate DJL ##### 
+#### Create timelag to last waypoints in not spatial dataframe #### 
+SUAQ_rangepoints_11all20_loc<- SUAQ_rangepoints_11all20_loc %>% 
+  group_by(follow)%>% arrange(manualTime,.by_group = TRUE) %>% 
+  mutate(timelag=as.numeric(difftime(as.POSIXlt(manualTime),
+                                     as.POSIXlt(lag(manualTime)),units 
+                                     ="secs")),
+         # calculate distance with approach number 1 --> st_distance but to do that we need to calculate lead first because the lead function doesnt work within st distance (not same datatype (df))
+         timelag_lead=as.numeric(difftime(as.POSIXlt(lead(manualTime)),
+                                          as.POSIXlt(manualTime),units ="secs")),
+         manual_distTolast=sqrt((E-lag(E))^2+(N-lag(N))^2),
+         manual_distToNext=sqrt((E-lead(E))^2+(N-lead(N))^2),
+         speed_last = manual_distTolast/timelag,
+         speed_next = manual_distToNext/timelag_lead,
+         turningAngle=turning_angle(E,N)
+         )
+SUAQ_waypoints_11all20_loc<- SUAQ_waypoints_11all20_loc %>% 
+  group_by(follow)%>% arrange(manualTime,.by_group = TRUE) %>% 
+  mutate(timelag=as.numeric(difftime(as.POSIXlt(manualTime),
+                                     as.POSIXlt(lag(manualTime)),units 
+                                     ="secs")),
+         # calculate distance with approach number 1 --> st_distance but to do that we need to calculate lead first because the lead function doesnt work within st distance (not same datatype (df))
+         timelag_lead=as.numeric(difftime(as.POSIXlt(lead(manualTime)),
+                                          as.POSIXlt(manualTime),units ="secs")),
+         manual_distTolast=sqrt((E-lag(E))^2+(N-lag(N))^2),
+         manual_distToNext=sqrt((E-lead(E))^2+(N-lead(N))^2),
+         speed_last = manual_distTolast/timelag,
+         speed_next = manual_distToNext/timelag_lead,
+         turningAngle=turning_angle(E,N)
+         )
+
+
+
+
+##### Selection only females ##### 
+SUAQ_waypoints_11all20_loc_females <-
+  SUAQ_waypoints_11all20_loc %>%   filter(!(SUAQ_orangutans.Sex == "male"))
+SUAQ_rangepoints_11all20_loc_females <-
+  SUAQ_rangepoints_11all20_loc %>%   filter(!(SUAQ_orangutans.Sex == "male"))
+SUAQ_rangepoints_11all20_loc_females_10 <-
+  SUAQ_waypoints_11all20_loc %>%   filter(!(SUAQ_orangutans.Sex == "male")) %>% filter(
+    focal %in% c(
+      "lisa",
+      "friska",
+      "ellie",
+      "cissy",
+      "lilly",
+      "yulia",
+      "raffi",
+      "sarabi",
+      "trident",
+      "alice",
+      "mocca",
+      "cinnamon"
+    )
+  )
+SUAQ_waypoints_11all20_loc_females_10 <-
+  SUAQ_waypoints_11all20_loc %>%   filter(!(SUAQ_orangutans.Sex == "male")) %>% filter(
+    focal %in% c(
+      "lisa",
+      "friska",
+      "ellie",
+      "cissy",
+      "lilly",
+      "yulia",
+      "raffi",
+      "sarabi",
+      "trident",
+      "alice",
+      "mocca",
+      "cinnamon"
+    )
+  )
+
+
+```
+
+
+### Analysis
+## First visuals SUAQ
+```{r AnalysisDJL}
+##### DJL ######
+DJL_follows<- SUAQ_waypoints_11all20_loc_females_10 %>% 
+  filter(followtype=="NN") %>% 
+  group_by(follow,focal,SUAQ_followlog.ClassFocal) %>% 
+  summarise(DJL=sum(as.numeric(manual_distTolast), na.rm = TRUE),count=n()) %>% 
+  arrange(SUAQ_followlog.ClassFocal) %>% ungroup() %>% 
+  mutate(focal = fct_reorder(focal, SUAQ_followlog.ClassFocal))
+
+plot1<- DJL_follows %>% 
+  ggplot( aes(x=focal, y=DJL)) +
+    geom_jitter(color="coral4", size=0.7, alpha=0.9, shape = 4)+ # add  aes(x=focal, y=DJL) to see which follow it is on a plotly although colors are wrong then... little hack
+    geom_boxplot(aes(x=focal, y=DJL, fill=focal),outlier.fill = focal,outlier.stroke= focal) +
+    scale_fill_viridis(discrete = TRUE, alpha=0.6) +
+    ggtitle("Day journey length for NN follows in Suaq grouped by orangutans") +
+    xlab("")+
+    coord_cartesian(ylim=c(0, 5000))+
+    theme(legend.position = "none")+
+    theme(axis.text.x = element_text(angle = 90))
+ggplotly(plot1)
+view(SUAQ_waypoints_11all20_loc_females_10[SUAQ_waypoints_11all20_loc_females_10$follow==1822,])
+
+
+##### Edge lengths ######
+plot_distToLats_over_200<-SUAQ_rangepoints_11all20_loc %>% 
+  filter(followtype=="NN") %>% 
+  filter((manual_distToNext>200)&( manual_distTolast >200)) %>% 
+  group_by(focal,manualDate,follow) %>%
+  ggplot(aes(E,N))+
+  geom_point(aes(color=PtType),size=1)+
+  geom_path(aes(color=as.factor(follow)), alpha = 0.8,size=0.6)
+ggplotly(plot_distToLats_over_200)
+
+
+##### DJL & Weather ######
+plot_weather_avgRainfall<-SUAQ_weather_monthly %>% 
+  mutate(SUAQ_weather.month = fct_relevel(SUAQ_weather.month, 
+            "January", "February", "March", 
+            "April", "May", "June", 
+            "July", "August", "September", "October","November", "December")) %>% 
+  ggplot()+
+  geom_tile(aes(SUAQ_weather.month, as.factor(SUAQ_weather.year), fill= rainfall_avg))+
+  scale_fill_distiller() +
+  theme_ipsum() +
+  scale_fill_gradient(low="mintcream", high="steelblue",na.value = NA) +
+  labs(title = "Average rainfall total",x="",y="") + labs(fill='rainfall [ml]')+
+    theme(axis.text.x = element_text(angle = 45, vjust = 0.7))
+
+
+plot_weather_moRainfall<-SUAQ_weather_monthly %>% 
+  mutate(SUAQ_weather.month = fct_relevel(SUAQ_weather.month, 
+            "January", "February", "March", 
+            "April", "May", "June", 
+            "July", "August", "September", "October","November", "December")) %>% 
+  ggplot()+
+  geom_tile(aes(SUAQ_weather.month, as.factor(SUAQ_weather.year), fill= SUAQ_weather.rainfall_ml_morning))+
+  scale_fill_distiller() +
+  theme_ipsum() +
+  scale_fill_gradient(low="mintcream", high="steelblue",na.value = NA) +
+  labs(title = "Average rainfall morning",x="",y="") + labs(fill='rainfall [ml]')+
+    theme(axis.text.x = element_text(angle = 45, vjust = 0.7))
+
+
+plot_weather_eveRainfall<-SUAQ_weather_monthly %>% 
+  mutate(SUAQ_weather.month = fct_relevel(SUAQ_weather.month, 
+            "January", "February", "March", 
+            "April", "May", "June", 
+            "July", "August", "September", "October","November", "December")) %>% 
+  ggplot()+
+  geom_tile(aes(SUAQ_weather.month, as.factor(SUAQ_weather.year), fill= SUAQ_weather_monthly$SUAQ_weather.rainfall_ml_evening))+
+  scale_fill_distiller() +
+  theme_ipsum() +
+  scale_fill_gradient(low="mintcream", high="steelblue",na.value = NA) +
+  labs(title = "Average rainfall evening",x="",y="") + labs(fill='rainfall [ml]')+
+    theme(axis.text.x = element_text(angle = 45, vjust = 0.7))
+
+
+plot_weather_moWaterLevel<-SUAQ_weather_monthly %>% 
+  mutate(SUAQ_weather.month = fct_relevel(SUAQ_weather.month, 
+            "January", "February", "March", 
+            "April", "May", "June", 
+            "July", "August", "September", "October","November", "December")) %>% 
+  ggplot()+
+  geom_tile(aes(SUAQ_weather.month, as.factor(SUAQ_weather.year), fill= SUAQ_weather_monthly$SUAQ_weather.river_waterlevel_morning))+
+  scale_fill_distiller() +
+  theme_ipsum() +
+  scale_fill_gradient(low="mintcream", high="steelblue",na.value = NA) +
+  labs(title = "Waterlevel morning",x="",y="") + labs(fill='waterlevel [cm?]')+
+    theme(axis.text.x = element_text(angle = 45, vjust = 0.7))
+
+
+plot_weather_eveWaterLevel<-SUAQ_weather_monthly %>% 
+  mutate(SUAQ_weather.month = fct_relevel(SUAQ_weather.month, 
+            "January", "February", "March", 
+            "April", "May", "June", 
+            "July", "August", "September", "October","November", "December")) %>% 
+  ggplot()+
+  geom_tile(aes(SUAQ_weather.month, as.factor(SUAQ_weather.year), fill= SUAQ_weather_monthly$SUAQ_weather.river_waterlevel_evening))+
+  scale_fill_distiller() +
+  theme_ipsum() +
+  scale_fill_gradient(low="mintcream", high="steelblue",na.value = NA) +
+  labs(title = "Waterlevel evening",x="",y="") + labs(fill='waterlevel [cm?]')+
+    theme(axis.text.x = element_text(angle = 45, vjust = 0.7))
+
+
+plot_weather_Avgtemp<-SUAQ_weather_monthly %>% 
+  mutate(SUAQ_weather.month = fct_relevel(SUAQ_weather.month, 
+            "January", "February", "March", 
+            "April", "May", "June", 
+            "July", "August", "September", "October","November", "December")) %>%
+  ggplot()+
+  geom_tile(aes(SUAQ_weather.month, as.factor(SUAQ_weather.year), fill= avg_temperature_tot))+
+  scale_fill_distiller() +
+  theme_ipsum() +
+  scale_fill_gradient(low="mintcream", high="deeppink3",na.value = NA) +
+  labs(title = "Average temperature",x="",y="") + labs(fill='temperature [C°]')+
+    theme(axis.text.x = element_text(angle = 45, vjust = 0.7))
+
+plot_weather_AvgMaxtemp<-SUAQ_weather_monthly %>% 
+  mutate(SUAQ_weather.month = fct_relevel(SUAQ_weather.month, 
+            "January", "February", "March", 
+            "April", "May", "June", 
+            "July", "August", "September", "October","November", "December")) %>%
+  ggplot()+
+  geom_tile(aes(SUAQ_weather.month, as.factor(SUAQ_weather.year), fill= SUAQ_weather.max_temp_average))+
+  scale_fill_distiller() +
+  theme_ipsum() +
+  scale_fill_gradient(low="mintcream", high="deeppink3",na.value = NA) +
+  labs(title = "Average maximum temperature",x="",y="") + labs(fill='temperature [C°]')+
+    theme(axis.text.x = element_text(angle = 45, vjust = 0.7))
+
+
+plot_weather_AvgMintemp<-SUAQ_weather_monthly %>% 
+  mutate(SUAQ_weather.month = fct_relevel(SUAQ_weather.month, 
+            "January", "February", "March", 
+            "April", "May", "June", 
+            "July", "August", "September", "October","November", "December")) %>% 
+  ggplot()+
+  geom_tile(aes(SUAQ_weather.month, as.factor(SUAQ_weather.year), fill= SUAQ_weather.min_temp_average))+
+  scale_fill_distiller() +
+  theme_ipsum() +
+  scale_fill_gradient(low="mintcream", high="deeppink3",na.value = NA) +
+  labs(title = "Average minimum temperature",x="",y="") + labs(fill='temperature [C°]')+
+    theme(axis.text.x = element_text(angle = 45, vjust = 0.7))
+
+
+plot_weather_avgRainfall
+plot_weather_moRainfall
+plot_weather_eveRainfall
+plot_weather_moWaterLevel
+plot_weather_eveWaterLevel
+plot_weather_AvgMaxtemp
+plot_weather_AvgMintemp
+plot_weather_Avgtemp
+
+
+
+```
+
+
+

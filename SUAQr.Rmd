@@ -424,11 +424,11 @@ SUAQ_locationnetwork_loc <- st_drop_geometry(SUAQ_locationnetwork_sf_loc)
 ### 0.4 FAI data 
 SUAQ_fai<- read_csv2("data/20201117_FAI.csv")
 SUAQ_fai <- SUAQ_fai %>% rename_all(tolower)
-names(SUAQ_fai) <- paste0("SUAQ_fai", names(SUAQ_fai))
+names(SUAQ_fai) <- paste0("SUAQ_fai.", names(SUAQ_fai))
 
 ### 0.4 Weather data 
-SUAQ_weather<- read_csv2("data/20201117_SUAQ_weather.csv")
-SUAQ_offspring <- SUAQ_weather %>% rename_all(tolower)
+SUAQ_weather<- read_delim("data/20201117_SUAQ_weather.csv",delim=";")
+SUAQ_weather <- SUAQ_weather %>% rename_all(tolower) %>% filter(!(is.na(year)|is.na(daymonthyear)|is.na(month)))
 names(SUAQ_weather) <- paste0("SUAQ_weather.", names(SUAQ_weather))
 
 
@@ -1433,17 +1433,51 @@ SUAQ_waypoints_11all20<- SUAQ_waypoints_11all20 %>%
          speed_next = manual_distToNext/timelag_lead,
          turningAngle=turning_angle(E,N)
          )
-SUAQ_waypoints_11all20 %>% ggplot(aes(.$timelag))+geom_histogram(bins = 1000)+scale_y_log10()
-p1<- SUAQ_waypoints_11all20 %>% ggplot(aes(.$manual_distTolast))+geom_histogram(bins = 1000)+scale_y_log10()
-p2<- SUAQ_waypoints_11all20 %>% ggplot(aes(.$manual_distToNext))+geom_histogram(bins = 1000)+scale_y_log10()
-grid.arrange(p1,p2,ncol = 2,
-  widths = c(1, 1))
 
-dev.set(dev.next())
-while (!is.null(dev.list()))  dev.off()
 
-grid.arrange(p1,p2,widths=c(0.5,0.5))
-print()
+##### Histogramm for timelags of edges.
+tmp_mean<- mean(SUAQ_waypoints_11all20$timelag,na.rm=TRUE)
+plot_timelagToLast_Histo_log <-
+  SUAQ_waypoints_11all20 %>% ggplot(aes(.$timelag)) + geom_histogram(bins = 100) +
+  scale_y_log10() + labs(x = "timelag [seconds]", y = "count")+
+  geom_vline(xintercept = tmp_mean,
+             size = 1,
+             color = "red")+
+  geom_text(aes(tmp_mean+50, 150, label = paste0("Mean\n",round(tmp_mean, 2))), data.frame())
+ggsave(filename = paste(
+  paste(
+    "/Users/stefgr/Dropbox/Apps/Overleaf/Msc_Thesis_frombeginning/figures/",
+    format(Sys.Date(), "%Y%m%d"),
+    "_plot_timelagToLast_Histo_log",
+    sep = ""
+  ),
+  "pdf",
+  sep = "."
+), plot = plot_timelagToLast_Histo_log)
+##### Histogramm for distances of edges, looks the same for distance to next or distance to last ;), same edges are calculated
+tmp_mean<- mean(SUAQ_waypoints_11all20$manual_distTolast,na.rm=TRUE)
+plot_manualDistLast_Histo_log <-
+  SUAQ_waypoints_11all20 %>% ggplot(aes(.$manual_distTolast)) + geom_histogram(bins = 100) +
+  scale_x_log10(labels = scales::comma) +
+  labs(x = "distance to next point [m]", y = "count") +
+  geom_vline(xintercept = tmp_mean,
+             size = 1,
+             color = "red")+
+  geom_text(aes(tmp_mean+50, 150, label = paste0("Mean\n",round(tmp_mean, 2))), data.frame())
+ggsave(filename = paste(
+  paste(
+    "/Users/stefgr/Dropbox/Apps/Overleaf/Msc_Thesis_frombeginning/figures/",
+    format(Sys.Date(), "%Y%m%d"),
+    "_plot_manualDistLast_Histo_log",
+    sep = ""
+  ),
+  "pdf",
+  sep = "."
+), plot = plot_manualDistLast_Histo_log)
+
+
+
+
 
 DJL_follows<- SUAQ_waypoints_11all20 %>% 
   filter(followtype=="NN") %>% 
@@ -1490,7 +1524,54 @@ SUAQ_waypoints_11all20_sf <-  st_as_sf(SUAQ_waypoints_11all20,
                           coords = c("E","N"), 
                           crs = 32647) # can also do that in the new sricpts
 
-##### Project starter ##### 
+##### Project datasets one time with date for backup and one time without f.e. using ##### 
+write_csv(SUAQ_waypoints_11all20, path = paste(
+  paste(
+    "/Users/stefgr/Nextcloud/UZH/12_Semester/20200313_Masterthesis/R/data/Processed_data/",
+    "SUAQ_waypoints_11all20",
+    sep = ""
+  ),
+  "csv",
+  sep = "."
+))
+write_csv(SUAQ_fai, path = paste(
+  paste(
+    "/Users/stefgr/Nextcloud/UZH/12_Semester/20200313_Masterthesis/R/data/Processed_data/",
+    "SUAQ_fai",
+    sep = ""
+  ),
+  "csv",
+  sep = "."
+))
+write_csv(SUAQ_orangutans, path = paste(
+  paste(
+    "/Users/stefgr/Nextcloud/UZH/12_Semester/20200313_Masterthesis/R/data/Processed_data/",
+    "SUAQ_orangutans",
+    sep = ""
+  ),
+  "csv",
+  sep = "."
+))
+write_csv(SUAQ_followlog, path = paste(
+  paste(
+    "/Users/stefgr/Nextcloud/UZH/12_Semester/20200313_Masterthesis/R/data/Processed_data/",
+    "SUAQ_followlog",
+    sep = ""
+  ),
+  "csv",
+  sep = "."
+))
+write_csv(SUAQ_weather, path = paste(
+  paste(
+    "/Users/stefgr/Nextcloud/UZH/12_Semester/20200313_Masterthesis/R/data/Processed_data/",
+    "SUAQ_weather",
+    sep = ""
+  ),
+  "csv",
+  sep = "."
+))
+
+### Backup
 write_csv(SUAQ_waypoints_11all20, path = paste(
   paste(
     "/Users/stefgr/Nextcloud/UZH/12_Semester/20200313_Masterthesis/R/data/Processed_data/",
@@ -1849,23 +1930,35 @@ ggplotly(plot_gps_pttype)
 
 
 
+#### analysis of gps tracks where focals are not matching
+temp<-SUAQ_waypoints_11all20 %>% 
+  filter(follow=="2270")
+plot_gps_pttype<-SUAQ_waypoints_11all20 %>% 
+  filter(follow=="2270") %>% 
+  group_by(follow) %>%
+  ggplot()+
+  geom_point(aes(E,N,color=PtType),size=1)+
+  geom_point(data = SUAQ_locationnetwork_loc,aes(E,N,fill="black",stroke=SUAQ_locationnetwork_loc$name),size=2)+
+  geom_path(aes(E,N,color=focal), alpha = 0.7,size=0.5)
+ggplotly(plot_gps_pttype)
+
+
 
 
 ##### show points where edge length is high
-ggplot()
-
 tmp_SUAQ_gpsOfFollowsCOntainingAbnormalEdgeLengths<-SUAQ_waypoints_11all20 %>% 
   filter((manual_distToNext>150)|( manual_distTolast >150)) %>% 
   group_by(manualDate,focal,follow,followername) %>% 
   summarise()
 
-plot_distToLats_over_300<-SUAQ_waypoints_11all20 %>% 
-  filter((manual_distToNext>100)&( manual_distTolast >100)) %>% 
+plot_distToLats_over_100<-SUAQ_waypoints_11all20 %>% 
+  filter() %>% 
+  filter((manual_distToNext>200)&( manual_distTolast >200)) %>% 
   group_by(focal,manualDate,follow) %>%
   ggplot(aes(E,N))+
   geom_point(aes(color=PtType),size=1)+
   geom_path(aes(color=as.factor(follow)), alpha = 0.8,size=0.6)
-ggplotly(plot_distToLats_over_300)
+ggplotly(plot_distToLats_over_100)
 
 
 
