@@ -518,20 +518,20 @@ SUAQ_waypoints_11_20 <-
       2,
       nchar(str_extract(fileN, "_[A-Z][a-z_]+_[A-Z]{2}")) - 3
     )),
-    followtype = substr(
-      str_extract(fileN, "_[A-Z][a-z_]+_[A-Z]{2}"),
-      nchar(str_extract(fileN, "_[A-Z][a-z_]+_[A-Z]{2}")) - 1,
-      nchar(str_extract(fileN, "_[A-Z][a-z_]+_[A-Z]{2}"))
-    ),
+    # followtype = substr(
+    #   str_extract(fileN, "_[A-Z][a-z_]+_[A-Z]{2}"),
+    #   nchar(str_extract(fileN, "_[A-Z][a-z_]+_[A-Z]{2}")) - 1,
+    #   nchar(str_extract(fileN, "_[A-Z][a-z_]+_[A-Z]{2}"))
+    # ),
     
     ## BESSER? --> following 
-    #followtype = ifelse(grepl("_NL", fileN),"_NL",NA),
-    #followtype = ifelse(grepl("_NN", fileN),"NN",followtype),
-    #followtype = ifelse(grepl("_FL", fileN),"FL",followtype),
-    #followtype = ifelse(grepl("_NL", fileN),"NL",followtype),
-    #followtype = ifelse(grepl("_J", fileN),"F",followtype),
-    #followtype = ifelse(grepl("_Jg", fileN),"F?",followtype),
-    #followtype = ifelse(grepl("_FN", fileN),"_FN",followtype)
+    followtype = ifelse(grepl("_NL", fileN),"_NL",NA),
+    followtype = ifelse(grepl("_NN", fileN),"NN",followtype),
+    followtype = ifelse(grepl("_FL", fileN),"FL",followtype),
+    followtype = ifelse(grepl("_NL", fileN),"NL",followtype),
+    followtype = ifelse(grepl("_J", fileN),"F",followtype),
+    followtype = ifelse(grepl("_Jg", fileN),"F?",followtype),
+    followtype = ifelse(grepl("_FN", fileN),"FN",followtype)
 )
 #### 2.2.1 get rid of empty collumns
 SUAQ_waypoints_11_20 <-SUAQ_waypoints_11_20 %>% slice(1:nrow(SUAQ_waypoints_11_20)) # BUG: some kind of bug related to the rbind of rows of sf data frames, when applying the function read_gpx with map_df is causing a problem. The sf df are not index-able and dropping the geometry is also not possible
@@ -1065,7 +1065,7 @@ id <- rownames(SUAQ_orangutans)
 SUAQ_orangutans <- cbind(id=id, SUAQ_orangutans)
 
 
-## 6. Adding informative attributes and finishing data frame
+## 6. Adding informative attributes, cleaning attributes, and finishing data frame
 ### 6.1. Joining orangutans info
 names(SUAQ_orangutans) <- paste0("SUAQ_orangutans.", names(SUAQ_orangutans))
 SUAQ_waypoints_11all20 <-
@@ -1082,6 +1082,12 @@ SUAQ_waypoints_11all20 <- SUAQ_waypoints_11all20 %>% # replaces the found focal 
   mutate(focal=if_else(follow %in% temp_FN_whereFLogFocalnameIsCorrect,SUAQ_followlog.FocalName,focal))
 SUAQ_waypoints_11all20 <- SUAQ_waypoints_11all20 %>% # replaces the found focal names of the GPS data which are better specified in the followlog.
   mutate(focal=if_else(follow =="1176","Tristan",focal))
+
+##### Cleaning Followtypes
+SUAQ_waypoints_11all20 <- SUAQ_waypoints_11all20 %>% # replaces the found focal names of the GPS data which are better specified in the followlog.
+  mutate(followtype=if_else(followtype =="Fl","FL",followtype))
+SUAQ_waypoints_11all20 <- SUAQ_waypoints_11all20 %>% # replaces the found followtype of the GPS data which are PROBABLY better specified in the followlog. --> Check with caroline to do
+  mutate(followtype=if_else(followtype!=SUAQ_followlog.FollowType,SUAQ_followlog.FollowType,followtype))
 
 
 
@@ -1394,6 +1400,18 @@ specs_SUAQALL_DoubleOccuringTimeLocations <-
     by = c("diagnostic_groupedbylocation" = "diagnostic_groupedbylocation")
   ) %>%
   filter(.$diagnostic_numOfOccuringGPSfix > 1) %>% group_by(follow, .$diagnostic_numOfOccuringGPSfix) %>% summarise() ## Looks ok only around 100 GPS points have exact same location and time. Maybe these are just occuring twice in a follow but they shouldn't have a too big influence.
+
+
+##### Inspecting Followtypes
+levels(as.factor(SUAQ_waypoints_11all20$followtype))
+levels(as.factor(SUAQ_waypoints_11all20$SUAQ_followlog.FollowType))
+
+specs_followtypeDiffFollowTypeFromlog <- SUAQ_waypoints_11all20 %>% filter(followtype!=SUAQ_followlog.FollowType) %>% group_by(follow,followtype,SUAQ_followlog.FollowType,focal,) %>% summarise()
+specs_followtypeDiffFollowTypeFromlog
+
+specs_numOfFollowsWithFollowtype <- SUAQ_waypoints_11all20 %>% filter(!is.na(followtype))
+tmp <- SUAQ_waypoints_11all20 %>% filter(followtype=="Jg")
+
 
 ####################################################################################################################
 
