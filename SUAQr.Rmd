@@ -430,7 +430,9 @@ names(SUAQ_fai) <- paste0("SUAQ_fai.", names(SUAQ_fai))
 SUAQ_weather<- read_delim("data/20201117_SUAQ_weather.csv",delim=";")
 SUAQ_weather <- SUAQ_weather %>% rename_all(tolower) %>% filter(!(is.na(year)|is.na(daymonthyear)|is.na(month)))
 names(SUAQ_weather) <- paste0("SUAQ_weather.", names(SUAQ_weather))
-
+SUAQ_weather <- SUAQ_weather %>% rowwise() %>% 
+  mutate(avg_temperature_tot=mean(c(SUAQ_weather.min_temp_average,SUAQ_weather.max_temp_average),na.rm=TRUE),
+         rainfall_avg=mean(c(as.numeric(SUAQ_weather.rainfall_ml_morning),as.numeric(SUAQ_weather.rainfall_ml_evening)),na.rm=TRUE))
 
 ## 1. Getting data from excel/csv files for year 2017/18
 SUAQ_waypoints_17_18 <- read_csv2("data/20200415_Master_GPS_Suaq_2017_Mar18_SH.csv")
@@ -1051,7 +1053,7 @@ specs_noFNAfterJoinAndManualAdj <- SUAQ_waypoints_11all20 %>%
 #### Giving a random FN
 SUAQ_waypoints_11all20<- SUAQ_waypoints_11all20 %>% ungroup() %>% 
   mutate(follow=if_else(follow==9999,NA_real_,follow)) %>% 
-  group_by(fileN,focal,manualDate,.$follow) %>% # if .$follow it can be modified later idk why with only "follow" it doesnt work
+  group_by(fileN,focal,manualDate,follow) %>% # if .$follow it can be modified later idk why with only "follow" it doesnt work
   mutate(follow = if_else(is.na(follow),as.numeric(cur_group_id()+1100018),follow))
 
 
@@ -1089,14 +1091,21 @@ SUAQ_waypoints_11all20 <- SUAQ_waypoints_11all20 %>% # replaces the found focal 
 SUAQ_waypoints_11all20 <- SUAQ_waypoints_11all20 %>% # replaces the found followtype of the GPS data which are PROBABLY better specified in the followlog. --> Check with caroline to do
   mutate(followtype=if_else(followtype!=SUAQ_followlog.FollowType,SUAQ_followlog.FollowType,followtype))
 
+### 6.2. Joining FAI and Weather info
+SUAQ_waypoints_11all20 <- SUAQ_waypoints_11all20 %>% left_join(SUAQ_weather,by=c("manualDate"="SUAQ_weather.daymonthyear"))
+SUAQ_waypoints_11all20 <-
+  SUAQ_waypoints_11all20 %>% mutate(manualYear = year(manualDate),
+                                    manualMonth = month(manualDate)) %>%  left_join(SUAQ_fai,
+                                                                                    by = c("manualYear" = "SUAQ_fai.year", "manualMonth" = "SUAQ_fai.monthnum")) %>% dplyr::select(-manualMonth, -manualYear,)
 
+tmp<- SUAQ_waypoints_11all20 %>% filter(is.na())
 
-### 6.2. Create new variables like Sinuosity, DJL, Edge Speed
+### 6.3. Create new variables like Sinuosity, DJL, Edge Speed
 #SUAQ_waypoints_11all20 <- SUAQ_waypoints_11all20 %>% left_join()
 SUAQ_waypoints_11all20<- SUAQ_waypoints_11all20 %>%  
   mutate(focal=if_else(is.na(focal),SUAQ_followlog.FocalName,focal)) # get missing focal names from SUAQ followlog.
 
-### 6.3. Only keep gps points within Bounding box of 330000-360000N / 323000-328000E because some points are wrong probably the N and the E variable are the same (accidently copied)
+### 6.4. Only keep gps points within Bounding box of 330000-360000N / 323000-328000E because some points are wrong probably the N and the E variable are the same (accidently copied)
 SUAQ_waypoints_11all20 <- SUAQ_waypoints_11all20 %>% filter(E>323000 & 
                                                             E<328000 & 
                                                             N>330000 & 
@@ -1114,7 +1123,7 @@ SUAQ_waypoints_11all20 <- cbind(id=id, SUAQ_waypoints_11all20)
 #                                          N < 365000)
 
 
-### 6.4. Cleaning important attributes
+### 6.5. Cleaning important attributes
 ##### Sexes overview
 SUAQ_waypoints_11all20<- SUAQ_waypoints_11all20 %>% mutate(SUAQ_followlog.ClassFocal=if_else(SUAQ_followlog.ClassFocal=="ad.female","adult female",SUAQ_followlog.ClassFocal))
 SUAQ_waypoints_11all20<- SUAQ_waypoints_11all20 %>% mutate(SUAQ_followlog.ClassFocal=if_else(SUAQ_followlog.ClassFocal=="fl.male","flanged male",SUAQ_followlog.ClassFocal))
@@ -1224,13 +1233,13 @@ own_valuefinder <- function(df,pk,pkcol,replaceterm,startcol,targetcol,lookuptyp
 
 
 
-### 6.5. Create project Master-Dataframes
+### 6.6. Create project Master-Dataframes
 ##### find strange geometry points delete them
 SUAQ_waypoints_11all20 <- SUAQ_waypoints_11all20 %>% filter(id!=3248) #inspect point its far away from the follow where it is saved in (FN 989 20130601_Islo_Raja_FN) but it matched to FN 975
 
 
 
-### 6.6. Create project Master-Dataframes
+### 6.7. Create project Master-Dataframes
 ##### save all waypoints as sf
 SUAQ_waypoints_11all20_sf <-  st_as_sf(SUAQ_waypoints_11all20, 
                           coords = c("E","N"), 

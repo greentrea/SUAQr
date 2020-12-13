@@ -165,9 +165,7 @@ SUAQ_waypoints_11all20_loc <- read_csv("data/Processed_data/SUAQ_waypoints_11all
 
 ##### Weather and FAI #####
 SUAQ_weather <- read_csv("data/Processed_data/SUAQ_weather.csv")
-SUAQ_weather <- SUAQ_weather %>% rowwise() %>% 
-  mutate(avg_temperature_tot=mean(c(SUAQ_weather.min_temp_average,SUAQ_weather.max_temp_average),na.rm=TRUE),
-         rainfall_avg=mean(c(as.numeric(SUAQ_weather.rainfall_ml_morning),as.numeric(SUAQ_weather.rainfall_ml_evening)),na.rm=TRUE))
+
 SUAQ_weather_monthly<-SUAQ_weather %>% 
   group_by(SUAQ_weather.year,SUAQ_weather.month) %>% 
   summarise_all(funs(mean))
