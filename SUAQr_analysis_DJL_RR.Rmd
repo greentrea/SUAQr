@@ -182,9 +182,9 @@ SUAQ_fai <- read_csv("data/Processed_data/SUAQ_fai.csv")
 ##### Joining info based on date #####
 SUAQ_waypoints_11all20_loc <- SUAQ_waypoints_11all20_loc %>% left_join(SUAQ_weather,by=c("manualDate"="SUAQ_weather.daymonthyear"))
 
-autoplot(SUAQ_waypoints_11all20_loc)
+autoplot(glm_rainfall)
 
-lm<- lm(manual_distTolast~rainfall_avg,SUAQ_waypoints_11all20_loc)
+glm_rainfall<- lm(manual_distTolast~rainfall_avg,SUAQ_waypoints_11all20_loc)
 summary(lm)
 
 
@@ -287,8 +287,9 @@ plot1<- DJL_follows %>%
     geom_jitter(color="coral4", size=0.7, alpha=0.9, shape = 4)+ # add  aes(x=focal, y=DJL) to see which follow it is on a plotly although colors are wrong then... little hack
     geom_boxplot(aes(x=focal, y=DJL, fill=focal),outlier.fill = focal,outlier.stroke= focal) +
     scale_fill_viridis(discrete = TRUE, alpha=0.6) +
-    ggtitle("Day journey length for NN follows in Suaq grouped by orangutans") +
+    ggtitle("Day journey length for Nest-to-Nest follows in Suaq grouped by orangutans") +
     xlab("")+
+    ylab("DJL [m]")+
     coord_cartesian(ylim=c(0, 5000))+
     theme(legend.position = "none")+
     theme(axis.text.x = element_text(angle = 90))
