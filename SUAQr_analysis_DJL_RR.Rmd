@@ -67,7 +67,9 @@ packages_checker(
     'htmlwidgets',
     'gridExtra',# additional to ggplot, can add a density plot on the side of a histogram "marginal plot"
     'grid',
-    'ggExtra'
+    'ggExtra',
+    'lme4',
+    'nlme'
     ))
 rm(list = ls())
 getwd()
@@ -162,6 +164,9 @@ calculate_mode <- function(x) {
 ### Load Project variables ### 
 ##### waypoints ##### 
 SUAQ_waypoints_11all20_loc <- read_csv("data/Processed_data/SUAQ_waypoints_11all20.csv")
+SUAQ_waypoints_11all20_loc <- SUAQ_waypoints_11all20_loc %>% mutate(monthYearDate=format(as.Date(manualDate), "%Y-%m"))
+
+
 
 ##### Weather and FAI #####
 SUAQ_weather <- read_csv("data/Processed_data/SUAQ_weather.csv")
@@ -173,18 +178,9 @@ SUAQ_weather_monthly<-SUAQ_weather %>%
 SUAQ_weather_monthly<- SUAQ_weather_monthly%>% dplyr::select(-SUAQ_weather.weather_id,-SUAQ_weather.day,-SUAQ_weather.daymonthyear)
 
 
-##### Joining info based on date #####
-
-
-
-autoplot(glm_rainfall)
-
-glm_rainfall<- lm(manual_distTolast~rainfall_avg,SUAQ_waypoints_11all20_loc)
-summary(lm)
-
 
 ##### Selection only pointtypes which are taken on the orangutan way? is this true for all? ##### 
-SUAQ_rangepoints_11all20_loc <- SUAQ_waypoints_11all20_loc %>% filter(SUAQ_waypoints_11all20_loc$PtType %in% c("range","foun","lost","mornnest","nightnest","daynest"))
+SUAQ_rangepoints_11all20_loc <- SUAQ_waypoints_11all20_loc %>% dplyr::filter(PtType %in% c("range","foun","lost","mornnest","nightnest","daynest"))
 
 
 
@@ -267,6 +263,61 @@ SUAQ_waypoints_11all20_loc_females_10 <-
 
 
 ### Analysis
+## Statistics
+```{r AnalysisDJL}
+##### GLM #####
+DJL_follows <- SUAQ_waypoints_11all20_loc %>%
+  filter(followtype == "NN") %>%
+  group_by(
+    follow,
+    focal,
+    SUAQ_followlog.ClassFocal,
+    SUAQ_weather.rainfall_ml_evening,
+    SUAQ_weather.river_waterlevel_morning,
+    SUAQ_weather.river_waterlevel_evening,
+    SUAQ_weather.rainfall_ml_morning,
+    SUAQ_weather.avg_temperature_tot,
+    SUAQ_weather.max_temp_average,
+    SUAQ_weather.min_temp_average,
+    SUAQ_weather.temperature_max_morning,
+    SUAQ_weather.temperature_min_morning,
+    SUAQ_fai.fai,
+    ageOfCurrentOffspring,
+    monthYearDate
+  ) %>%
+  summarise(DJL = sum(as.numeric(manual_distTolast), na.rm = TRUE), count =
+              n())
+
+view(as.data.frame(colnames(SUAQ_waypoints_11all20_loc)))
+autoplot(glm_rainfall)
+
+glm_rainfall <-
+  lmer(
+    DJL ~ 
+      SUAQ_weather.rainfall_ml_evening + 
+      SUAQ_weather.rainfall_ml_morning + 
+      SUAQ_weather.river_waterlevel_evening + 
+      SUAQ_weather.river_waterlevel_morning + 
+      SUAQ_weather.max_temp_average + 
+      SUAQ_weather.min_temp_average +
+      SUAQ_weather.temperature_max_morning+
+      SUAQ_weather.temperature_min_morning+
+      SUAQ_weather.avg_temperature_tot + 
+      SUAQ_followlog.ClassFocal + 
+      SUAQ_fai.fai +
+      ageOfCurrentOffspring + (1 | monthYearDate) + (1 | focal), # random effects to correct for
+    data = DJL_follows
+  )
+summary(glm_rainfall)
+anova(glm_rainfall)
+
+
+
+
+
+
+```
+
 ## First visuals SUAQ
 ```{r AnalysisDJL}
 ##### DJL ######
