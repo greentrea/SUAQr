@@ -103,6 +103,9 @@ rm(list = ls())
 getwd()
 
 
+
+
+
 ### CUSTOM FUNCTIONS ###
 
 # Function for displaying scale labels in ggplot not as f.e. 4e+05
@@ -313,12 +316,10 @@ SUAQ_followlog <- SUAQ_followlog %>% # replaces the found focal names of the GPS
 SUAQ_orangutans<- read_csv2("data/20200920_Orangutan_ID.csv")
 
 SUAQ_matriline<- read_csv2("data/20201117_matriline.csv")
-SUAQ_matriline <- SUAQ_matriline %>% rename_all(tolower)
-names(SUAQ_matriline) <- paste0("SUAQ_matriline.", names(SUAQ_matriline))
+SUAQ_matriline <- SUAQ_matriline %>% rename_all(tolower) %>% mutate(focal=tolower(focal))
 
-SUAQ_offspring<- read_csv2("data/20201117_offspring.csv")
-SUAQ_offspring <- SUAQ_offspring %>% rename_all(tolower)
-names(SUAQ_offspring) <- paste0("SUAQ_offspring.", names(SUAQ_offspring))
+SUAQ_dob<- read_csv2("data/20201117_offspring.csv")
+SUAQ_dob <- SUAQ_dob %>% rename_all(tolower) %>% mutate(focal=tolower(focal))
 
 SUAQ_orangutans<- SUAQ_orangutans[rowSums(is.na(SUAQ_orangutans)) != ncol(SUAQ_orangutans),]
 #### delete empty collumns of orangutan list
@@ -352,8 +353,18 @@ SUAQ_orangutans <- SUAQ_orangutans %>%
            "SetBirthDateForAnalyses"="Set birth date for analyses",
            "FeetOrToes"="Feet/toes")
          )
-SUAQ_orangutans <- SUAQ_orangutans %>% left_join(SUAQ_matriline, by=c("orangutanname"="SUAQ_matriline.focal"))
-SUAQ_orangutans <- SUAQ_orangutans %>% left_join(SUAQ_offspring, by=c("orangutanname"="SUAQ_offspring.focal"))
+##### Attribute additional to orangutan info add matriline infos and focal date of births info
+SUAQ_orangutans <- 
+  SUAQ_orangutans %>% left_join(SUAQ_matriline, by = c("orangutanname" =
+                                                         "focal")) 
+SUAQ_orangutans <- SUAQ_orangutans %>% left_join(SUAQ_dob, by=c("orangutanname"="focal"))
+SUAQ_orangutans <- SUAQ_orangutans %>% rename(matriline = matriline.x) %>% mutate(
+                                                           matriline = if_else( # replacing existing matriline with new infos
+                                                             is.na(matriline),
+                                                             matriline.y,
+                                                             matriline
+                                                           )
+                                                         )
 
 
 #### Adding occurences of other unofficial orangutannames written in the followlog
@@ -429,10 +440,10 @@ names(SUAQ_fai) <- paste0("SUAQ_fai.", names(SUAQ_fai))
 ### 0.4 Weather data 
 SUAQ_weather<- read_delim("data/20201117_SUAQ_weather.csv",delim=";")
 SUAQ_weather <- SUAQ_weather %>% rename_all(tolower) %>% filter(!(is.na(year)|is.na(daymonthyear)|is.na(month)))
-names(SUAQ_weather) <- paste0("SUAQ_weather.", names(SUAQ_weather))
 SUAQ_weather <- SUAQ_weather %>% rowwise() %>% 
-  mutate(avg_temperature_tot=mean(c(SUAQ_weather.min_temp_average,SUAQ_weather.max_temp_average),na.rm=TRUE),
-         rainfall_avg=mean(c(as.numeric(SUAQ_weather.rainfall_ml_morning),as.numeric(SUAQ_weather.rainfall_ml_evening)),na.rm=TRUE))
+  mutate(avg_temperature_tot=mean(c(min_temp_average,max_temp_average),na.rm=TRUE),
+         rainfall_avg=mean(c(as.numeric(rainfall_ml_morning),as.numeric(rainfall_ml_evening)),na.rm=TRUE))
+names(SUAQ_weather) <- paste0("SUAQ_weather.", names(SUAQ_weather))
 
 ## 1. Getting data from excel/csv files for year 2017/18
 SUAQ_waypoints_17_18 <- read_csv2("data/20200415_Master_GPS_Suaq_2017_Mar18_SH.csv")
@@ -1044,11 +1055,7 @@ SUAQ_waypoints_11all20 <-SUAQ_waypoints_11all20 %>%
     follow=if_else(fileN=="20190209_Yulia_Ulil_NN",2582,follow)
     )
 
-#### Which ones don't have a follownumber. Add a dummy FN.
-specs_noFNAfterJoinAndManualAdj <- SUAQ_waypoints_11all20 %>% 
-  filter(is.na(follow)) %>% 
-  group_by(fileN,focal,.$manualDate,.$automaticDate,.$follow) %>% 
-  summarise(count=n()) # new follows without a follownumber
+
 
 #### Giving a random FN
 SUAQ_waypoints_11all20<- SUAQ_waypoints_11all20 %>% ungroup() %>% 
@@ -1063,15 +1070,6 @@ names(SUAQ_followlog) <- paste0("SUAQ_followlog.", names(SUAQ_followlog))
 SUAQ_waypoints_11all20 <- SUAQ_waypoints_11all20 %>%
   left_join(SUAQ_followlog[,c(2,4,14,16,17,19,20,21,22,23,25,29,30,31,32,33,34,35,36,38,39,40,41,42,43,46,55,56,57,58,59,60,61,62,63,64,65,66,67:74)],by=c("follow"="SUAQ_followlog.FollowNumber"),suffix = c("", "_fromFollowlog"))
 
-id <- rownames(SUAQ_orangutans)
-SUAQ_orangutans <- cbind(id=id, SUAQ_orangutans)
-
-
-## 6. Adding informative attributes, cleaning attributes, and finishing data frame
-### 6.1. Joining orangutans info
-names(SUAQ_orangutans) <- paste0("SUAQ_orangutans.", names(SUAQ_orangutans))
-SUAQ_waypoints_11all20 <-
-  SUAQ_waypoints_11all20 %>% left_join(SUAQ_orangutans[,1:10], by = c("focal" = "SUAQ_orangutans.orangutanname"))
 
 ##### Focal names in followlog are correct overwrite the ones in GPS data
 temp_FN_whereFLogFocalnameIsCorrect<- c("1107","1039","1043","1085","1106","1479","1480","1481","2219","1697","2024","989","990","2192","2193","2167","974","1042","1041","1184","1439","1518","2263","2280","2188","2238","2272","2272","2272","2272","2272","2272","1606","1650","1651","1187","2198","2270","2271","2286","2288","2289")
@@ -1084,6 +1082,18 @@ SUAQ_waypoints_11all20 <- SUAQ_waypoints_11all20 %>% # replaces the found focal 
   mutate(focal=if_else(follow %in% temp_FN_whereFLogFocalnameIsCorrect,SUAQ_followlog.FocalName,focal))
 SUAQ_waypoints_11all20 <- SUAQ_waypoints_11all20 %>% # replaces the found focal names of the GPS data which are better specified in the followlog.
   mutate(focal=if_else(follow =="1176","Tristan",focal))
+
+
+
+## 6. Adding informative attributes, cleaning attributes, and finishing data frame
+### 6.1. Joining orangutans info
+id <- rownames(SUAQ_orangutans)
+SUAQ_orangutans <- cbind(id=id, SUAQ_orangutans)
+
+names(SUAQ_orangutans) <- paste0("SUAQ_orangutans.", names(SUAQ_orangutans))
+SUAQ_waypoints_11all20 <-
+  SUAQ_waypoints_11all20 %>% left_join(SUAQ_orangutans[,c(1:10,38:50)], by = c("focal" = "SUAQ_orangutans.orangutanname"))
+
 
 ##### Cleaning Followtypes
 SUAQ_waypoints_11all20 <- SUAQ_waypoints_11all20 %>% # replaces the found focal names of the GPS data which are better specified in the followlog.
@@ -1098,12 +1108,65 @@ SUAQ_waypoints_11all20 <-
                                     manualMonth = month(manualDate)) %>%  left_join(SUAQ_fai,
                                                                                     by = c("manualYear" = "SUAQ_fai.year", "manualMonth" = "SUAQ_fai.monthnum")) %>% dplyr::select(-manualMonth, -manualYear,)
 
-tmp<- SUAQ_waypoints_11all20 %>% filter(is.na())
+#tmp<- SUAQ_waypoints_11all20 %>% filter(is.na())
 
-### 6.3. Create new variables like Sinuosity, DJL, Edge Speed
-#SUAQ_waypoints_11all20 <- SUAQ_waypoints_11all20 %>% left_join()
+### 6.3. Create new variables like offspringage, Sinuosity, DJL, Edge Speed
+##### SUAQ_waypoints_11all20 <- SUAQ_waypoints_11all20 %>% left_join()
 SUAQ_waypoints_11all20<- SUAQ_waypoints_11all20 %>%  
   mutate(focal=if_else(is.na(focal),SUAQ_followlog.FocalName,focal)) # get missing focal names from SUAQ followlog.
+
+
+##### Calculate differences of offspring age and focalage
+
+SUAQ_waypoints_11all20<- SUAQ_waypoints_11all20 %>%  
+  mutate(ageFromDOB=time_length(difftime(manualDate, SUAQ_orangutans.dateofbirth), "years")) 
+
+##### Defining current offspring ages
+SUAQ_waypoints_11all20<- SUAQ_waypoints_11all20 %>%  
+  mutate(ageOfOffspring1=time_length(difftime(manualDate, SUAQ_orangutans.offspring1_dob), "years"),
+         ageOfOffspring2=time_length(difftime(manualDate, SUAQ_orangutans.offspring2_dob), "years"),
+         ageOfOffspring3=time_length(difftime(manualDate, SUAQ_orangutans.offspring3_dob), "years")
+         ) %>%  # get missing focal names from SUAQ followlog.
+  mutate(
+    ageOfOffspring1 = if_else((ageOfOffspring1>7)|(ageOfOffspring1<0),NA_real_,ageOfOffspring1), # taking a weaning phase of 7 years. And delete minus years of unborn offsprings
+    ageOfOffspring2 = if_else((ageOfOffspring2>7)|(ageOfOffspring2<0),NA_real_,ageOfOffspring2),
+    ageOfOffspring3 = if_else((ageOfOffspring3>7)|(ageOfOffspring3<0),NA_real_,ageOfOffspring3),
+  )
+##### get the youngest focal
+SUAQ_waypoints_11all20<- SUAQ_waypoints_11all20 %>%  
+  mutate(
+    ageOfCurrentOffspring=min(ageOfOffspring1,ageOfOffspring2,ageOfOffspring3,na.rm = TRUE)) 
+
+
+##### Adding the current offspring name as attribute
+SUAQ_waypoints_11all20<- SUAQ_waypoints_11all20 %>%  
+  mutate(currentOffspring=if_else(ageOfCurrentOffspring%in%c(ageOfOffspring1),SUAQ_orangutans.offspring1_id,NA_character_)) %>%
+  mutate(currentOffspring=if_else(ageOfCurrentOffspring%in%c(ageOfOffspring2),SUAQ_orangutans.offspring2_id,currentOffspring)) %>%
+  mutate(currentOffspring=if_else(ageOfCurrentOffspring%in%c(ageOfOffspring3),SUAQ_orangutans.offspring3_id,currentOffspring)) %>% 
+  mutate(ageOfCurrentOffspring=if_else(is.infinite(ageOfCurrentOffspring),NA_real_,ageOfCurrentOffspring))
+
+##### View offspring ages and focals
+test<- SUAQ_waypoints_11all20 %>% filter((!is.na(currentOffspring))) %>% filter(focal=="alice",currentOffspring=="Luther")
+plot_OffspringAgeAndMotherTracking <-
+  SUAQ_waypoints_11all20 %>% filter((!is.na(currentOffspring))) %>% ungroup() %>% 
+  ggplot(
+    aes(manualDate, .$focal, colour = currentOffspring, size =
+          ageOfCurrentOffspring)
+  ) + geom_point() + labs(colour = "Offspring",x="Date", y="Orangutan mother",size="Age [years]")
+
+ggsave(filename = paste(
+  paste(
+    "/Users/stefgr/Dropbox/Apps/Overleaf/Msc_Thesis_frombeginning/figures/",
+    format(Sys.Date(), "%Y%m%d"),
+    "_plot_OffspringAgeAndMotherTracking",
+    sep = ""
+  ),
+  "pdf",
+  sep = "."
+), plot = plot_OffspringAgeAndMotherTracking)
+
+
+
 
 ### 6.4. Only keep gps points within Bounding box of 330000-360000N / 323000-328000E because some points are wrong probably the N and the E variable are the same (accidently copied)
 SUAQ_waypoints_11all20 <- SUAQ_waypoints_11all20 %>% filter(E>323000 & 
@@ -1439,6 +1502,8 @@ SUAQ_waypoints_11all20_sf %>% ggplot(aes(manualTime))+geom_histogram(bins = 1000
 SUAQ_waypoints_11all20_sf %>% filter(is.na(manualTime)) %>% 
   ggplot(aes(hms::as_hms(automaticTime)))+geom_histogram(bins = 1000) # time before conversion
 specs_follows_points_in_night<- SUAQ_waypoints_11all20_sf %>% 
+  filter((manualTime<lubridate::hms("04:00:00"))|(manualTime>lubridate::hms("20:00:00")))
+specs_follows_points_in_night_automaticTime<- SUAQ_waypoints_11all20_sf %>% 
   filter(is.na(manualTime)&(automaticTime<lubridate::hms("04:00:00"))) # probably one outlier and one track in the night. Or wrong time settings
 
 # todo
