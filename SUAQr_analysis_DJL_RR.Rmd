@@ -69,7 +69,22 @@ packages_checker(
     'grid',
     'ggExtra',
     'lme4',
-    'nlme'
+    'nlme',
+    'ggfortify',
+    'readr',
+    'dplyr',
+    'ggplot2',
+    'tidyr',
+    'tidyverse',
+    'skimr',
+    'viridis',
+    'ggstatsplot',
+    'ggpubr',
+    'GGally',
+    'ggfortify', #check linear regression assumptions
+    'lindia', # linear regression tools z.b gg_rehist()
+    'MuMIn',
+    'MASS'
     ))
 rm(list = ls())
 getwd()
@@ -176,6 +191,16 @@ SUAQ_weather_monthly<-SUAQ_weather %>%
   group_by(SUAQ_weather.year,SUAQ_weather.month) %>% 
   summarise_all(funs(mean))
 SUAQ_weather_monthly<- SUAQ_weather_monthly%>% dplyr::select(-SUAQ_weather.weather_id,-SUAQ_weather.day,-SUAQ_weather.daymonthyear)
+
+
+##### location network
+SUAQ_locationnetwork_sf <- st_read("data/20201201_StudyBalimbingStudyArea_points.GPX")
+SUAQ_locationnetwork_sf_loc <- st_transform(SUAQ_locationnetwork_sf,crs = 32647)
+##### for locale coordinate system
+coordinates_tmp <- st_coordinates(SUAQ_locationnetwork_sf_loc)
+colnames(coordinates_tmp) <- c("E","N")
+SUAQ_locationnetwork_sf_loc <- cbind(SUAQ_locationnetwork_sf_loc,coordinates_tmp)
+SUAQ_locationnetwork_loc <- st_drop_geometry(SUAQ_locationnetwork_sf_loc)
 
 
 
@@ -286,30 +311,80 @@ DJL_follows <- SUAQ_waypoints_11all20_loc %>%
     monthYearDate
   ) %>%
   summarise(DJL = sum(as.numeric(manual_distTolast), na.rm = TRUE), count =
-              n())
+              n()) 
+
+colnames(DJL_follows) <- c("follow","focal","ClassFocal","rain_eve","watlevel_mo","walevel_eve","rain_mo","avg_temp_tot","max_temp_average","min_temp_average","temp_max_mo","temp_min_mo","fai","ageOfCurrentOffspring","monthYearDate","DJL","count")
+DJL_follows<- DJL_follows%>% filter(DJL<2100) %>% 
+  mutate(ClassFocalID=if_else(ClassFocal=="juvenile",1,1))%>% 
+  mutate(ClassFocalID=if_else(ClassFocal=="adult female",2,ClassFocalID))%>% 
+  mutate(ClassFocalID=if_else(ClassFocal=="mother",3,ClassFocalID))%>% 
+  mutate(ClassFocalID=if_else(ClassFocal=="unflanged male",4,ClassFocalID))%>% 
+  mutate(ClassFocalID=if_else(ClassFocal=="flanged male",5,ClassFocalID))
+
+DJL_follows %>%  ggplot(aes(DJL)) + geom_histogram(bins = 60)
+# sind ok follows c(2284, 745)
+# sind nicht ok follows c(1874)
+
+temp<-SUAQ_waypoints_11all20_loc %>% 
+  filter(follow %in% c("2876"))
+
+plot_gps_pttype<-SUAQ_waypoints_11all20_loc %>% 
+  filter(follow %in% c("2876")) %>% 
+  group_by(follow) %>%
+  ggplot()+
+  geom_point(aes(E,N,color=PtType),size=1)+
+  geom_point(data = SUAQ_locationnetwork_loc,aes(E,N,fill="black"),size=2)+
+  geom_path(aes(E,N,color=focal), alpha = 0.7,size=0.5)
+ggplotly(plot_gps_pttype)
+
+
+
+
+
+
+# lm see autoplot ?
+lm<-
+  lm(
+    DJL ~ 
+      ClassFocalID + 
+      fai +
+      ageOfCurrentOffspring, # random effects to correct for
+    data = DJL_follows
+  )
 
 view(as.data.frame(colnames(SUAQ_waypoints_11all20_loc)))
-autoplot(glm_rainfall)
+autoplot(lm_rainfall)
+summary(lm)
 
 glm_rainfall <-
   lmer(
     DJL ~ 
-      SUAQ_weather.rainfall_ml_evening + 
-      SUAQ_weather.rainfall_ml_morning + 
-      SUAQ_weather.river_waterlevel_evening + 
-      SUAQ_weather.river_waterlevel_morning + 
-      SUAQ_weather.max_temp_average + 
-      SUAQ_weather.min_temp_average +
-      SUAQ_weather.temperature_max_morning+
-      SUAQ_weather.temperature_min_morning+
-      SUAQ_weather.avg_temperature_tot + 
-      SUAQ_followlog.ClassFocal + 
-      SUAQ_fai.fai +
+      rain_eve + 
+      rain_mo + 
+      watlevel_mo + 
+      walevel_eve + 
+      max_temp_average + 
+      min_temp_average +
+      temp_max_mo+
+      temp_min_mo+
+      avg_temp_tot + 
+      ClassFocalID + 
+      fai +
       ageOfCurrentOffspring + (1 | monthYearDate) + (1 | focal), # random effects to correct for
     data = DJL_follows
   )
+autoplot(glm_rainfall)
+
+pt(q=2.361, df=315, lower.tail=FALSE)
+df.residual(glm_rainfall)
 summary(glm_rainfall)
 anova(glm_rainfall)
+
+ctable <- coef(summary(glm_rainfall))
+pvals <- pt(abs(ctable[, "t value"]), df.residual(glm_rainfall), lower.tail = FALSE)
+cbind(ctable, pvals)
+
+qqnorm(resid(glm_rainfall))
 
 
 
@@ -354,7 +429,7 @@ plot_distToLats_over_200<-SUAQ_rangepoints_11all20_loc %>%
 ggplotly(plot_distToLats_over_200)
 
 
-##### DJL & Weather ######
+##### Visualization of Weather ######
 plot_weather_avgRainfall<-SUAQ_weather_monthly %>% 
   mutate(SUAQ_weather.month = fct_relevel(SUAQ_weather.month, 
             "January", "February", "March", 
@@ -475,6 +550,20 @@ plot_weather_AvgMaxtemp
 plot_weather_AvgMintemp
 plot_weather_Avgtemp
 
+##### Visualization of FAI ######
+
+plot_weather_AvgMintemp<-SUAQ_fai %>% 
+  mutate(SUAQ_fai.month = fct_relevel(SUAQ_fai.month, 
+            "January", "February", "March", 
+            "April", "May", "June", 
+            "July", "August", "September", "October","November", "December")) %>% 
+  ggplot()+
+  geom_tile(aes(SUAQ_fai, as.factor(SUAQ_fai.year), fill= SUAQ_fai$SUAQ_fai.fai))+
+  scale_fill_distiller() +
+  theme_ipsum() +
+  scale_fill_gradient(low="mintcream", high="deeppink3",na.value = NA) +
+  labs(title = "Average minimum temperature",x="",y="") + labs(fill='temperature [C°]')+
+    theme(axis.text.x = element_text(angle = 45, vjust = 0.7))
 
 
 ```
