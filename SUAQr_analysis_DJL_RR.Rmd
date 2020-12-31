@@ -314,7 +314,7 @@ DJL_follows <- SUAQ_waypoints_11all20_loc %>%
               n()) 
 
 colnames(DJL_follows) <- c("follow","focal","ClassFocal","rain_eve","watlevel_mo","walevel_eve","rain_mo","avg_temp_tot","max_temp_average","min_temp_average","temp_max_mo","temp_min_mo","fai","ageOfCurrentOffspring","monthYearDate","DJL","count")
-DJL_follows<- DJL_follows%>% filter(DJL<2100) %>% 
+DJL_follows<- DJL_follows%>%
   mutate(ClassFocalID=if_else(ClassFocal=="juvenile",1,1))%>% 
   mutate(ClassFocalID=if_else(ClassFocal=="adult female",2,ClassFocalID))%>% 
   mutate(ClassFocalID=if_else(ClassFocal=="mother",3,ClassFocalID))%>% 
@@ -346,14 +346,12 @@ ggplotly(plot_gps_pttype)
 lm<-
   lm(
     DJL ~ 
-      ClassFocalID + 
-      fai +
-      ageOfCurrentOffspring, # random effects to correct for
+      ClassFocal,
     data = DJL_follows
   )
 
 view(as.data.frame(colnames(SUAQ_waypoints_11all20_loc)))
-autoplot(lm_rainfall)
+autoplot(lm)
 summary(lm)
 
 glm_rainfall <-
@@ -374,7 +372,9 @@ glm_rainfall <-
     data = DJL_follows
   )
 autoplot(glm_rainfall)
-
+install.packages("mulcomp")
+library(multcomp)
+cftest
 pt(q=2.361, df=315, lower.tail=FALSE)
 df.residual(glm_rainfall)
 summary(glm_rainfall)
@@ -402,6 +402,46 @@ DJL_follows<- SUAQ_waypoints_11all20_loc_females_10 %>%
   summarise(DJL=sum(as.numeric(manual_distTolast), na.rm = TRUE),count=n()) %>% 
   arrange(SUAQ_followlog.ClassFocal) %>% ungroup() %>% 
   mutate(focal = fct_reorder(focal, SUAQ_followlog.ClassFocal))
+
+##### ##### TO DELETE ##### ##### ##### ##### 
+temp<-SUAQ_waypoints_11all20_loc %>% 
+  filter(follow %in% c("1101277","1101278"))
+
+plot_gps_pttype<-SUAQ_waypoints_11all20_loc %>% 
+  filter(follow %in% c("1430","1100662")) %>% 
+  group_by(follow) %>%
+  ggplot()+
+  geom_point(aes(E,N,color=as.factor(follow)),size=1)+
+  geom_point(data = SUAQ_locationnetwork_loc,aes(E,N,fill=name),size=2)+
+  geom_path(aes(E,N,color=as.factor(follow)), alpha = 0.7,size=0.5)
+ggplotly(plot_gps_pttype)
+
+specs_numOfGPSatSameLoc <-
+  SUAQ_waypoints_11all20_loc %>% group_by(E, N) %>% summarise(
+    count = n(),
+    follow = as.character(list(follow)),
+    fileN = as.character(list(fileN)),
+    automaticDate = as.character(list(automaticDate)),
+    manualDate = as.character(list(as.character(manualDate))),
+    automaticTime = as.character(list(as.character(automaticTime))),
+    manualTime = as.character(list(as.character(manualTime)))
+  )
+specs_numOfGPSatSameLoc <- specs_numOfGPSatSameLoc %>% filter(count>1) 
+specs_GPSatSameLoc_reoccurringFollowNpairs <- specs_numOfGPSatSameLoc %>% filter(count<3) %>% group_by(follow) %>% summarise(nDoubleGPS=n())
+
+write_delim(delim=";",specs_numOfGPSatSameLoc, path = paste(
+  paste(
+    "/Users/stefgr/Nextcloud/UZH/12_Semester/20200313_Masterthesis/R/data/Processed_data/",
+    "specs_numOfGPSatSameLoc",
+    sep = ""
+  ),
+  "csv",
+  sep = "."
+))
+##### ##### TO DELETE ##### ##### ##### ##### 
+
+
+
 
 plot1<- DJL_follows %>% 
   ggplot( aes(x=focal, y=DJL)) +

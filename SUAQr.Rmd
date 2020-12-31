@@ -13,6 +13,10 @@ knitr::opts_chunk$set(echo = TRUE)
 ## Loading environment / libraries
 
 # Todo:
+# Doppelte GPS Dateien löschen
+# Follows wo mehr als 30% der Punkte nicht in den hauptbeobachtungsphasen sind 7h nach vorne schieben.
+
+
 # Activity mittels Liste aus word herauslesen oder die levels des 2017/18 sheets nutzen. Mittels grepl etc. dann wird es auch automatisch mit activity in 2017/18 verknüpft
 
 # Follow Type --> Besser umschreiben bis jetzt mit regex gearbeitet. Grosse 2 Buchstaben geparsed vielleicht eher mit grepl arbeiten. Siehe abschnitt beim einlesen des Followtypes --> bereits entwurf vorhanden.
@@ -193,6 +197,8 @@ st_read_GPX_waypoints <- function(flnm){
             processduration <- end-start
             file <- file %>% #Skip the first 16 rows because see below
               mutate(fileN=substr(flnm, 33,(nchar(flnm)+1)-5))
+            temp_id <- rownames(file)
+            file <- cbind(originalFileRownumber=temp_id, file)
             
             return(file)
         },
@@ -476,6 +482,8 @@ SUAQ_waypoints_17_18 <- SUAQ_waypoints_17_18 %>%
            "AgeSex"="Age Sex")) %>% 
   dplyr::select(-`Actual Time`,-Time)
 
+SUAQ_waypoints_17_18
+
 ##### CRS Code: EPSG 32647
 ##### Create SF Points
 SUAQ_waypoints_17_18_sf <-  st_as_sf(SUAQ_waypoints_17_18, 
@@ -730,17 +738,22 @@ SUAQ_waypoints_11_20<- SUAQ_waypoints_11_20 %>%  mutate(
 
 ## 3.  Suaq tracks data 2020 for males
 SUAQ_waypoints_11_20_male <- read_csv("data/20201020_MaleGPSToAdd.csv")
-
+?parse_date_time()
 SUAQ_waypoints_11_20_male <-
   SUAQ_waypoints_11_20_male %>% mutate(
     PtType="range",
     source = "Male GPS from Caroline for 2018",
     focal = tolower(Focal),
     manualDatetime = parse_date_time(timestamp,orders=c("%d.%m.%y %H%M","%m/%d/%y %H%M"),tz = "Asia/Pontianak"), # takes two different formats which are occuring in the given excelsheet
-    manualDate=date(manualDatetime),
-    manualTime=hms::as_hms(manualDatetime))%>% 
+    manualDate=lubridate::date(manualDatetime),
+    manualTime=strftime(manualDatetime, format = "%H:%M:%S",tz = "Asia/Pontianak")) %>% 
   mutate(fileN=group_indices(.,manualDate,focal)) %>% mutate(fileN=as.character(fileN)) %>% 
   dplyr::select(-timestamp,-Focal,-sensor.type )
+
+
+class(SUAQ_waypoints_17_18$manualTime[1])
+strftime(SUAQ_waypoints_11_20_male$manualDatetime[1], format = "%H:%M:%S",tz = "Asia/Pontianak")
+?strptime()
 
 #### Create sf object
 SUAQ_waypoints_11_20_male_sf<- st_as_sf(SUAQ_waypoints_11_20_male, 
@@ -1122,10 +1135,11 @@ SUAQ_waypoints_11all20<- SUAQ_waypoints_11all20 %>%
   mutate(ageFromDOB=time_length(difftime(manualDate, SUAQ_orangutans.dateofbirth), "years")) 
 
 ##### Defining current offspring ages
+
 SUAQ_waypoints_11all20<- SUAQ_waypoints_11all20 %>%  
-  mutate(ageOfOffspring1=time_length(difftime(manualDate, SUAQ_orangutans.offspring1_dob), "years"),
-         ageOfOffspring2=time_length(difftime(manualDate, SUAQ_orangutans.offspring2_dob), "years"),
-         ageOfOffspring3=time_length(difftime(manualDate, SUAQ_orangutans.offspring3_dob), "years")
+  mutate(ageOfOffspring1=time_length(difftime(manualDate, as.Date(SUAQ_orangutans.offspring1_dob,format= "%d.%m.%y" )), "years"),
+         ageOfOffspring2=time_length(difftime(manualDate, as.Date(SUAQ_orangutans.offspring2_dob,format= "%d.%m.%y" )), "years"),
+         ageOfOffspring3=time_length(difftime(manualDate, as.Date(SUAQ_orangutans.offspring3_dob,format= "%d.%m.%y" )), "years")
          ) %>%  # get missing focal names from SUAQ followlog.
   mutate(
     ageOfOffspring1 = if_else((ageOfOffspring1>7)|(ageOfOffspring1<0),NA_real_,ageOfOffspring1), # taking a weaning phase of 7 years. And delete minus years of unborn offsprings
@@ -1274,7 +1288,7 @@ own_valuefinder <- function(df,pk,pkcol,replaceterm,startcol,targetcol,lookuptyp
 
 # SUAQ_waypoints_11all20 <-
 #   SUAQ_waypoints_11all20 %>% # replace any SexClass value which is unk or NA to the temporally nearest other Sex Class value for this orangutan
-#   rowwise()%>% 
+#   rowwise()%>%
 #   mutate(
 #     SUAQ_followlog.ClassFocal_new = if_else((SUAQ_followlog.ClassFocal%in%c("unk")),
 #                                         own_valuefinder(
@@ -1483,6 +1497,7 @@ specs_followtypeDiffFollowTypeFromlog
 
 specs_numOfFollowsWithFollowtype <- SUAQ_waypoints_11all20 %>% filter(!is.na(followtype))
 tmp <- SUAQ_waypoints_11all20 %>% filter(followtype=="Jg")
+
 
 
 ####################################################################################################################
