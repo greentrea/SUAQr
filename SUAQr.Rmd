@@ -1395,169 +1395,168 @@ write_csv(SUAQ_waypoints_11all20,path="shinyapp/orangapp/data/SUAQ_waypoints_11a
 
 
 
-################################################################################################################################
-### inspect ####################################################################################################################
-################################################################################################################################
-#### Quality check for Followlog join: Finding potential falsly joined follownumbers
-##### FN with multiple dates. Only FN: 9999 which is wrong has fuzzy dates
-specs_FNwithUnUniqueDatesAfterJoin <- SUAQ_waypoints_11all20[FALSE,]
-for(i in levels(as.factor(SUAQ_waypoints_11all20$follow))){
-  df <- SUAQ_waypoints_11all20 %>% filter(follow==i)
-  print(paste0("Follownumber to check if unique: ",i))
-  print((length(unique(df$manualDate)) == 1)) # check if the date of the selected FN-row is unique?
-  if(length(unique(df$manualDate)) != 1){specs_FNwithUnUniqueDatesAfterJoin <- specs_FNwithUnUniqueDatesAfterJoin %>% bind_rows(df)} # add if not unique
-}
-
-
-##### FN with multiple focals?
-specs_FNwithUnUniqueFocalAfterJoin <- SUAQ_waypoints_11all20[FALSE,]
-SUAQ_waypoints_11all20 <- SUAQ_waypoints_11all20 %>% ungroup()
-for(i in levels(as.factor(SUAQ_waypoints_11all20$follow))){
-  df <- SUAQ_waypoints_11all20 %>% filter(follow==i)
-  print(paste0("Follownumber to check if unique: ",i))
-  print((length(unique(df$focal)) == 1)) # check if the date of the selected FN-row is unique?
-  if(length(unique(df$focal)) != 1){specs_FNwithUnUniqueFocalAfterJoin <- specs_FNwithUnUniqueFocalAfterJoin %>% bind_rows(df)} # add if not unique
-}
-specs_FNwithUnUniqueFocalAfterJoin <- specs_FNwithUnUniqueFocalAfterJoin %>% group_by(follow,focal,manualDate) %>% summarise(count=n())
-
-
-##### Inspecting sex differences and class differences
-specs_FollowlogOrangutanlog_sexdifference <- SUAQ_waypoints_11all20 %>% group_by(follow,focal,manualDate,SUAQ_followlog.SexFocal,SUAQ_orangutans.Sex) %>% summarise(count=n()) %>%  filter(SUAQ_followlog.SexFocal!=SUAQ_orangutans.Sex) # there are 788 difference in sex between joined info
-specs_FollowlogOrangutanlog_ClassDifference <- SUAQ_waypoints_11all20 %>% group_by(follow,focal,manualDate,SUAQ_followlog.ClassFocal,SUAQ_orangutans.Class) %>% summarise(count=n()) %>% filter(SUAQ_followlog.ClassFocal!=SUAQ_orangutans.Class) 
-
-#### Find places where wrong FN was given. Mostly because an orangutans FN is not given because it was followed during a FN under anothers OU Name f.e. because the GPS is from an infant of the followlogs orangutanname.
-
-tmp_colnames<- colnames(SUAQ_waypoints_11all20)
-##### Filter all rows where focal not matching focal name in followlog. Look if any other attribute contains the focal Name of the GPS entry.
-tmp_SUAQ_waypoints_11all20 <- mutate_all(SUAQ_waypoints_11all20, .funs=str_to_lower)
-tmp_SUAQ_waypoints_11all20 <- tmp_SUAQ_waypoints_11all20 %>%
-  filter(focal != SUAQ_followlog.FocalName) %>% rowwise() %>%
-  mutate(
-    missmatch_or_FNambiguity = if_else(
-      grepl(focal, as.character(SUAQ_followlog.Observer1)) |
-        grepl(focal, as.character(SUAQ_followlog.Observer2)) |
-        grepl(focal, as.character(SUAQ_followlog.Observer3)) |
-        grepl(focal, as.character(SUAQ_followlog.Observer4)) |
-        grepl(focal, as.character(SUAQ_followlog.Observer5)) |
-        grepl(focal, as.character(SUAQ_followlog.Comments)) |
-        grepl(focal, as.character(SUAQ_followlog.GPS)) |
-        grepl(focal, as.character(SUAQ_followlog.PartyPresence)) |
-        grepl(focal, as.character(`SUAQ_followlog.M-MParty`)) |
-        grepl(focal, as.character(`SUAQ_followlog.M-FParty`)) |
-        grepl(focal, as.character(`SUAQ_followlog.F-FParty`)) |
-        grepl(focal, as.character(SUAQ_followlog.NrPartymembersOriginal)) |
-        grepl(focal, as.character(SUAQ_followlog.NrPartymembersCorrected)) |
-        grepl(focal, as.character(SUAQ_followlog.P1)) |
-        grepl(focal, as.character(SUAQ_followlog.P2)) |
-        grepl(focal, as.character(SUAQ_followlog.P3)) |
-        grepl(focal, as.character(SUAQ_followlog.P4)) |
-        grepl(focal, as.character(SUAQ_followlog.P5)) |
-        grepl(focal, as.character(SUAQ_followlog.P6)) |
-        grepl(focal, as.character(SUAQ_followlog.P7)),"FNambigous","missmatch"
-    )
-  )
-
-test <-
-  tmp_SUAQ_waypoints_11all20 %>% group_by(
-    follownr_reliability,
-    focal,
-    follow, # joined follownumber from followlog based on multiple hierarchical criterias
-    fileN,
-    source,
-    testing_orangutannameInFollowlog,
-    infantname,
-    followername,
-    manualDate,
-    SUAQ_followlog.Date,
-    SUAQ_followlog.FocalName,
-    SUAQ_followlog.ClassFocal,
-    SUAQ_followlog.SexFocal,
-    SUAQ_followlog.Observer1,
-    SUAQ_followlog.Observer2,
-    SUAQ_followlog.Observer3,
-    SUAQ_followlog.Observer4,
-    SUAQ_followlog.Observer5,
-    SUAQ_followlog.FollowType,
-    SUAQ_followlog.StartActivity,
-    SUAQ_followlog.EndActivity,
-    SUAQ_followlog.LengthActivity,
-    SUAQ_followlog.ReasonExclude,
-    SUAQ_followlog.Comments,
-    SUAQ_followlog.SpecialFeedingTechniques,
-    SUAQ_followlog.Tools,
-    SUAQ_followlog.Longcalls,
-    SUAQ_followlog.LongcallsFocal,
-    SUAQ_followlog.LongcallsHeardNotFocal,
-    SUAQ_followlog.LongcallsRecording,
-    SUAQ_followlog.NestsObserved,
-    SUAQ_followlog.GPS,
-    SUAQ_followlog.PartyPresence,
-    SUAQ_followlog.NrPartymembersOriginal,
-    SUAQ_followlog.NrPartymembersCorrected,
-    SUAQ_followlog.P1,
-    SUAQ_followlog.P2,
-    SUAQ_followlog.P3,
-    SUAQ_followlog.P4,
-    SUAQ_followlog.P5,
-    SUAQ_followlog.P6,
-    SUAQ_followlog.P7,
-    SUAQ_followlog.Begging,
-    SUAQ_followlog.Peering,
-    SUAQ_followlog.SocialPlay,
-    SUAQ_followlog.SexualActivities,
-    SUAQ_followlog.AgonisticInteractions,
-  ) %>% summarise(count = n())
-#test <- tmp_SUAQ_waypoints_11all20 %>% group_by(focal,manualDate,follow,missmatch_or_FNambiguity,SUAQ_followlog.FocalName,follownr_reliability) %>% summarise(count=n())
-
-
-test_df <- test %>% left_join(SUAQ_orangutans[,c(2,3,6)],by=c("focal"="SUAQ_orangutans.orangutanname","SUAQ_followlog.FocalName"="SUAQ_orangutans.Mother"),keep = FALSE,na_matches = "never",suffix=c("","infantMother."))
-specs_FocalNameNotMatching <- test_df %>% left_join(SUAQ_orangutans[,c(2,3,6)],by=c("focal"="SUAQ_orangutans.Mother","SUAQ_followlog.FocalName"="SUAQ_orangutans.orangutanname"),keep = FALSE,na_matches = "never",suffix=c("","motherInfant."))
-
-# write_csv(specstest_FocalNameNotMatching, path = paste(
-#   paste(
-#     "/Users/stefgr/Nextcloud/12_Semester/20200313_Masterthesis/R/output/",
-#     format(Sys.Date(), "%Y%m%d"),
-#     "_SUAQAll_FocalNameNotMatchingFollowlog",
-#     sep = ""
-#   ),
-#   "csv",
-#   sep = "."
-# ))
-# TODO: Delete all the joined Followlog attributes for the found ambigous match of AgeClass and fill the empty fields with own function.
-
-
-##### Find double saved waypoints/ways? due to data flow.
-##### inspect follows
-tmp_SUAQ_waypoints_11all20 <- SUAQ_waypoints_11all20 %>% # make a id for every grouped location. Every occuring location fix gets a group ID.
-  group_by(E,N,manualTime) %>%
-  mutate(diagnostic_groupedbylocation = cur_group_id())
-
-specs_SUAQALL_DoubleOccuringTimeLocations <-
-  tmp_SUAQ_waypoints_11all20 %>%
-  group_by(diagnostic_groupedbylocation) %>% summarise(diagnostic_numOfOccuringGPSfix =
-                                                         n()) %>%
-  left_join(
-    tmp_SUAQ_waypoints_11all20,
-    by = c("diagnostic_groupedbylocation" = "diagnostic_groupedbylocation")
-  ) %>%
-  filter(.$diagnostic_numOfOccuringGPSfix > 1) %>% group_by(follow, .$diagnostic_numOfOccuringGPSfix) %>% summarise() ## Looks ok only around 100 GPS points have exact same location and time. Maybe these are just occuring twice in a follow but they shouldn't have a too big influence.
-
-
-##### Inspecting Followtypes
-levels(as.factor(SUAQ_waypoints_11all20$followtype))
-levels(as.factor(SUAQ_waypoints_11all20$SUAQ_followlog.FollowType))
-
-specs_followtypeDiffFollowTypeFromlog <- SUAQ_waypoints_11all20 %>% filter(followtype!=SUAQ_followlog.FollowType) %>% group_by(follow,followtype,SUAQ_followlog.FollowType,focal,) %>% summarise()
-specs_followtypeDiffFollowTypeFromlog
-
-specs_numOfFollowsWithFollowtype <- SUAQ_waypoints_11all20 %>% filter(!is.na(followtype))
-tmp <- SUAQ_waypoints_11all20 %>% filter(followtype=="Jg")
-
-
-
+# ################################################################################################################################
+# ### inspect ####################################################################################################################
+# ################################################################################################################################
+# #### Quality check for Followlog join: Finding potential falsly joined follownumbers
+# ##### FN with multiple dates. Only FN: 9999 which is wrong has fuzzy dates
+# specs_FNwithUnUniqueDatesAfterJoin <- SUAQ_waypoints_11all20[FALSE,]
+# for(i in levels(as.factor(SUAQ_waypoints_11all20$follow))){
+#   df <- SUAQ_waypoints_11all20 %>% filter(follow==i)
+#   print(paste0("Follownumber to check if unique: ",i))
+#   print((length(unique(df$manualDate)) == 1)) # check if the date of the selected FN-row is unique?
+#   if(length(unique(df$manualDate)) != 1){specs_FNwithUnUniqueDatesAfterJoin <- specs_FNwithUnUniqueDatesAfterJoin %>% bind_rows(df)} # add if not unique
+# }
+# 
+# 
+# ##### FN with multiple focals?
+# specs_FNwithUnUniqueFocalAfterJoin <- SUAQ_waypoints_11all20[FALSE,]
+# SUAQ_waypoints_11all20 <- SUAQ_waypoints_11all20 %>% ungroup()
+# for(i in levels(as.factor(SUAQ_waypoints_11all20$follow))){
+#   df <- SUAQ_waypoints_11all20 %>% filter(follow==i)
+#   print(paste0("Follownumber to check if unique: ",i))
+#   print((length(unique(df$focal)) == 1)) # check if the date of the selected FN-row is unique?
+#   if(length(unique(df$focal)) != 1){specs_FNwithUnUniqueFocalAfterJoin <- specs_FNwithUnUniqueFocalAfterJoin %>% bind_rows(df)} # add if not unique
+# }
+# specs_FNwithUnUniqueFocalAfterJoin <- specs_FNwithUnUniqueFocalAfterJoin %>% group_by(follow,focal,manualDate) %>% summarise(count=n())
+# 
+# 
+# ##### Inspecting sex differences and class differences
+# specs_FollowlogOrangutanlog_sexdifference <- SUAQ_waypoints_11all20 %>% group_by(follow,focal,manualDate,SUAQ_followlog.SexFocal,SUAQ_orangutans.Sex) %>% summarise(count=n()) %>%  filter(SUAQ_followlog.SexFocal!=SUAQ_orangutans.Sex) # there are 788 difference in sex between joined info
+# specs_FollowlogOrangutanlog_ClassDifference <- SUAQ_waypoints_11all20 %>% group_by(follow,focal,manualDate,SUAQ_followlog.ClassFocal,SUAQ_orangutans.Class) %>% summarise(count=n()) %>% filter(SUAQ_followlog.ClassFocal!=SUAQ_orangutans.Class) 
+# 
+# #### Find places where wrong FN was given. Mostly because an orangutans FN is not given because it was followed during a FN under anothers OU Name f.e. because the GPS is from an infant of the followlogs orangutanname.
+# 
+# tmp_colnames<- colnames(SUAQ_waypoints_11all20)
+# ##### Filter all rows where focal not matching focal name in followlog. Look if any other attribute contains the focal Name of the GPS entry.
+# tmp_SUAQ_waypoints_11all20 <- mutate_all(SUAQ_waypoints_11all20, .funs=str_to_lower)
+# tmp_SUAQ_waypoints_11all20 <- tmp_SUAQ_waypoints_11all20 %>%
+#   filter(focal != SUAQ_followlog.FocalName) %>% rowwise() %>%
+#   mutate(
+#     missmatch_or_FNambiguity = if_else(
+#       grepl(focal, as.character(SUAQ_followlog.Observer1)) |
+#         grepl(focal, as.character(SUAQ_followlog.Observer2)) |
+#         grepl(focal, as.character(SUAQ_followlog.Observer3)) |
+#         grepl(focal, as.character(SUAQ_followlog.Observer4)) |
+#         grepl(focal, as.character(SUAQ_followlog.Observer5)) |
+#         grepl(focal, as.character(SUAQ_followlog.Comments)) |
+#         grepl(focal, as.character(SUAQ_followlog.GPS)) |
+#         grepl(focal, as.character(SUAQ_followlog.PartyPresence)) |
+#         grepl(focal, as.character(`SUAQ_followlog.M-MParty`)) |
+#         grepl(focal, as.character(`SUAQ_followlog.M-FParty`)) |
+#         grepl(focal, as.character(`SUAQ_followlog.F-FParty`)) |
+#         grepl(focal, as.character(SUAQ_followlog.NrPartymembersOriginal)) |
+#         grepl(focal, as.character(SUAQ_followlog.NrPartymembersCorrected)) |
+#         grepl(focal, as.character(SUAQ_followlog.P1)) |
+#         grepl(focal, as.character(SUAQ_followlog.P2)) |
+#         grepl(focal, as.character(SUAQ_followlog.P3)) |
+#         grepl(focal, as.character(SUAQ_followlog.P4)) |
+#         grepl(focal, as.character(SUAQ_followlog.P5)) |
+#         grepl(focal, as.character(SUAQ_followlog.P6)) |
+#         grepl(focal, as.character(SUAQ_followlog.P7)),"FNambigous","missmatch"
+#     )
+#   )
+# 
+# test <-
+#   tmp_SUAQ_waypoints_11all20 %>% group_by(
+#     follownr_reliability,
+#     focal,
+#     follow, # joined follownumber from followlog based on multiple hierarchical criterias
+#     fileN,
+#     source,
+#     testing_orangutannameInFollowlog,
+#     infantname,
+#     followername,
+#     manualDate,
+#     SUAQ_followlog.Date,
+#     SUAQ_followlog.FocalName,
+#     SUAQ_followlog.ClassFocal,
+#     SUAQ_followlog.SexFocal,
+#     SUAQ_followlog.Observer1,
+#     SUAQ_followlog.Observer2,
+#     SUAQ_followlog.Observer3,
+#     SUAQ_followlog.Observer4,
+#     SUAQ_followlog.Observer5,
+#     SUAQ_followlog.FollowType,
+#     SUAQ_followlog.StartActivity,
+#     SUAQ_followlog.EndActivity,
+#     SUAQ_followlog.LengthActivity,
+#     SUAQ_followlog.ReasonExclude,
+#     SUAQ_followlog.Comments,
+#     SUAQ_followlog.SpecialFeedingTechniques,
+#     SUAQ_followlog.Tools,
+#     SUAQ_followlog.Longcalls,
+#     SUAQ_followlog.LongcallsFocal,
+#     SUAQ_followlog.LongcallsHeardNotFocal,
+#     SUAQ_followlog.LongcallsRecording,
+#     SUAQ_followlog.NestsObserved,
+#     SUAQ_followlog.GPS,
+#     SUAQ_followlog.PartyPresence,
+#     SUAQ_followlog.NrPartymembersOriginal,
+#     SUAQ_followlog.NrPartymembersCorrected,
+#     SUAQ_followlog.P1,
+#     SUAQ_followlog.P2,
+#     SUAQ_followlog.P3,
+#     SUAQ_followlog.P4,
+#     SUAQ_followlog.P5,
+#     SUAQ_followlog.P6,
+#     SUAQ_followlog.P7,
+#     SUAQ_followlog.Begging,
+#     SUAQ_followlog.Peering,
+#     SUAQ_followlog.SocialPlay,
+#     SUAQ_followlog.SexualActivities,
+#     SUAQ_followlog.AgonisticInteractions,
+#   ) %>% summarise(count = n())
+# #test <- tmp_SUAQ_waypoints_11all20 %>% group_by(focal,manualDate,follow,missmatch_or_FNambiguity,SUAQ_followlog.FocalName,follownr_reliability) %>% summarise(count=n())
+# 
+# 
+# test_df <- test %>% left_join(SUAQ_orangutans[,c(2,3,6)],by=c("focal"="SUAQ_orangutans.orangutanname","SUAQ_followlog.FocalName"="SUAQ_orangutans.Mother"),keep = FALSE,na_matches = "never",suffix=c("","infantMother."))
+# specs_FocalNameNotMatching <- test_df %>% left_join(SUAQ_orangutans[,c(2,3,6)],by=c("focal"="SUAQ_orangutans.Mother","SUAQ_followlog.FocalName"="SUAQ_orangutans.orangutanname"),keep = FALSE,na_matches = "never",suffix=c("","motherInfant."))
+# 
+# # write_csv(specstest_FocalNameNotMatching, path = paste(
+# #   paste(
+# #     "/Users/stefgr/Nextcloud/12_Semester/20200313_Masterthesis/R/output/",
+# #     format(Sys.Date(), "%Y%m%d"),
+# #     "_SUAQAll_FocalNameNotMatchingFollowlog",
+# #     sep = ""
+# #   ),
+# #   "csv",
+# #   sep = "."
+# # ))
+# # TODO: Delete all the joined Followlog attributes for the found ambigous match of AgeClass and fill the empty fields with own function.
+# 
+# 
+# ##### Find double saved waypoints/ways? due to data flow.
+# ##### inspect follows
+# tmp_SUAQ_waypoints_11all20 <- SUAQ_waypoints_11all20 %>% # make a id for every grouped location. Every occuring location fix gets a group ID.
+#   group_by(E,N,manualTime) %>%
+#   mutate(diagnostic_groupedbylocation = cur_group_id())
+# 
+# specs_SUAQALL_DoubleOccuringTimeLocations <-
+#   tmp_SUAQ_waypoints_11all20 %>%
+#   group_by(diagnostic_groupedbylocation) %>% summarise(diagnostic_numOfOccuringGPSfix =
+#                                                          n()) %>%
+#   left_join(
+#     tmp_SUAQ_waypoints_11all20,
+#     by = c("diagnostic_groupedbylocation" = "diagnostic_groupedbylocation")
+#   ) %>%
+#   filter(.$diagnostic_numOfOccuringGPSfix > 1) %>% group_by(follow, .$diagnostic_numOfOccuringGPSfix) %>% summarise() ## Looks ok only around 100 GPS points have exact same location and time. Maybe these are just occuring twice in a follow but they shouldn't have a too big influence.
+# 
+# 
+# ##### Inspecting Followtypes
+# levels(as.factor(SUAQ_waypoints_11all20$followtype))
+# levels(as.factor(SUAQ_waypoints_11all20$SUAQ_followlog.FollowType))
+# 
+# specs_followtypeDiffFollowTypeFromlog <- SUAQ_waypoints_11all20 %>% filter(followtype!=SUAQ_followlog.FollowType) %>%
+#   group_by(follow,followtype,SUAQ_followlog.FollowType,focal) %>% summarise()
+# specs_followtypeDiffFollowTypeFromlog
+# 
+# specs_numOfFollowsWithFollowtype <- SUAQ_waypoints_11all20 %>% filter(!is.na(followtype))
+# tmp <- SUAQ_waypoints_11all20 %>% filter(followtype=="Jg")
 ####################################################################################################################
 
 
+Sys.time()
 ```
 
 
