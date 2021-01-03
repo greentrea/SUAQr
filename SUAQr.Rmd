@@ -1129,7 +1129,7 @@ temp<-SUAQ_waypoints_11all20 %>%
   filter(fileN %in% c("20150204_Friska_Fikar_NN"))
 
 
-plot_gps_pttype<-SUAQ_waypoints_11all20_loc %>% 
+plot_gps_pttype<-SUAQ_waypoints_11all20 %>% 
   filter(follow %in% c("1429")) %>% 
   group_by(follow) %>%
   ggplot()+
@@ -1138,14 +1138,8 @@ plot_gps_pttype<-SUAQ_waypoints_11all20_loc %>%
   geom_path(aes(E,N,color=as.factor(follow)), alpha = 0.7,size=0.5)
 ggplotly(plot_gps_pttype)
 
-hms::as_hms(SUAQ_waypoints_11all20$manualTime[1]+dhours(1))
 
-######## TO DELETE
-manualDatetime = as.POSIXct(
-      paste0(ymd(filedate), " ", str_extract(name, "^\\d{4}")),
-      format = "%Y-%m-%d %H%M",
-      tz = "Asia/Pontianak"
-    )
+
 
 ##### Manual time corrections (quality unsure is it 6 or 7 hours shift)
 SUAQ_waypoints_11all20<- SUAQ_waypoints_11all20 %>% mutate(manualTime=if_else(id==24101,automaticTime,manualTime)) # wrong time for one point probably in fn 2047
