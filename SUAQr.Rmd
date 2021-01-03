@@ -1099,9 +1099,11 @@ SUAQ_waypoints_11all20 <- SUAQ_waypoints_11all20 %>% # replaces the found focal 
   mutate(focal=if_else(follow =="1176","Tristan",focal))
 
 ##### Deleting and manipulating main dataset based on GPS Duplicates analysis
+SUAQ_waypoints_11all20 <- SUAQ_waypoints_11all20 %>% filter(!(fileN %in% c("20200129_Zackey(Guess)_Armas_NN","20150205_EllieEden_NN_Eric","20110117_Friska_Unk_NN","20110325_Cissy_Unk_NN","20110116_Friska_Unk_NN","20110215_Lisa_SofiaArmas_NN","20110222_Friska_MudinToni_NN ","20110213_Lisa_SofiaArmas_NN","20110118_Friska_Unk1_NL","20110118_Friska_Unk2_NL","20130509_Jebi(prob)_Armas_NN","20131105_Cissy_UNK_NN","20101217_Friska_Sofia_NN","20101223_Friska_ToniArmas_NN","20100115_Friska_Unk_FN","20110119_Raffi_Unk_FN","20110121_Cissy_Unk_NN","20130323_Halte(prob)_Caco_FN","20130326_Halte(prob)_Caco_NN","20130521_Friska(prob)_Izumi_FN","20200129_Zackey(Guess)_Armas_NN","20150205_EllieEden_NN_Eric")))
+SUAQ_waypoints_11all20 <- SUAQ_waypoints_11all20 %>% filter(!(id %in% c(8136,8138,8140,8142,8143,8145,8147)))
 
 
-##### Correcting follows where timesetting is probably wrong (f.e. follows in the night)
+##### Visualization: Correcting follows where timesetting is probably wrong (f.e. follows in the night)
 SUAQ_waypoints_11all20 %>% ggplot(aes(manualTime))+geom_histogram(bins = 1000)
 SUAQ_waypoints_11all20 %>% filter(is.na(manualTime)) %>% 
   ggplot(aes(hms::as_hms(automaticTime)))+geom_histogram(bins = 1000) # time before conversion
@@ -1110,10 +1112,6 @@ specs_follows_points_in_night<- SUAQ_waypoints_11all20 %>%
   filter((manualTime<lubridate::hms("04:30:00"))|(manualTime>lubridate::hms("20:00:00")))
 specs_follows_points_in_night_automaticTime<- SUAQ_waypoints_11all20 %>% 
   filter(is.na(manualTime)&(automaticTime<lubridate::hms("04:00:00"))) # probably one outlier and one track in the night. Or wrong time settings
-
-
-
-
 
 ##### Try to correct times by calc the amount of Points lying in the night period of the total follow
 result_totnumfollows <- SUAQ_waypoints_11all20 %>% 
@@ -1126,17 +1124,17 @@ specs_percentageOfFollowGPSPointsInNight<- specs_percentageOfFollowGPSPointsInNi
 
 ######## TO DELETE
 temp<-SUAQ_waypoints_11all20 %>% 
-  filter(follow %in% c("1101277","1101278"))
+  filter(follow %in% c("1429")) 
 temp<-SUAQ_waypoints_11all20 %>% 
   filter(fileN %in% c("20150204_Friska_Fikar_NN"))
 
 
 plot_gps_pttype<-SUAQ_waypoints_11all20_loc %>% 
-  filter(follow %in% c("2326")) %>% 
+  filter(follow %in% c("1429")) %>% 
   group_by(follow) %>%
   ggplot()+
   geom_point(aes(E,N,color=as.factor(follow)),size=1)+
-  geom_point(data = SUAQ_locationnetwork_loc,aes(E,N,fill=name),size=2)+
+  geom_point(data = SUAQ_locationnetwork_loc,aes(E,N),size=2)+
   geom_path(aes(E,N,color=as.factor(follow)), alpha = 0.7,size=0.5)
 ggplotly(plot_gps_pttype)
 
