@@ -272,6 +272,7 @@ calculate_mode <- function(x) {
 2. Getting data from gpx files, clean and order it
 3. Merge Files
 ```{r GPS Processing}
+start<- Sys.time()
 
 ## 0. Loading metadatasets
 ### 0.1 FollowLog
@@ -313,10 +314,6 @@ SUAQ_followlog <- SUAQ_followlog %>% # replaces the found focal names of the GPS
   mutate(FocalName=if_else(FollowNumber ==2811,"friska",FocalName))
 SUAQ_followlog <- SUAQ_followlog %>% # replaces the found focal names of the GPS data which are better specified in the followlog.
   mutate(FocalName=if_else(FollowNumber ==2599,"Tiara",FocalName))
-
-
-
-
 
 ### 0.2 Orangutans names and information
 SUAQ_orangutans<- read_csv2("data/20200920_Orangutan_ID.csv")
@@ -457,7 +454,8 @@ SUAQ_waypoints_17_18<- SUAQ_waypoints_17_18[,1:16] # drop last collumns
 ?as_hms()
 SUAQ_waypoints_17_18 <- SUAQ_waypoints_17_18 %>% 
   mutate(Focal=tolower(Focal), 
-         source="Excel data from Caroline 2017 & 2018",
+         gpsextraction="Steven Hayward",
+         gpsextractionquality = "very bad. GPS file as GPX with no metadata, FN already indicated, timezones sometimes different but not indicated, then joined further info (attribute states from where with '.')",
          Age.Sex = if_else(`Age Sex`=="adolescent","juvenile",`Age Sex`),
          automaticDatetime=dmy_hms(paste(.$Date,.$`Actual Time`), tz = "Asia/Pontianak"),
          manualDatetime=dmy_hms(paste(.$Date,.$Time), tz = "Asia/Pontianak"),
@@ -518,7 +516,8 @@ print(start_time-end_time)
 
 SUAQ_waypoints_11_20 <-
   SUAQ_waypoints_11_20 %>% mutate(
-    source="GPX files for follows of 2010-2020 (without 2017 & 2018)",
+    gpsextraction="Stefan Graf",
+    gpsextractionquality = "ok. GPS file as GPX with most metadata, then joined further info (attribute states from where with '.')",
     filedate = str_extract(fileN, "\\d{8}"),
     orangutanname = tolower(substr(
       str_extract(fileN, "\\d{8}_[A-Z][a-z]+"),
@@ -629,6 +628,14 @@ SUAQ_wp_namecollumn_levels<- SUAQ_waypoints_11_20 %>% group_by(.$name,.$sym) %>%
 ##### Making naveaid green symbols same as green circles. Probably meant the same. Baseline for this categorization is the excel "Dateneckdaten" there are the main information on how many special cases there are and how they are handled.Manual corrections (for values which are otherwise uncategorizable):
 SUAQ_waypoints_11_20$name[SUAQ_waypoints_11_20$name == "<100m 221 degrees"] <- "lc <100m 221 degrees"
 
+##### Changeing altering sym values
+SUAQ_waypoints_11all20 <- SUAQ_waypoints_11all20 %>% 
+  mutate(sym = if_else(sym=="Horn","Radio, Beacon",sym)) %>% 
+  mutate(sym = if_else(sym=="Pin, Green","Flag, Green",sym))%>% 
+  mutate(sym = if_else(sym=="Navaid, Green","Circle, Green",sym))%>% 
+  mutate(sym = if_else(sym=="Navaid, Blue","Circle, Blue",sym))
+
+
 SUAQ_waypoints_11_20 <-
   SUAQ_waypoints_11_20 %>% mutate(
     PtType = ifelse((sym == "Circle, Green" |sym == "Navaid, Green") &
@@ -717,6 +724,10 @@ SUAQ_waypoints_11_20 <-
                     "range", # two falsly classified with navaid symbol
                     PtType)
 )
+
+
+
+
 SUAQ_waypoints_11_20<- SUAQ_waypoints_11_20 %>%  mutate(
   PtType_individual = ifelse((sym == "Circle, Green" |sym == "Navaid, Green"),
                                  str_match_all(SUAQ_waypoints_11_20$name, 
@@ -737,23 +748,18 @@ SUAQ_waypoints_11_20<- SUAQ_waypoints_11_20 %>%  mutate(
 
 
 ## 3.  Suaq tracks data 2020 for males
-SUAQ_waypoints_11_20_male <- read_csv("data/20201020_MaleGPSToAdd.csv")
-?parse_date_time()
+SUAQ_waypoints_11_20_male <- read_delim("data/20210101_MaleGPSToAdd_stedit.csv",delim = ";")
 SUAQ_waypoints_11_20_male <-
   SUAQ_waypoints_11_20_male %>% mutate(
     PtType="range",
-    source = "Male GPS from Caroline for 2018",
+    gpsextraction = "Francis Short",
+    gpsextractionquality = "bad. GPS file as GPX with no metadata, FN already indicated, then joined further info (attribute states from where with '.')",
     focal = tolower(Focal),
     manualDatetime = parse_date_time(timestamp,orders=c("%d.%m.%y %H%M","%m/%d/%y %H%M"),tz = "Asia/Pontianak"), # takes two different formats which are occuring in the given excelsheet
     manualDate=lubridate::date(manualDatetime),
     manualTime=strftime(manualDatetime, format = "%H:%M:%S",tz = "Asia/Pontianak")) %>% 
   mutate(fileN=group_indices(.,manualDate,focal)) %>% mutate(fileN=as.character(fileN)) %>% 
   dplyr::select(-timestamp,-Focal,-sensor.type )
-
-
-class(SUAQ_waypoints_17_18$manualTime[1])
-strftime(SUAQ_waypoints_11_20_male$manualDatetime[1], format = "%H:%M:%S",tz = "Asia/Pontianak")
-?strptime()
 
 #### Create sf object
 SUAQ_waypoints_11_20_male_sf<- st_as_sf(SUAQ_waypoints_11_20_male, 
@@ -796,6 +802,7 @@ SUAQ_waypoints_17_18 <- SUAQ_waypoints_17_18 %>%
     PtType = if_else(PtType == "path", "range", PtType) # PATH values in the data of 2017 to 2018 means ranging points
   )
 
+
 SUAQ_waypoints_11_20 <-
   SUAQ_waypoints_11_20 %>% 
   rename(
@@ -825,7 +832,6 @@ SUAQ_waypoints_11all20 <- SUAQ_waypoints_11all20%>%
 specs_numTotalGPSData_beforeFNjoin <- nrow(SUAQ_waypoints_11all20)
 id <- rownames(SUAQ_waypoints_11all20)
 SUAQ_waypoints_11all20 <- cbind(id=id, SUAQ_waypoints_11all20)
-
 
 
 ## 5. ADDING FOLLOWNUMBER (JOIN) 
@@ -1099,7 +1105,7 @@ SUAQ_waypoints_11all20 <- SUAQ_waypoints_11all20 %>% # replaces the found focal 
   mutate(focal=if_else(follow =="1176","Tristan",focal))
 
 ##### Deleting and manipulating main dataset based on GPS Duplicates analysis
-SUAQ_waypoints_11all20 <- SUAQ_waypoints_11all20 %>% filter(!(fileN %in% c("20200129_Zackey(Guess)_Armas_NN","20150205_EllieEden_NN_Eric","20110117_Friska_Unk_NN","20110325_Cissy_Unk_NN","20110116_Friska_Unk_NN","20110215_Lisa_SofiaArmas_NN","20110222_Friska_MudinToni_NN ","20110213_Lisa_SofiaArmas_NN","20110118_Friska_Unk1_NL","20110118_Friska_Unk2_NL","20130509_Jebi(prob)_Armas_NN","20131105_Cissy_UNK_NN","20101217_Friska_Sofia_NN","20101223_Friska_ToniArmas_NN","20100115_Friska_Unk_FN","20110119_Raffi_Unk_FN","20110121_Cissy_Unk_NN","20130323_Halte(prob)_Caco_FN","20130326_Halte(prob)_Caco_NN","20130521_Friska(prob)_Izumi_FN","20200129_Zackey(Guess)_Armas_NN","20150205_EllieEden_NN_Eric")))
+SUAQ_waypoints_11all20 <- SUAQ_waypoints_11all20 %>% dplyr::filter(!(fileN %in% c("20200129_Zackey(Guess)_Armas_NN","20150205_EllieEden_NN_Eric","20110117_Friska_Unk_NN","20110325_Cissy_Unk_NN","20110116_Friska_Unk_NN","20110215_Lisa_SofiaArmas_NN",'20110222_Friska_MudinToni_NN ',"20110213_Lisa_SofiaArmas_NN","20110118_Friska_Unk1_NL","20110118_Friska_Unk2_NL","20130509_Jebi(prob)_Armas_NN","20131105_Cissy_UNK_NN","20101217_Friska_Sofia_NN","20101223_Friska_ToniArmas_NN","20100115_Friska_Unk_FN","20110119_Raffi_Unk_FN","20110121_Cissy_Unk_NN","20130323_Halte(prob)_Caco_FN","20130326_Halte(prob)_Caco_NN","20130521_Friska(prob)_Izumi_FN","20200129_Zackey(Guess)_Armas_NN","20150205_EllieEden_NN_Eric"))) # 20110222_Friska_MudinToni_NN doesnt work? why? still existing in df
 SUAQ_waypoints_11all20 <- SUAQ_waypoints_11all20 %>% filter(!(id %in% c(8136,8138,8140,8142,8143,8145,8147)))
 
 
@@ -1124,16 +1130,15 @@ specs_percentageOfFollowGPSPointsInNight<- specs_percentageOfFollowGPSPointsInNi
 
 ######## TO DELETE
 temp<-SUAQ_waypoints_11all20 %>% 
-  filter(follow %in% c("1429")) 
+  filter(follow %in% c("1101324")) 
 temp<-SUAQ_waypoints_11all20 %>% 
   filter(fileN %in% c("20150204_Friska_Fikar_NN"))
 
-
-plot_gps_pttype<-SUAQ_waypoints_11all20 %>% 
-  filter(follow %in% c("1429")) %>% 
+plot_gps_pttype<-SUAQ_waypoints_11all20[order(SUAQ_waypoints_11all20$manualTime , decreasing = TRUE ),] %>% # reorder time 
+  filter(follow %in% c("2047")) %>% 
   group_by(follow) %>%
   ggplot()+
-  geom_point(aes(E,N,color=as.factor(follow)),size=1)+
+  geom_point(aes(E,N,color=as.character(manualTime)),size=1)+
   geom_point(data = SUAQ_locationnetwork_loc,aes(E,N),size=2)+
   geom_path(aes(E,N,color=as.factor(follow)), alpha = 0.7,size=0.5)
 ggplotly(plot_gps_pttype)
@@ -1144,12 +1149,18 @@ ggplotly(plot_gps_pttype)
 ##### Manual time corrections (quality unsure is it 6 or 7 hours shift)
 SUAQ_waypoints_11all20<- SUAQ_waypoints_11all20 %>% mutate(manualTime=if_else(id==24101,automaticTime,manualTime)) # wrong time for one point probably in fn 2047
 SUAQ_waypoints_11all20 <-
-  SUAQ_waypoints_11all20 %>% mutate(manualTime = if_else(follow == 2326, hms::as_hms(manualTime +
-                                                                                       dhours(7)), manualTime)) # wrong time for the whole follow
-SUAQ_waypoints_11all20 <-
-  SUAQ_waypoints_11all20 %>% mutate(manualTime = if_else(follow == 1101277, hms::as_hms(manualTime +
-                                                                                          dhours(7)), manualTime)) # wrong time for all points
+  SUAQ_waypoints_11all20 %>% 
+  mutate(manualDatetime = if_else(follow %in% c(2326,1101277,2341,2336,2331,2409,2412,2415,2343), manualDatetime+hours(7), manualDatetime)) %>%  # wrong time for the whole follow
+  mutate(manualTime = if_else(follow %in% c(2326,1101277,2341,2336,2331,2409,2412,2415,2343), hms::as_hms(manualDatetime), manualTime), manualDatetime= ymd_hms(paste(manualDate,manualTime))) 
 
+# 1101277 wrong time for all points
+
+##### Changeing altering sym values
+SUAQ_waypoints_11all20 <- SUAQ_waypoints_11all20 %>% 
+  mutate(sym = if_else(sym=="Horn","Radio, Beacon",sym)) %>% 
+  mutate(sym = if_else(sym=="Pin, Green","Flag, Green",sym))%>% 
+  mutate(sym = if_else(sym=="Navaid, Green","Circle, Green",sym))%>% 
+  mutate(sym = if_else(sym=="Navaid, Blue","Circle, Blue",sym))
 
 
 ## 6. Adding informative attributes, cleaning attributes, and finishing data frame
@@ -1556,7 +1567,7 @@ write_csv(SUAQ_waypoints_11all20,path="shinyapp/orangapp/data/SUAQ_waypoints_11a
 ####################################################################################################################
 
 
-Sys.time()
+Sys.time()-start
 ```
 
 
