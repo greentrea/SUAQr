@@ -181,8 +181,6 @@ calculate_mode <- function(x) {
 SUAQ_waypoints_11all20_loc <- read_csv("data/Processed_data/SUAQ_waypoints_11all20.csv")
 SUAQ_waypoints_11all20_loc <- SUAQ_waypoints_11all20_loc %>% mutate(monthYearDate=format(as.Date(manualDate), "%Y-%m"))
 
-
-
 ##### Weather and FAI #####
 SUAQ_weather <- read_csv("data/Processed_data/SUAQ_weather.csv")
 SUAQ_fai <- read_csv("data/Processed_data/SUAQ_fai.csv")
@@ -193,7 +191,7 @@ SUAQ_weather_monthly<-SUAQ_weather %>%
 SUAQ_weather_monthly<- SUAQ_weather_monthly%>% dplyr::select(-SUAQ_weather.weather_id,-SUAQ_weather.day,-SUAQ_weather.daymonthyear)
 
 
-##### location network
+##### location network ##### 
 SUAQ_locationnetwork_sf <- st_read("data/20201201_StudyBalimbingStudyArea_points.GPX")
 SUAQ_locationnetwork_sf_loc <- st_transform(SUAQ_locationnetwork_sf,crs = 32647)
 ##### for locale coordinate system
@@ -204,14 +202,9 @@ SUAQ_locationnetwork_loc <- st_drop_geometry(SUAQ_locationnetwork_sf_loc)
 
 
 
-##### Selection only pointtypes which are taken on the orangutan way? is this true for all? ##### 
-SUAQ_rangepoints_11all20_loc <- SUAQ_waypoints_11all20_loc %>% dplyr::filter(PtType %in% c("range","foun","lost","mornnest","nightnest","daynest"))
-
-
-
 ##### Project attributes to calculate DJL ##### 
 #### Create timelag to last waypoints in not spatial dataframe #### 
-SUAQ_rangepoints_11all20_loc<- SUAQ_rangepoints_11all20_loc %>% 
+SUAQ_waypoints_11all20_loc<- SUAQ_waypoints_11all20_loc %>% 
   group_by(follow)%>% arrange(manualTime,.by_group = TRUE) %>% 
   mutate(timelag=as.numeric(difftime(as.POSIXlt(manualTime),
                                      as.POSIXlt(lag(manualTime)),units 
@@ -223,7 +216,8 @@ SUAQ_rangepoints_11all20_loc<- SUAQ_rangepoints_11all20_loc %>%
          manual_distToNext=sqrt((E-lead(E))^2+(N-lead(N))^2),
          speed_last = manual_distTolast/timelag,
          speed_next = manual_distToNext/timelag_lead,
-         turningAngle=turning_angle(E,N)
+         turningAngle=turning_angle(E,N),
+         altitudediff_next=altitude-lead(altitude),
          )
 SUAQ_waypoints_11all20_loc<- SUAQ_waypoints_11all20_loc %>% 
   group_by(follow)%>% arrange(manualTime,.by_group = TRUE) %>% 
@@ -240,7 +234,12 @@ SUAQ_waypoints_11all20_loc<- SUAQ_waypoints_11all20_loc %>%
          turningAngle=turning_angle(E,N)
          )
 
+##### Delete all points around Research camp if edges are longer than 60m thats in the upper quartile of manual distances of edges
+summary(SUAQ_waypoints_11all20_loc)
+SUAQ_waypoints_11all20_loc<- SUAQ_waypoints_11all20_loc %>% mutate(PtType=if_else(((manual_distTolast>40)|(manual_distToNext>40)|(manual_distToNext==0))&((N>336992)&(N<337052))&((E>324023)&(E<324083)),"potentially campside",PtType)) # these follows have a campsite point "1113","1730","1805","1805","1949","1951","2841","2841"
 
+##### Selection only pointtypes which are taken on the orangutan way? is this true for all? ##### 
+SUAQ_waypoints_11all20_loc <- SUAQ_waypoints_11all20_loc %>% filter(PtType %in% c("daynest","found","lost","mornnest","nightnest","range","tree","party")) # get rid of lcg lch points and 
 
 
 ##### Selection only females ##### 
@@ -289,8 +288,8 @@ SUAQ_waypoints_11all20_loc_females_10 <-
 
 ### Analysis
 ## Statistics
-```{r AnalysisDJL}
-##### GLM #####
+```{r Static analysis DJL RR}
+##### Create analysis DF #####
 DJL_follows <- SUAQ_waypoints_11all20_loc %>%
   filter(followtype == "NN") %>%
   group_by(
@@ -311,9 +310,19 @@ DJL_follows <- SUAQ_waypoints_11all20_loc %>%
     monthYearDate
   ) %>%
   summarise(DJL = sum(as.numeric(manual_distTolast), na.rm = TRUE), count =
-              n()) 
+              n())
 
-colnames(DJL_follows) <- c("follow","focal","ClassFocal","rain_eve","watlevel_mo","walevel_eve","rain_mo","avg_temp_tot","max_temp_average","min_temp_average","temp_max_mo","temp_min_mo","fai","ageOfCurrentOffspring","monthYearDate","DJL","count")
+colnames(DJL_follows) <- c("follow","focal","ClassFocal","rain_eve","watlevel_mo","walevel_eve","rain_mo","avg_temp_tot","max_temp_average","min_temp_average","temp_max_mo","temp_min_mo","fai","ageOfCurrentOffspring","monthYearDate","DJL","count",)
+
+##### Adding total displacement distance
+TDD_follows <- SUAQ_waypoints_11all20_loc[order(SUAQ_waypoints_11all20_loc$manualTime , decreasing = TRUE ),] %>% filter(followtype == "NN") %>% group_by(follow) %>% summarize(firstE=first(E),firstN=first(N),lastE=last(E),lastN=last(N)) %>% mutate(TDD=sqrt((firstE-lastE)^2+(firstN-lastN)^2))
+
+DJL_follows <- DJL_follows %>% left_join(TDD_follows,by=c("follow"="follow"))
+
+
+
+
+
 DJL_follows<- DJL_follows%>%
   mutate(ClassFocalID=if_else(ClassFocal=="juvenile",1,1))%>% 
   mutate(ClassFocalID=if_else(ClassFocal=="adult female",2,ClassFocalID))%>% 
@@ -325,22 +334,7 @@ DJL_follows %>%  ggplot(aes(DJL)) + geom_histogram(bins = 60)
 # sind ok follows c(2284, 745)
 # sind nicht ok follows c(1874)
 
-temp<-SUAQ_waypoints_11all20_loc %>% 
-  filter(follow %in% c("2876"))
-
-plot_gps_pttype<-SUAQ_waypoints_11all20_loc %>% 
-  filter(follow %in% c("2876")) %>% 
-  group_by(follow) %>%
-  ggplot()+
-  geom_point(aes(E,N,color=PtType),size=1)+
-  geom_point(data = SUAQ_locationnetwork_loc,aes(E,N,fill="black"),size=2)+
-  geom_path(aes(E,N,color=focal), alpha = 0.7,size=0.5)
-ggplotly(plot_gps_pttype)
-
-
-
-
-
+##### GLM #####
 
 # lm see autoplot ?
 lm<-
@@ -350,7 +344,6 @@ lm<-
     data = DJL_follows
   )
 
-view(as.data.frame(colnames(SUAQ_waypoints_11all20_loc)))
 autoplot(lm)
 summary(lm)
 
@@ -393,17 +386,63 @@ qqnorm(resid(glm_rainfall))
 
 ```
 
-## First visuals SUAQ
-```{r AnalysisDJL}
-##### DJL ######
-DJL_follows<- SUAQ_waypoints_11all20_loc_females_10 %>% 
-  filter(followtype=="NN") %>% 
-  group_by(follow,focal,SUAQ_followlog.ClassFocal) %>% 
-  summarise(DJL=sum(as.numeric(manual_distTolast), na.rm = TRUE),count=n()) %>% 
-  arrange(SUAQ_followlog.ClassFocal) %>% ungroup() %>% 
-  mutate(focal = fct_reorder(focal, SUAQ_followlog.ClassFocal))
-
+```{r errorsearching}
+##### ##### TO DELETE Inspecting strange distances in follows geometrically##### ##### ##### ##### 
 ##### ##### TO DELETE ##### ##### ##### ##### 
+##### ##### TO DELETE ##### ##### ##### ##### 
+##### ##### TO DELETE ##### ##### ##### ##### 
+##### ##### TO DELETE ##### ##### ##### ##### 
+SUAQ_waypoints_11all20_loc<- SUAQ_waypoints_11all20_loc %>%  mutate(unusualGPS=if_else(((manual_distTolast>100)&(manual_distToNext>100)&((altitudediff_next>40)|(altitudediff_next<-40))),"abnormal","normal"))
+temp <- SUAQ_waypoints_11all20_loc %>% filter(unusualGPS=="abnormal")
+temp <- temp %>% group_by(follow) %>% summarize(count=n())
+
+##### Long DJL
+temp<-SUAQ_waypoints_11all20_loc[order(SUAQ_waypoints_11all20_loc$manualTime , decreasing = TRUE ),] %>% 
+  filter(follow %in% c("1113"))
+
+plot_gps_pttype<-SUAQ_waypoints_11all20_loc %>% 
+  filter(follow %in% c("1101277","1101278")) %>% 
+  group_by(follow) %>%
+  ggplot()+
+  geom_point(aes(E,N,color=unusualGPS),size=1)+
+  #geom_point(data = SUAQ_locationnetwork_loc,aes(E,N,fill="black"),size=2)+
+  geom_path(aes(E,N,color=as.factor(follow)), alpha = 0.7,size=0.5)
+ggplotly(plot_gps_pttype)
+
+###### Long edge lengths
+specs_meanEdgeLengthFollows <- SUAQ_waypoints_11all20_loc %>%
+  group_by(
+    follow,
+    focal,
+    SUAQ_followlog.ClassFocal,
+    SUAQ_weather.rainfall_ml_evening,
+    SUAQ_weather.river_waterlevel_morning,
+    SUAQ_weather.river_waterlevel_evening,
+    SUAQ_weather.rainfall_ml_morning,
+    SUAQ_weather.avg_temperature_tot,
+    SUAQ_weather.max_temp_average,
+    SUAQ_weather.min_temp_average,
+    SUAQ_weather.temperature_max_morning,
+    SUAQ_weather.temperature_min_morning,
+    SUAQ_fai.fai,
+    ageOfCurrentOffspring,
+    monthYearDate
+  ) %>%
+  summarise(meanEdgeLength = mean(as.numeric(manual_distTolast), na.rm = TRUE), count =
+              n())
+
+plot_histoMeanEdgeLength <-
+  specs_meanEdgeLengthFollows %>% ggplot(aes(meanEdgeLength)) + geom_histogram(binwidth = 10) +
+  labs(title = "Mean distance to next point (edge length) per follow histogram", x = "distance [m]", y = "count")
+plot_histoMeanEdgeLength
+
+
+
+
+
+
+
+
 temp<-SUAQ_waypoints_11all20_loc %>% 
   filter(follow %in% c("1101277","1101278"))
 
@@ -438,10 +477,151 @@ write_delim(delim=";",specs_numOfGPSatSameLoc, path = paste(
   "csv",
   sep = "."
 ))
+
+##### ##### TO DELETE ##### ##### ##### ##### 
+##### ##### TO DELETE ##### ##### ##### ##### 
+##### ##### TO DELETE ##### ##### ##### ##### 
 ##### ##### TO DELETE ##### ##### ##### ##### 
 
+##### Analayzing edge lengths Visualizations
+plot_histgoramEdgeLengths <-
+  SUAQ_waypoints_11all20_loc %>% ggplot(aes(manual_distToNext)) + 
+  geom_histogram(aes(y=..density..),colour="darkgrey",binwidth = 0.003) +  
+  scale_x_log10(labels=fancy_scientific) +
+  labs(title = "Manual distance to next point (edge length) histogram", x = "distance [10 m per bin]", y = "count")+
+  geom_vline(aes(xintercept=mean(SUAQ_waypoints_11all20_loc$manual_distToNext,na.rm = TRUE)),color="blue", linetype="dashed", size=1,alpha=0.4)+
+  geom_vline(aes(xintercept=quantile(SUAQ_waypoints_11all20_loc$manual_distToNext,probs=c(.025,.975),na.rm = TRUE)[1]),color="red", linetype="dashed", size=1,alpha=0.4)+
+  geom_vline(aes(xintercept=quantile(SUAQ_waypoints_11all20_loc$manual_distToNext,probs=c(.025,.975),na.rm = TRUE)[2]),color="red", linetype="dashed", size=1,alpha=0.4)+
+  geom_density(alpha=.2, fill="#FF6666",colour=NA)+
+  geom_text(aes(mean(SUAQ_waypoints_11all20_loc$manual_distToNext,na.rm = TRUE), 4, label = paste("mean: ",round(mean(SUAQ_waypoints_11all20_loc$manual_distToNext,na.rm = TRUE),2)," m")),colour="blue",alpha=0.7, data.frame())+
+  geom_text(aes(round(quantile(SUAQ_waypoints_11all20_loc$manual_distToNext,probs=c(.025,.975),na.rm = TRUE)[1],2), 3.5, label = paste("2.5%:  ",round(quantile(SUAQ_waypoints_11all20_loc$manual_distToNext,probs=c(.025,.975),na.rm = TRUE)[1],2)," m")),colour="red",alpha=0.7, data.frame())+
+  geom_text(aes(round(quantile(SUAQ_waypoints_11all20_loc$manual_distToNext,probs=c(.025,.975),na.rm = TRUE)[2],2), 3.5, label = paste("97.5%:  ",round(quantile(SUAQ_waypoints_11all20_loc$manual_distToNext,probs=c(.025,.975),na.rm = TRUE)[2],2)," m")),colour="red",alpha=0.7, data.frame())
+plot_histgoramEdgeLengths
+
+plot_scatterDistanceTimelag <-
+  SUAQ_waypoints_11all20_loc %>% ggplot(aes(manual_distToNext, timelag_lead)) +
+  scale_y_log10() +
+  geom_point() + labs(title = "Manual distance X Timelag to next point (edge length) scatterplot", x = "distance [m]", y = "timelag")
+plot_scatterEdgeLengths
+
+plot_scatterDistanceSpeed <-
+  SUAQ_waypoints_11all20_loc %>% ggplot(aes(manual_distToNext, speed_next)) +
+  scale_y_log10(labels=fancy_scientific) +
+  geom_point() + labs(title = "Manual distance X Speed to next point (edge length) scatterplot", x = "distance [m]", y = "speed [m/s]")
+plot_scatterDistanceSpeed
+
+plot_scatterDistanceSpeed <-
+  SUAQ_waypoints_11all20_loc %>% ggplot(aes(manual_distToNext, speed_next)) +
+  scale_y_log10(labels=fancy_scientific) +
+  geom_point() + labs(title = "Manual distance X Speed to next point (edge length) scatterplot", x = "distance [m]", y = "speed [m/s]")
+plot_scatterDistanceSpeed
+
+plot_scatterTimelagSpeed <-
+  SUAQ_waypoints_11all20_loc %>% ggplot(aes(timelag_lead, speed_next)) +
+  scale_y_log10(labels=fancy_scientific) +
+  geom_point() + labs(title = "Manual timelag X Speed to next point (edge length) scatterplot", x = "timelag [s]", y = "speed [m/s]")
+plot_scatterTimelagSpeed
 
 
+plot_histoAltitudeDiff <-
+  SUAQ_waypoints_11all20_loc %>% ggplot(aes(altitudediff_next)) +
+  scale_y_log10(labels=fancy_scientific) +
+  geom_histogram(binwidth = 1) + labs(title = "Histogram of altitude differences of edges", x = "altitude difference [m]", y = "count")
+plot_histoAltitudeDiff
+
+plot_scatterAltitudeDiffXSpeed <-
+  SUAQ_waypoints_11all20_loc %>% ggplot(aes(altitudediff_next, speed_next)) +
+  scale_y_log10(labels=fancy_scientific) +
+  geom_point(size=0.2) + labs(title = "Altitude difference X Speed to next point (edge length) scatterplot", x = "altitude diff [feet]", y = "speed [m/s]")
+plot_scatterAltitudeDiffXSpeed
+
+
+ggsave(filename = paste(
+  paste(
+    "/Users/stefgr/Dropbox/Apps/Overleaf/Msc_Thesis_frombeginning/figures/",
+    format(Sys.Date(), "%Y%m%d"),
+    "_plot_histgoramEdgeLengths",
+    sep = ""
+  ),
+  "pdf",
+  sep = "."
+), plot = plot_histgoramEdgeLengths)
+ggsave(filename = paste(
+  paste(
+    "/Users/stefgr/Dropbox/Apps/Overleaf/Msc_Thesis_frombeginning/figures/",
+    format(Sys.Date(), "%Y%m%d"),"_",
+    "plot_scatterDistanceTimelag",
+    sep = ""
+  ),
+  "pdf",
+  sep = "."
+), plot = plot_scatterDistanceTimelag)
+ggsave(filename = paste(
+  paste(
+    "/Users/stefgr/Dropbox/Apps/Overleaf/Msc_Thesis_frombeginning/figures/",
+    format(Sys.Date(), "%Y%m%d"),"_",
+    "plot_scatterDistanceSpeed_log",
+    sep = ""
+  ),
+  "pdf",
+  sep = "."
+), plot = plot_scatterDistanceSpeed)
+ggsave(filename = paste(
+  paste(
+    "/Users/stefgr/Dropbox/Apps/Overleaf/Msc_Thesis_frombeginning/figures/",
+    format(Sys.Date(), "%Y%m%d"),"_",
+    "plot_scatterTimelagSpeed",
+    sep = ""
+  ),
+  "pdf",
+  sep = "."
+), plot = plot_scatterTimelagSpeed)
+ggsave(filename = paste(
+  paste(
+    "/Users/stefgr/Dropbox/Apps/Overleaf/Msc_Thesis_frombeginning/figures/",
+    format(Sys.Date(), "%Y%m%d"),"_",
+    "plot_histoAltitudeDiff",
+    sep = ""
+  ),
+  "pdf",
+  sep = "."
+), plot = plot_histoAltitudeDiff)
+ggsave(filename = paste(
+  paste(
+    "/Users/stefgr/Dropbox/Apps/Overleaf/Msc_Thesis_frombeginning/figures/",
+    format(Sys.Date(), "%Y%m%d"),"_",
+    "plot_scatterAltitudeDiffXSpeed",
+    sep = ""
+  ),
+  "pdf",
+  sep = "."
+), plot = plot_scatterAltitudeDiffXSpeed)
+
+
+##### Long edge lengths
+temp<-SUAQ_waypoints_11all20_loc %>% 
+  filter(follow %in% c("1089"))
+c("1089","1759","1771","1776","1822","1874","1777","1819","671","1501","1761","1780")
+plot_gps_pttype<-SUAQ_waypoints_11all20_loc[order(SUAQ_waypoints_11all20_loc$manualTime , decreasing = TRUE ),] %>% 
+  filter(follow %in% c("1089")) %>% 
+  group_by(follow) %>%
+  ggplot()+
+  geom_point(aes(E,N,color=as.character(manualTime)),size=1)+
+  #geom_point(data = SUAQ_locationnetwork_loc,aes(E,N,fill="black"),size=2)+
+  geom_path(aes(E,N,color=as.factor(follow)), alpha = 0.7,size=0.5)
+ggplotly(plot_gps_pttype)
+```
+
+
+## First visuals SUAQ
+```{r AnalysisDJL}
+##### DJL ######
+DJL_follows<- SUAQ_waypoints_11all20_loc_females_10 %>% 
+  filter(followtype=="NN") %>% 
+  group_by(follow,focal,SUAQ_followlog.ClassFocal) %>% 
+  summarise(DJL=sum(as.numeric(manual_distTolast), na.rm = TRUE),count=n()) %>% 
+  arrange(SUAQ_followlog.ClassFocal) %>% ungroup() %>% 
+  mutate(focal = fct_reorder(focal, SUAQ_followlog.ClassFocal))
 
 plot1<- DJL_follows %>% 
   ggplot( aes(x=focal, y=DJL)) +

@@ -629,12 +629,11 @@ SUAQ_wp_namecollumn_levels<- SUAQ_waypoints_11_20 %>% group_by(.$name,.$sym) %>%
 SUAQ_waypoints_11_20$name[SUAQ_waypoints_11_20$name == "<100m 221 degrees"] <- "lc <100m 221 degrees"
 
 ##### Changeing altering sym values
-SUAQ_waypoints_11all20 <- SUAQ_waypoints_11all20 %>% 
-  mutate(sym = if_else(sym=="Horn","Radio, Beacon",sym)) %>% 
-  mutate(sym = if_else(sym=="Pin, Green","Flag, Green",sym))%>% 
-  mutate(sym = if_else(sym=="Navaid, Green","Circle, Green",sym))%>% 
-  mutate(sym = if_else(sym=="Navaid, Blue","Circle, Blue",sym))
-
+SUAQ_waypoints_11_20 <- SUAQ_waypoints_11_20 %>% 
+  mutate(sym = if_else(sym=="Horn","Radio Beacon",as.character(sym))) %>% 
+  mutate(sym = if_else(sym=="Pin, Green","Flag, Green",as.character(sym)))%>% 
+  mutate(sym = if_else(sym=="Navaid, Green","Circle, Green",as.character(sym)))%>% 
+  mutate(sym = if_else(sym=="Navaid, Blue","Circle, Blue",as.character(sym)))
 
 SUAQ_waypoints_11_20 <-
   SUAQ_waypoints_11_20 %>% mutate(
@@ -1157,10 +1156,10 @@ SUAQ_waypoints_11all20 <-
 
 ##### Changeing altering sym values
 SUAQ_waypoints_11all20 <- SUAQ_waypoints_11all20 %>% 
-  mutate(sym = if_else(sym=="Horn","Radio, Beacon",sym)) %>% 
-  mutate(sym = if_else(sym=="Pin, Green","Flag, Green",sym))%>% 
-  mutate(sym = if_else(sym=="Navaid, Green","Circle, Green",sym))%>% 
-  mutate(sym = if_else(sym=="Navaid, Blue","Circle, Blue",sym))
+  mutate(sym = if_else(sym=="Horn","Radio Beacon",as.character(sym))) %>% 
+  mutate(sym = if_else(sym=="Pin, Green","Flag, Green",as.character(sym)))%>% 
+  mutate(sym = if_else(sym=="Navaid, Green","Circle, Green",as.character(sym)))%>% 
+  mutate(sym = if_else(sym=="Navaid, Blue","Circle, Blue",as.character(sym)))
 
 
 ## 6. Adding informative attributes, cleaning attributes, and finishing data frame
@@ -1253,6 +1252,10 @@ SUAQ_waypoints_11all20 <- SUAQ_waypoints_11all20 %>% filter(E>323000 &
                                                             E<328000 & 
                                                             N>330000 & 
                                                             N<360000)
+
+##### Delete all points around Research camp if edges are longer than 60m thats in the upper quartile of manual distances of edges
+SUAQ_waypoints_11all20<- SUAQ_waypoints_11all20 %>% mutate(PtType=if_else(((manual_distTolast>40)|(manual_distToNext>40))&((N>336992)&(N<337052))&((E>324023)&(E<324083)),"potentially campside",PtType)) # these follows have a campsite point "1113","1730","1805","1805","1949","1951","2841","2841"
+
 # Adding new id
 id <- rownames(SUAQ_waypoints_11all20)
 SUAQ_waypoints_11all20 <- SUAQ_waypoints_11all20 %>% dplyr::select(-id)
@@ -1603,7 +1606,8 @@ SUAQ_waypoints_11all20<- SUAQ_waypoints_11all20 %>%
          manual_distToNext=sqrt((E-lead(E))^2+(N-lead(N))^2),
          speed_last = manual_distTolast/timelag,
          speed_next = manual_distToNext/timelag_lead,
-         turningAngle=turning_angle(E,N)
+         turningAngle=turning_angle(E,N),
+         altitudediff_next=altitude-lead(altitude),
          )
 
 
