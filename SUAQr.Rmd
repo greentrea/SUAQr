@@ -449,9 +449,10 @@ SUAQ_weather <- SUAQ_weather %>% rowwise() %>%
 names(SUAQ_weather) <- paste0("SUAQ_weather.", names(SUAQ_weather))
 
 ## 1. Getting data from excel/csv files for year 2017/18
-SUAQ_waypoints_17_18 <- read_csv2("data/20200415_Master_GPS_Suaq_2017_Mar18_SH.csv")
+SUAQ_waypoints_17_18 <- read_csv2("data/20201231_Master_GPS_Suaq_2017_Mar18_SG.csv")
 SUAQ_waypoints_17_18<- SUAQ_waypoints_17_18[,1:16] # drop last collumns
-?as_hms()
+
+
 SUAQ_waypoints_17_18 <- SUAQ_waypoints_17_18 %>% 
   mutate(Focal=tolower(Focal), 
          gpsextraction="Steven Hayward",
@@ -480,7 +481,7 @@ SUAQ_waypoints_17_18 <- SUAQ_waypoints_17_18 %>%
            "AgeSex"="Age Sex")) %>% 
   dplyr::select(-`Actual Time`,-Time)
 
-SUAQ_waypoints_17_18
+
 
 ##### CRS Code: EPSG 32647
 ##### Create SF Points
@@ -1127,23 +1128,6 @@ specs_percentageOfFollowGPSPointsInNight<- SUAQ_waypoints_11all20 %>% filter((ma
   summarise(numberOfGPSinNighresting=n())
 specs_percentageOfFollowGPSPointsInNight<- specs_percentageOfFollowGPSPointsInNight %>% mutate(percOfPointsInNight=1/(numGPSofFollow/numberOfGPSinNighresting))
 
-######## TO DELETE
-temp<-SUAQ_waypoints_11all20 %>% 
-  filter(follow %in% c("1101324")) 
-temp<-SUAQ_waypoints_11all20 %>% 
-  filter(fileN %in% c("20150204_Friska_Fikar_NN"))
-
-plot_gps_pttype<-SUAQ_waypoints_11all20[order(SUAQ_waypoints_11all20$manualTime , decreasing = TRUE ),] %>% # reorder time 
-  filter(follow %in% c("2047")) %>% 
-  group_by(follow) %>%
-  ggplot()+
-  geom_point(aes(E,N,color=as.character(manualTime)),size=1)+
-  geom_point(data = SUAQ_locationnetwork_loc,aes(E,N),size=2)+
-  geom_path(aes(E,N,color=as.factor(follow)), alpha = 0.7,size=0.5)
-ggplotly(plot_gps_pttype)
-
-
-
 
 ##### Manual time corrections (quality unsure is it 6 or 7 hours shift)
 SUAQ_waypoints_11all20<- SUAQ_waypoints_11all20 %>% mutate(manualTime=if_else(id==24101,automaticTime,manualTime)) # wrong time for one point probably in fn 2047
@@ -1161,6 +1145,21 @@ SUAQ_waypoints_11all20 <- SUAQ_waypoints_11all20 %>%
   mutate(sym = if_else(sym=="Navaid, Green","Circle, Green",as.character(sym)))%>% 
   mutate(sym = if_else(sym=="Navaid, Blue","Circle, Blue",as.character(sym)))
 
+##### Marking points which are way off GPS-Track (Excel) (took out because maybe I am miscorrecting)
+SUAQ_waypoints_11all20 <- SUAQ_waypoints_11all20 %>% mutate(PtType=if_else((manualTime==hms::as_hms("12:30:00"))&(follow==1771),"abnormal off point",PtType))
+SUAQ_waypoints_11all20 <- SUAQ_waypoints_11all20 %>% mutate(PtType=if_else((manualTime==hms::as_hms("09:00:00"))&(follow==1776)&(PtType=="range"),"abnormal off point",PtType))
+SUAQ_waypoints_11all20 <- SUAQ_waypoints_11all20 %>% mutate(PtType=if_else((manualTime%in% c(hms::as_hms("08:00:00"),hms::as_hms("10:00:00")))&(follow==1822),"abnormal off point",PtType))
+SUAQ_waypoints_11all20 <- SUAQ_waypoints_11all20 %>% mutate(PtType=if_else((manualTime%in% c(hms::as_hms("17:30:00")))&(follow==1874),"abnormal off point",PtType))
+SUAQ_waypoints_11all20 <- SUAQ_waypoints_11all20 %>% mutate(manualTime=if_else((automaticTime%in% c(hms::as_hms("16:11:30")))&(follow==1819),hms::as_hms("16:00:00"),manualTime))
+SUAQ_waypoints_11all20 <- SUAQ_waypoints_11all20 %>% mutate(manualTime=if_else((automaticTime%in% c(hms::as_hms("18:02:01")))&(follow==1819),hms::as_hms("18:00:00"),manualTime))
+SUAQ_waypoints_11all20 <- SUAQ_waypoints_11all20 %>% mutate(manualTime=if_else((automaticTime%in% c(hms::as_hms("12:21:30")))&(follow==1819),hms::as_hms("12:21:30"),manualTime))
+SUAQ_waypoints_11all20 <- SUAQ_waypoints_11all20 %>% mutate(manualTime=if_else((automaticTime%in% c(hms::as_hms("17:30:25")))&(follow==671),hms::as_hms("17:30:00"),manualTime))
+SUAQ_waypoints_11all20 <- SUAQ_waypoints_11all20 %>% mutate(manualTime=if_else((automaticTime%in% c(hms::as_hms("06:31:22")))&(follow==1501),hms::as_hms("11:30:00"),manualTime))
+SUAQ_waypoints_11all20 <- SUAQ_waypoints_11all20 %>% mutate(automaticTime=if_else((automaticTime%in% c(hms::as_hms("06:31:22")))&(follow==1501),hms::as_hms("11:31:22"),manualTime))
+SUAQ_waypoints_11all20 <- SUAQ_waypoints_11all20 %>% mutate(manualTime=if_else((automaticTime%in% c(hms::as_hms("13:09:49")))&(follow==1501),hms::as_hms("18:00:00"),manualTime))
+SUAQ_waypoints_11all20 <- SUAQ_waypoints_11all20 %>% mutate(automaticTime=if_else((automaticTime%in% c(hms::as_hms("13:09:49")))&(follow==1501),hms::as_hms("18:09:49"),manualTime))
+SUAQ_waypoints_11all20 <- SUAQ_waypoints_11all20 %>% mutate(manualTime=if_else((automaticTime%in% c(hms::as_hms("06:30:58")))&(follow==1761),hms::as_hms("06:30:00"),manualTime))
+SUAQ_waypoints_11all20_loc <- SUAQ_waypoints_11all20_loc %>% mutate(PtType=if_else((manualTime%in% c(hms::as_hms("06:30:00"),hms::as_hms("10:00:00"),hms::as_hms("13:00:00")))&(follow==1780),"abnormal off point",PtType))
 
 ## 6. Adding informative attributes, cleaning attributes, and finishing data frame
 ### 6.1. Joining orangutans info

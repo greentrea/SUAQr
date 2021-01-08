@@ -319,10 +319,7 @@ TDD_follows <- SUAQ_waypoints_11all20_loc[order(SUAQ_waypoints_11all20_loc$manua
 
 DJL_follows <- DJL_follows %>% left_join(TDD_follows,by=c("follow"="follow"))
 
-
-
-
-
+##### Adding category number
 DJL_follows<- DJL_follows%>%
   mutate(ClassFocalID=if_else(ClassFocal=="juvenile",1,1))%>% 
   mutate(ClassFocalID=if_else(ClassFocal=="adult female",2,ClassFocalID))%>% 
@@ -330,6 +327,8 @@ DJL_follows<- DJL_follows%>%
   mutate(ClassFocalID=if_else(ClassFocal=="unflanged male",4,ClassFocalID))%>% 
   mutate(ClassFocalID=if_else(ClassFocal=="flanged male",5,ClassFocalID))
 
+
+##### TESTING
 DJL_follows %>%  ggplot(aes(DJL)) + geom_histogram(bins = 60)
 # sind ok follows c(2284, 745)
 # sind nicht ok follows c(1874)
@@ -392,23 +391,6 @@ qqnorm(resid(glm_rainfall))
 ##### ##### TO DELETE ##### ##### ##### ##### 
 ##### ##### TO DELETE ##### ##### ##### ##### 
 ##### ##### TO DELETE ##### ##### ##### ##### 
-SUAQ_waypoints_11all20_loc<- SUAQ_waypoints_11all20_loc %>%  mutate(unusualGPS=if_else(((manual_distTolast>100)&(manual_distToNext>100)&((altitudediff_next>40)|(altitudediff_next<-40))),"abnormal","normal"))
-temp <- SUAQ_waypoints_11all20_loc %>% filter(unusualGPS=="abnormal")
-temp <- temp %>% group_by(follow) %>% summarize(count=n())
-
-##### Long DJL
-temp<-SUAQ_waypoints_11all20_loc[order(SUAQ_waypoints_11all20_loc$manualTime , decreasing = TRUE ),] %>% 
-  filter(follow %in% c("1113"))
-
-plot_gps_pttype<-SUAQ_waypoints_11all20_loc %>% 
-  filter(follow %in% c("1101277","1101278")) %>% 
-  group_by(follow) %>%
-  ggplot()+
-  geom_point(aes(E,N,color=unusualGPS),size=1)+
-  #geom_point(data = SUAQ_locationnetwork_loc,aes(E,N,fill="black"),size=2)+
-  geom_path(aes(E,N,color=as.factor(follow)), alpha = 0.7,size=0.5)
-ggplotly(plot_gps_pttype)
-
 ###### Long edge lengths
 specs_meanEdgeLengthFollows <- SUAQ_waypoints_11all20_loc %>%
   group_by(
@@ -436,24 +418,6 @@ plot_histoMeanEdgeLength <-
   labs(title = "Mean distance to next point (edge length) per follow histogram", x = "distance [m]", y = "count")
 plot_histoMeanEdgeLength
 
-
-
-
-
-
-
-
-temp<-SUAQ_waypoints_11all20_loc %>% 
-  filter(follow %in% c("1101277","1101278"))
-
-plot_gps_pttype<-SUAQ_waypoints_11all20_loc %>% 
-  filter(follow %in% c("1430","1100662")) %>% 
-  group_by(follow) %>%
-  ggplot()+
-  geom_point(aes(E,N,color=as.factor(follow)),size=1)+
-  geom_point(data = SUAQ_locationnetwork_loc,aes(E,N,fill=name),size=2)+
-  geom_path(aes(E,N,color=as.factor(follow)), alpha = 0.7,size=0.5)
-ggplotly(plot_gps_pttype)
 
 specs_numOfGPSatSameLoc <-
   SUAQ_waypoints_11all20_loc %>% group_by(E, N) %>% summarise(
@@ -598,25 +562,20 @@ ggsave(filename = paste(
 ), plot = plot_scatterAltitudeDiffXSpeed)
 
 
-##### Long edge lengths
-temp<-SUAQ_waypoints_11all20_loc %>% filter(unusualGPS=="abnormal") %>% group_by(follow) %>% summarize(count=n())
-
-
+##### FOLLOW vis
 temp<-SUAQ_waypoints_11all20_loc %>% 
-  filter(follow %in% c("1089"))
-identifiederrors<- c("1089","1759","1771","1776","1822","1874","1777","1819","671","1501","1761","1780")
-abnormalpoints <- c("644","655","667","671","714","746","767","978","979","1013","1075","1089","1108","1112","1155","1161","1186","1198","1216","1227","1230","1235","1243","1249","1255","1260","1267","1325","1361","1392","1411","1412","1478","1479","1480","1481","1485","1501","1508","1610","1616","1638","1647","1650","1660","1663","1672","1689","1690","1694","1708","1711","1713","1715","1716","1719","1761","1771","1776","1777","1780","1799","1817","1819","1822","1825","1829","1845","1848","1849","1853","1865","1874","1884","1902","1957","1959","1974","1978","2004","2024","2043","2047","2053","2086","2092","2118","2141","2142","2146","2148","2150","2151","2152","2153","2154","2158","2160","2164","2165","2167","2177","2179","2181","2183","2185","2186","2187","2190","2192","2193","2199","2200","2202","2204","2206","2209","2210","2220","2227","2243","2256","2258","2261","2265","2266","2270","2272","2278","2283","2284","2285","2287","2289","2300","2302","2304","2326","2331","2333","2336","2343","2367","2375","2422","2429","2516","2561","2592","2594","2597","2611","2650","2651","2673","2675","2683","2690","2701","2711","2721","2729","2788","2801","2815","2839","2868","2876","2892","2904","2905","2908","2913","2932","2934","2938","2940","2941","2946","1000002","1000005","1101286","1101299","1101305","1101309","1101310","1101323","1101338","1101352")
-strangeedges_longDJL_longEdgeMean <- c("1089","1759","1771","1776","1822","1874","1777","1819","671","1501","1761","1780","663","687","743","745","746","799","1112","1227","1716","1719","1729","1730","1805","1825","1886","1896","1952","2020","2206","2227","2284","2285","2287","2300","2594","2801","2841","2905","1101286","1101309","1101338")
-further<- setdiff(abnormalpoints,strangeedges_longDJL_longEdgeMean)
+  filter(follow %in% c("1780"))
 
-plot_gps_pttype<-SUAQ_waypoints_11all20_loc[order(SUAQ_waypoints_11all20_loc$manualTime , decreasing = TRUE ),] %>% 
-  filter(follow %in% c(further)) %>% 
+c("1089","1759","1771","1776","1822","1874","1777","1819","671","1501","1761","1780")
+plot_gps_pttype<-SUAQ_waypoints_11all20_loc[order(SUAQ_waypoints_11all20_loc$manualTime , decreasing = TRUE ),] %>% filter(PtType!="abnormal off point") %>% 
+  filter(follow %in% c("1780")) %>% 
   group_by(follow) %>%
   ggplot()+
-  geom_point(aes(E,N,color=as.character(follow)),size=1)+
+  geom_point(aes(E,N,color=as.character(manualTime)),size=1)+
   #geom_point(data = SUAQ_locationnetwork_loc,aes(E,N,fill="black"),size=2)+
   geom_path(aes(E,N,color=as.factor(follow)), alpha = 0.7,size=0.5)
 ggplotly(plot_gps_pttype)
+
 ```
 
 
@@ -643,17 +602,6 @@ plot1<- DJL_follows %>%
     theme(axis.text.x = element_text(angle = 90))
 ggplotly(plot1)
 view(SUAQ_waypoints_11all20_loc_females_10[SUAQ_waypoints_11all20_loc_females_10$follow==1822,])
-
-
-##### Edge lengths ######
-plot_distToLats_over_200<-SUAQ_rangepoints_11all20_loc %>% 
-  filter(followtype=="NN") %>% 
-  filter((manual_distToNext>200)&( manual_distTolast >200)) %>% 
-  group_by(focal,manualDate,follow) %>%
-  ggplot(aes(E,N))+
-  geom_point(aes(color=PtType),size=1)+
-  geom_path(aes(color=as.factor(follow)), alpha = 0.8,size=0.6)
-ggplotly(plot_distToLats_over_200)
 
 
 ##### Visualization of Weather ######
