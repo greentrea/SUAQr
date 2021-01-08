@@ -84,7 +84,8 @@ packages_checker(
     'ggfortify', #check linear regression assumptions
     'lindia', # linear regression tools z.b gg_rehist()
     'MuMIn',
-    'MASS'
+    'MASS',
+    'GGally' # usefull pairs function to create many scatterplots
     ))
 rm(list = ls())
 getwd()
@@ -176,9 +177,10 @@ calculate_mode <- function(x) {
 2. Getting data from gpx files, clean and order it
 3. Merge Files
 ```{r GPS Loader}
+
 ### Load Project variables ### 
-##### waypoints ##### 
-SUAQ_waypoints_11all20_loc <- read_csv("data/Processed_data/SUAQ_waypoints_11all20.csv")
+##### waypoints ##### "data/Processed_data/SUAQ_waypoints_11all20.csv"
+SUAQ_waypoints_11all20_loc <- read_csv(paste0("data/Processed_data/",str_remove_all(Sys.Date(), "-"),"_SUAQ_waypoints_11all20.csv"))
 SUAQ_waypoints_11all20_loc <- SUAQ_waypoints_11all20_loc %>% mutate(monthYearDate=format(as.Date(manualDate), "%Y-%m"))
 
 ##### Weather and FAI #####
@@ -288,7 +290,7 @@ SUAQ_waypoints_11all20_loc_females_10 <-
 
 ### Analysis
 ## Statistics
-```{r Static analysis DJL RR}
+```{r Static analysis DJL RR,echo=FALSE, message=FALSE,comment=FALSE, warning=FALSE}
 ##### Create analysis DF #####
 DJL_follows <- SUAQ_waypoints_11all20_loc %>%
   filter(followtype == "NN") %>%
@@ -312,7 +314,7 @@ DJL_follows <- SUAQ_waypoints_11all20_loc %>%
   summarise(DJL = sum(as.numeric(manual_distTolast), na.rm = TRUE), count =
               n())
 
-colnames(DJL_follows) <- c("follow","focal","ClassFocal","rain_eve","watlevel_mo","walevel_eve","rain_mo","avg_temp_tot","max_temp_average","min_temp_average","temp_max_mo","temp_min_mo","fai","ageOfCurrentOffspring","monthYearDate","DJL","count",)
+colnames(DJL_follows) <- c("follow","focal","ClassFocal","rain_eve","watlevel_mo","walevel_eve","rain_mo","avg_temp_tot","max_temp_average","min_temp_average","temp_max_mo","temp_min_mo","fai","ageOfCurrentOffspring","monthYearDate","DJL","count")
 
 ##### Adding total displacement distance
 TDD_follows <- SUAQ_waypoints_11all20_loc[order(SUAQ_waypoints_11all20_loc$manualTime , decreasing = TRUE ),] %>% filter(followtype == "NN") %>% group_by(follow) %>% summarize(firstE=first(E),firstN=first(N),lastE=last(E),lastN=last(N)) %>% mutate(TDD=sqrt((firstE-lastE)^2+(firstN-lastN)^2))
@@ -332,6 +334,12 @@ DJL_follows<- DJL_follows%>%
 DJL_follows %>%  ggplot(aes(DJL)) + geom_histogram(bins = 60)
 # sind ok follows c(2284, 745)
 # sind nicht ok follows c(1874)
+
+##### Scatters #####
+test <- DJL_follows %>% ungroup() %>% dplyr::select(follow,ClassFocal,rain_eve,watlevel_mo,walevel_eve,rain_mo,avg_temp_tot,max_temp_average,min_temp_average,temp_max_mo,temp_min_mo,fai,ageOfCurrentOffspring,DJL,TDD)
+test%>% GGally::ggpairs(echo=FALSE, message=FALSE)
+
+
 
 ##### GLM #####
 
@@ -564,14 +572,14 @@ ggsave(filename = paste(
 
 ##### FOLLOW vis
 temp<-SUAQ_waypoints_11all20_loc %>% 
-  filter(follow %in% c("1780"))
+  filter(follow %in% c("1089"))
 
 c("1089","1759","1771","1776","1822","1874","1777","1819","671","1501","1761","1780")
 plot_gps_pttype<-SUAQ_waypoints_11all20_loc[order(SUAQ_waypoints_11all20_loc$manualTime , decreasing = TRUE ),] %>% filter(PtType!="abnormal off point") %>% 
-  filter(follow %in% c("1780")) %>% 
+  filter(follow %in% c("1089","1777","1822","1951","1805","1780","2876","2841","2020","1825","1501","663","2209","745","1759","2227","2183","2284","1776","687","671","1865","743","746","2938","2594","1874")) %>% 
   group_by(follow) %>%
   ggplot()+
-  geom_point(aes(E,N,color=as.character(manualTime)),size=1)+
+  geom_point(aes(E,N,color=as.factor(follow)),size=1)+
   #geom_point(data = SUAQ_locationnetwork_loc,aes(E,N,fill="black"),size=2)+
   geom_path(aes(E,N,color=as.factor(follow)), alpha = 0.7,size=0.5)
 ggplotly(plot_gps_pttype)

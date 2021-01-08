@@ -1145,7 +1145,13 @@ SUAQ_waypoints_11all20 <- SUAQ_waypoints_11all20 %>%
   mutate(sym = if_else(sym=="Navaid, Green","Circle, Green",as.character(sym)))%>% 
   mutate(sym = if_else(sym=="Navaid, Blue","Circle, Blue",as.character(sym)))
 
+##### Changeing altering sym values
+SUAQ_waypoints_11all20 <- SUAQ_waypoints_11all20 %>% 
+  mutate(altitude=as.numeric(altitude))
+
 ##### Marking points which are way off GPS-Track (Excel) (took out because maybe I am miscorrecting)
+SUAQ_waypoints_11all20 <- SUAQ_waypoints_11all20 %>% mutate(PtType=if_else((manualTime==hms::as_hms("	07:00:00"))&(follow==1089),"abnormal off point",PtType)) # strange because another point has also a totally different automatic time. Additionally all other points have an automatic Time within an hour.
+
 SUAQ_waypoints_11all20 <- SUAQ_waypoints_11all20 %>% mutate(PtType=if_else((manualTime==hms::as_hms("12:30:00"))&(follow==1771),"abnormal off point",PtType))
 SUAQ_waypoints_11all20 <- SUAQ_waypoints_11all20 %>% mutate(PtType=if_else((manualTime==hms::as_hms("09:00:00"))&(follow==1776)&(PtType=="range"),"abnormal off point",PtType))
 SUAQ_waypoints_11all20 <- SUAQ_waypoints_11all20 %>% mutate(PtType=if_else((manualTime%in% c(hms::as_hms("08:00:00"),hms::as_hms("10:00:00")))&(follow==1822),"abnormal off point",PtType))
@@ -1155,11 +1161,11 @@ SUAQ_waypoints_11all20 <- SUAQ_waypoints_11all20 %>% mutate(manualTime=if_else((
 SUAQ_waypoints_11all20 <- SUAQ_waypoints_11all20 %>% mutate(manualTime=if_else((automaticTime%in% c(hms::as_hms("12:21:30")))&(follow==1819),hms::as_hms("12:21:30"),manualTime))
 SUAQ_waypoints_11all20 <- SUAQ_waypoints_11all20 %>% mutate(manualTime=if_else((automaticTime%in% c(hms::as_hms("17:30:25")))&(follow==671),hms::as_hms("17:30:00"),manualTime))
 SUAQ_waypoints_11all20 <- SUAQ_waypoints_11all20 %>% mutate(manualTime=if_else((automaticTime%in% c(hms::as_hms("06:31:22")))&(follow==1501),hms::as_hms("11:30:00"),manualTime))
-SUAQ_waypoints_11all20 <- SUAQ_waypoints_11all20 %>% mutate(automaticTime=if_else((automaticTime%in% c(hms::as_hms("06:31:22")))&(follow==1501),hms::as_hms("11:31:22"),manualTime))
+SUAQ_waypoints_11all20 <- SUAQ_waypoints_11all20 %>% mutate(automaticTime=if_else((automaticTime%in% c(hms::as_hms("06:31:22")))&(follow==1501),hms::as_hms("11:31:22"),automaticTime))
 SUAQ_waypoints_11all20 <- SUAQ_waypoints_11all20 %>% mutate(manualTime=if_else((automaticTime%in% c(hms::as_hms("13:09:49")))&(follow==1501),hms::as_hms("18:00:00"),manualTime))
-SUAQ_waypoints_11all20 <- SUAQ_waypoints_11all20 %>% mutate(automaticTime=if_else((automaticTime%in% c(hms::as_hms("13:09:49")))&(follow==1501),hms::as_hms("18:09:49"),manualTime))
+SUAQ_waypoints_11all20 <- SUAQ_waypoints_11all20 %>% mutate(automaticTime=if_else((automaticTime%in% c(hms::as_hms("13:09:49")))&(follow==1501),hms::as_hms("18:09:49"),automaticTime))
 SUAQ_waypoints_11all20 <- SUAQ_waypoints_11all20 %>% mutate(manualTime=if_else((automaticTime%in% c(hms::as_hms("06:30:58")))&(follow==1761),hms::as_hms("06:30:00"),manualTime))
-SUAQ_waypoints_11all20_loc <- SUAQ_waypoints_11all20_loc %>% mutate(PtType=if_else((manualTime%in% c(hms::as_hms("06:30:00"),hms::as_hms("10:00:00"),hms::as_hms("13:00:00")))&(follow==1780),"abnormal off point",PtType))
+SUAQ_waypoints_11all20 <- SUAQ_waypoints_11all20 %>% mutate(PtType=if_else((manualTime%in% c(hms::as_hms("06:30:00"),hms::as_hms("10:00:00"),hms::as_hms("13:00:00")))&(follow==1780),"abnormal off point",PtType))
 
 ## 6. Adding informative attributes, cleaning attributes, and finishing data frame
 ### 6.1. Joining orangutans info
@@ -1252,8 +1258,7 @@ SUAQ_waypoints_11all20 <- SUAQ_waypoints_11all20 %>% filter(E>323000 &
                                                             N>330000 & 
                                                             N<360000)
 
-##### Delete all points around Research camp if edges are longer than 60m thats in the upper quartile of manual distances of edges
-SUAQ_waypoints_11all20<- SUAQ_waypoints_11all20 %>% mutate(PtType=if_else(((manual_distTolast>40)|(manual_distToNext>40))&((N>336992)&(N<337052))&((E>324023)&(E<324083)),"potentially campside",PtType)) # these follows have a campsite point "1113","1730","1805","1805","1949","1951","2841","2841"
+
 
 # Adding new id
 id <- rownames(SUAQ_waypoints_11all20)
@@ -1608,7 +1613,8 @@ SUAQ_waypoints_11all20<- SUAQ_waypoints_11all20 %>%
          turningAngle=turning_angle(E,N),
          altitudediff_next=altitude-lead(altitude),
          )
-
+##### Delete all points around Research camp if edges are longer than 60m thats in the upper quartile of manual distances of edges
+SUAQ_waypoints_11all20<- SUAQ_waypoints_11all20 %>% mutate(PtType=if_else(((manual_distTolast>40)|(manual_distToNext>40))&((N>336992)&(N<337052))&((E>324023)&(E<324083)),"potentially campside",PtType)) # these follows have a campsite point "1113","1730","1805","1805","1949","1951","2841","2841"
 
 ##### Histogramm for timelags of edges.
 tmp_mean<- mean(SUAQ_waypoints_11all20$timelag,na.rm=TRUE)
