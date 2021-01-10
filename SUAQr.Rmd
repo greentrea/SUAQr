@@ -1167,6 +1167,16 @@ SUAQ_waypoints_11all20 <- SUAQ_waypoints_11all20 %>% mutate(automaticTime=if_els
 SUAQ_waypoints_11all20 <- SUAQ_waypoints_11all20 %>% mutate(manualTime=if_else((automaticTime%in% c(hms::as_hms("06:30:58")))&(follow==1761),hms::as_hms("06:30:00"),manualTime))
 SUAQ_waypoints_11all20 <- SUAQ_waypoints_11all20 %>% mutate(PtType=if_else((manualTime%in% c(hms::as_hms("06:30:00"),hms::as_hms("10:00:00"),hms::as_hms("13:00:00")))&(follow==1780),"abnormal off point",PtType))
 
+
+###### Applying automaticTime if manual Time is empty
+SUAQ_waypoints_11all20 <- SUAQ_waypoints_11all20 %>% mutate(manualTime=if_else(is.na(manualTime),automaticTime,manualTime))
+SUAQ_waypoints_11all20 <- SUAQ_waypoints_11all20 %>% mutate(manualDate=if_else(is.na(manualDate),date(automaticDate),manualDate))
+SUAQ_waypoints_11all20 <- SUAQ_waypoints_11all20 %>% mutate(manualDatetime=if_else(is.na(manualDatetime),ymd_hms(paste(manualDate,manualTime),tz = "Asia/Pontianak"),manualDatetime))
+
+
+###### Deleting empty E N or Time
+SUAQ_waypoints_11all20 <- SUAQ_waypoints_11all20 %>% filter(!(is.na(E)|is.na(N)|is.na(manualTime)))
+
 ## 6. Adding informative attributes, cleaning attributes, and finishing data frame
 ### 6.1. Joining orangutans info
 id <- rownames(SUAQ_orangutans)
