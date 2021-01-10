@@ -1105,8 +1105,10 @@ SUAQ_waypoints_11all20 <- SUAQ_waypoints_11all20 %>% # replaces the found focal 
   mutate(focal=if_else(follow =="1176","Tristan",focal))
 
 ##### Deleting and manipulating main dataset based on GPS Duplicates analysis
-SUAQ_waypoints_11all20 <- SUAQ_waypoints_11all20 %>% dplyr::filter(!(fileN %in% c("20200129_Zackey(Guess)_Armas_NN","20150205_EllieEden_NN_Eric","20110117_Friska_Unk_NN","20110325_Cissy_Unk_NN","20110116_Friska_Unk_NN","20110215_Lisa_SofiaArmas_NN",'20110222_Friska_MudinToni_NN ',"20110213_Lisa_SofiaArmas_NN","20110118_Friska_Unk1_NL","20110118_Friska_Unk2_NL","20130509_Jebi(prob)_Armas_NN","20131105_Cissy_UNK_NN","20101217_Friska_Sofia_NN","20101223_Friska_ToniArmas_NN","20100115_Friska_Unk_FN","20110119_Raffi_Unk_FN","20110121_Cissy_Unk_NN","20130323_Halte(prob)_Caco_FN","20130326_Halte(prob)_Caco_NN","20130521_Friska(prob)_Izumi_FN","20200129_Zackey(Guess)_Armas_NN","20150205_EllieEden_NN_Eric"))) # 20110222_Friska_MudinToni_NN doesnt work? why? still existing in df
+SUAQ_waypoints_11all20 <- SUAQ_waypoints_11all20 %>% dplyr::filter(!(fileN %in% c("20200129_Zackey(Guess)_Armas_NN","20150205_EllieEden_NN_Eric","20110117_Friska_Unk_NN","20110325_Cissy_Unk_NN","20110116_Friska_Unk_NN","20110215_Lisa_SofiaArmas_NN",'20110222_Friska_MudinToni_NN',"20110213_Lisa_SofiaArmas_NN","20110118_Friska_Unk1_NL","20110118_Friska_Unk2_NL","20130509_Jebi(prob)_Armas_NN","20131105_Cissy_UNK_NN","20101217_Friska_Sofia_NN","20101223_Friska_ToniArmas_NN","20100115_Friska_Unk_FN","20110119_Raffi_Unk_FN","20110121_Cissy_Unk_NN","20130323_Halte(prob)_Caco_FN","20130326_Halte(prob)_Caco_NN","20130521_Friska(prob)_Izumi_FN","20200129_Zackey(Guess)_Armas_NN","20150205_EllieEden_NN_Eric","20130630_Lilli_Mudin_FN"))) # 20110222_Friska_MudinToni_NN doesnt work? why? still existing in df
+
 SUAQ_waypoints_11all20 <- SUAQ_waypoints_11all20 %>% filter(!(id %in% c(8136,8138,8140,8142,8143,8145,8147)))
+
 
 
 ##### Visualization: Correcting follows where timesetting is probably wrong (f.e. follows in the night)
@@ -1176,6 +1178,24 @@ SUAQ_waypoints_11all20 <- SUAQ_waypoints_11all20 %>% mutate(manualDatetime=if_el
 
 ###### Deleting empty E N or Time
 SUAQ_waypoints_11all20 <- SUAQ_waypoints_11all20 %>% filter(!(is.na(E)|is.na(N)|is.na(manualTime)))
+
+###### Deleting duplicates
+duplicates <-
+  SUAQ_waypoints_11all20 %>%
+  group_by(E, N, follow, focal, manualDatetime) %>%
+  summarise(
+    count = n(),
+    follow = as.character(list(follow)),
+    fileN = as.character(list(fileN)),
+    automaticDate = as.character(list(automaticDate)),
+    manualDate = as.character(list(as.character(manualDate))),
+    automaticTime = as.character(list(as.character(automaticTime))),
+    manualTime = list(as.numeric(manualTime),),
+    id=list(as.numeric(id))
+  ) %>% ungroup()
+
+tmp<- tmp%>% filter(count>1) # retrieve duplicates where E N Follow Focal and the ManualDatetime is the same. These are must have attributes.
+SUAQ_waypoints_11all20 <- SUAQ_waypoints_11all20 %>% filter(!(id %in% map(tmp$id, 2))) # only select first id's of the duplicates dataframe, and therefore keep the first rows of the duplicates in the dataset. Hopefully they have the most information but this is not sure. To do a function which would select the row with more information.
 
 ## 6. Adding informative attributes, cleaning attributes, and finishing data frame
 ### 6.1. Joining orangutans info

@@ -242,9 +242,7 @@ SUAQ_waypoints_11all20_loc<- SUAQ_waypoints_11all20_loc %>% mutate(PtType=if_els
 
 ##### Selection only pointtypes which are taken on the orangutan way? is this true for all? ##### 
 SUAQ_rangepoints_11all20_loc <- SUAQ_waypoints_11all20_loc %>% filter(PtType %in% c("daynest","found","lost","mornnest","nightnest","range","tree","party")) # get rid of lcg lch points and 
-SUAQ_rangepoints_11all20_loc <- SUAQ_rangepoints_11all20_loc %>% mutate(manualTime=if_else(is.na(manualTime),automaticTime,manualTime))
-SUAQ_rangepoints_11all20_loc <- SUAQ_rangepoints_11all20_loc %>% mutate(manualDate=if_else(is.na(manualDate),date(automaticDate),manualDate))
-SUAQ_rangepoints_11all20_loc <- SUAQ_rangepoints_11all20_loc %>% mutate(manualDatetime=if_else(is.na(manualDatetime),ymd_hms(paste(manualDate,manualTime),tz = "Asia/Pontianak"),manualDatetime))
+
 
 
 ##### Selection only females ##### 
@@ -317,8 +315,7 @@ DJL_follows <- SUAQ_rangepoints_11all20_loc %>%
   summarise(DJL = sum(as.numeric(manual_distTolast), na.rm = TRUE), count =
               n(), turningAngleSum=sum(as.numeric(turningAngle), na.rm = TRUE), meanTimelag=mean(timelag_lead,na.rm=TRUE), medianTimelag=median(timelag_lead,na.rm=TRUE))
 
-colnames(DJL_follows) <- c("follow","focal","ClassFocal","rain_eve","watlevel_mo","walevel_eve","rain_mo","avg_temp_tot","max_temp_average","min_temp_average","temp_max_mo","temp_min_mo","fai","ageOfCurrentOffspring","monthYearDate","DJL","count","turningAngleSum")
-
+colnames(DJL_follows) <- c("follow","focal","ClassFocal","rain_eve","watlevel_mo","walevel_eve","rain_mo","avg_temp_tot","max_temp_average","min_temp_average","temp_max_mo","temp_min_mo","fai","ageOfCurrentOffspring","monthYearDate","DJL","count","turningAngleSum","meanTimelag","medianTimelag")
 
 
 
@@ -448,6 +445,18 @@ sample_frequencyAnalaysis<- sample_frequencyAnalaysis %>%
 ```
 
 ```{r analysis with move}
+temp <-
+  SUAQ_rangepoints_11all20_loc %>%
+  group_by(E, N, follow, focal, manualDatetime) %>%
+  summarise(
+    count = n(),
+    follow = as.character(list(follow)),
+    fileN = as.character(list(fileN)),
+    automaticDate = as.character(list(automaticDate)),
+    manualDate = as.character(list(as.character(manualDate))),
+    automaticTime = as.character(list(as.character(automaticTime))),
+    manualTime = as.character(list(as.character(manualTime)))
+  )
 SUAQ_move <- move(x=SUAQ_rangepoints_11all20_loc$E, y=SUAQ_rangepoints_11all20_loc$N, 
               time=as.POSIXct(SUAQ_rangepoints_11all20_loc$manualDatetime, format="%Y-%m-%d %H:%M:%OS", tz="Asia/Pontianak"),
               proj=CRS("+proj=utm +zone=47 +datum=WGS84 +units=m +no_defs"), 
