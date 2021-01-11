@@ -1338,17 +1338,17 @@ SUAQ_waypoints_11all20 <-
   SUAQ_waypoints_11all20 %>% 
   mutate_cond((.$id %in% alterID),manualDatetime=automaticDatetime,manualTime= hms::as_hms(manualDatetime))
   
-mutate()
 # #### For trackpoints aswell
 # SUAQ_followertracks_11_20 <-
 #   SUAQ_followertracks_11_20 %>% filter(E > 323000 &
 #                                          E < 328000 &
 #                                          N > 336000 &
 #                                          N < 365000)
+specs_noManualDatetime<- SUAQ_waypoints_11all20 %>% filter(is.na(manualDatetime))
+tmp<- SUAQ_waypoints_11all20[order(SUAQ_waypoints_11all20$manualTime , decreasing = TRUE ),] %>%filter(!is.na(manualDatetime)) %>%  group_by(follow) %>% slice_head()
+SUAQ_waypoints_11all20 <- SUAQ_waypoints_11all20 %>% mutate_cond(is.na(manualDatetime),manualDatetime=tmp$automaticDatetime[tmp$follow==follow])
 
 
-view(alterID)
-print(c(1:100))
 
 ### 6.5. Cleaning important attributes
 ##### Sexes overview

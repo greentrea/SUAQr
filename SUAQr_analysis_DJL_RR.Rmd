@@ -29,7 +29,8 @@ packages_checker <- function(packages_list){
   }
 }
 packages_checker(
-  c('tmaptools',# read_gpx function
+  c('ctmm',
+    'tmaptools',# read_gpx function
     'plotKML',# read GPX to dataframe
     'lubridate',
     'zoo',
@@ -85,7 +86,9 @@ packages_checker(
     'lindia', # linear regression tools z.b gg_rehist()
     'MuMIn',
     'MASS',
-    'GGally' # usefull pairs function to create many scatterplots
+    'GGally', # usefull pairs function to create many scatterplots
+    'maptools',# used in move package
+    'circular' # used in move package
     ))
 rm(list = ls())
 getwd()
@@ -182,6 +185,9 @@ calculate_mode <- function(x) {
 ##### waypoints ##### "data/Processed_data/SUAQ_waypoints_11all20.csv"
 SUAQ_waypoints_11all20_loc <- read_csv(paste0("data/Processed_data/",str_remove_all(Sys.Date(), "-"),"_SUAQ_waypoints_11all20.csv"))
 SUAQ_waypoints_11all20_loc <- SUAQ_waypoints_11all20_loc %>% mutate(monthYearDate=format(as.Date(manualDate), "%Y-%m"))
+SUAQ_waypoints_11all20_loc <- SUAQ_waypoints_11all20_loc %>% mutate(automaticDatetime=with_tz(automaticDatetime,tz = "Asia/Pontianak"))
+SUAQ_waypoints_11all20_loc <- SUAQ_waypoints_11all20_loc %>% mutate(manualDatetime=with_tz(manualDatetime,tz = "Asia/Pontianak"))
+
 
 ##### Weather and FAI #####
 SUAQ_weather <- read_csv("data/Processed_data/SUAQ_weather.csv")
@@ -237,8 +243,8 @@ SUAQ_waypoints_11all20_loc<- SUAQ_waypoints_11all20_loc %>%
          )
 
 ##### Delete all points around Research camp if edges are longer than 60m thats in the upper quartile of manual distances of edges
-summary(SUAQ_waypoints_11all20_loc)
-SUAQ_waypoints_11all20_loc<- SUAQ_waypoints_11all20_loc %>% mutate(PtType=if_else(((manual_distTolast>40)|(manual_distToNext>40)|(manual_distToNext==0))&((N>336992)&(N<337052))&((E>324023)&(E<324083)),"potentially campside",PtType)) # these follows have a campsite point "1113","1730","1805","1805","1949","1951","2841","2841"
+SUAQ_waypoints_11all20_loc<- SUAQ_waypoints_11all20_loc %>% 
+  mutate(PtType=if_else(((manual_distTolast>40)|(manual_distToNext>40)|(manual_distToNext==0))&((N>336992)&(N<337052))&((E>324023)&(E<324083)),"potentially campside",PtType)) # these follows have a campsite point "1113","1730","1805","1805","1949","1951","2841","2841"
 
 ##### Selection only pointtypes which are taken on the orangutan way? is this true for all? ##### 
 SUAQ_rangepoints_11all20_loc <- SUAQ_waypoints_11all20_loc %>% filter(PtType %in% c("daynest","found","lost","mornnest","nightnest","range","tree","party")) # get rid of lcg lch points and 
@@ -356,6 +362,7 @@ ggsave(filename = paste(
 ), plot = plot_Allscatter,dpi=300,width = 60,height = 60,units="cm")
 
 
+
 ##### GLM #####
 
 # lm see autoplot ?
@@ -410,22 +417,66 @@ qqnorm(resid(glm_rainfall))
 
 
 ```{r higher frequency analysis}
-DJL_follows %>% ggplot(aes(DJL,meanTimelag))+geom_point()+geom_smooth(method="lm")
+##### Plot DJL and mean timelag
+plot_DJLxMeanTimelag<- DJL_follows %>% ggplot(aes(DJL, meanTimelag)) +
+  geom_point() + 
+  labs(title = "DJL X Mean Timelag (Mean sampling interval per follow)", x = "DJL [m]", y = "mean sampling interval [s]")
+
+ggsave(filename = paste(
+  paste(
+    "/Users/stefgr/Dropbox/Apps/Overleaf/Msc_Thesis/figures/",
+    format(Sys.Date(), "%Y%m%d"),"_",
+    "plot_DJLxMeanTimelag",
+    sep = ""
+  ),
+  "pdf",
+  sep = "."
+), plot = plot_DJLxMeanTimelag)
 
 
 specs_timelag <- SUAQ_rangepoints_11all20_loc %>% group_by(timelag_lead) %>% summarise(count=n())
 
 temp<- SUAQ_rangepoints_11all20_loc %>% group_by(follow) %>% summarise(meanTimelag=median(timelag_lead,na.rm=TRUE),count=n())
-temp2<- SUAQ_rangepoints_11all20_loc %>% group_by(follow,timelag_lead) %>% summarise(count=n()) %>% filter(follow %in% c("661","663","671","682","685","687","689","718","719","733","735","738","743","745","746","748","751","753","754","765","767","773","805","807","808","810","816"))
-temp3 <- SUAQ_rangepoints_11all20_loc[c("A", "B", "C")]
-sample_frequencyAnalaysis <- SUAQ_rangepoints_11all20_loc %>% filter(follow %in% c("661","663","671","682","685","687","689","718","719","733","735","738","743","745","746","748","751","753","754","765","767","773","805","807","808","810","816")) %>%mutate(cumsumTimelag=cumsum(timelag_lead)) %>%  dplyr::select(c("id","focal","follow","followtype","automaticDatetime","manualDatetime","manualDate","manualTime","automaticDate","automaticTime","timelag_lead","cumsumTimelag","manual_distToNext","speed_next","turningAngle","altitudediff_next","PtType","currentOffspring","ageFromDOB","ageOfCurrentOffspring","infantname","altitude","followername","E","N","gpsextraction"))
+sample_FN_5min<- c("661","663","671","682","685","687","689","718","719","733","735","738","743","745","746","748","751","753","754","765","767","773","805","807","808","810","816")
+
+sample_frequencyAnalaysis_5min <- SUAQ_rangepoints_11all20_loc[order(SUAQ_rangepoints_11all20_loc$focal,SUAQ_rangepoints_11all20_loc$manualDatetime , decreasing = TRUE ),] %>% filter(follow %in% c("661","663","671","682","685","687","689","718","719","733","735","738","743","745","746","748","751","753","754","765","767","773","805","807","808","810","816"))  %>% filter(followtype=="NN")
+
+sample_frequencyAnalaysis_5min <- sample_frequencyAnalaysis_5min %>% mutate(cumsumTimelag=cumsum(timelag_lead)) %>%  dplyr::select(c("id","focal","follow","followtype","automaticDatetime","manualDatetime","manualDate","manualTime","automaticDate","automaticTime","timelag_lead","cumsumTimelag","manual_distToNext","speed_next","turningAngle","altitudediff_next","PtType","currentOffspring","ageFromDOB","ageOfCurrentOffspring","infantname","altitude","followername","E","N","gpsextraction"))
+
+##### Get two dataframes one with start and ending and another with all the points in between
+subsample_frequencyAnalaysis_start <- sample_frequencyAnalaysis_5min %>% group_by(follow) %>% dplyr::top_n(1,manualDatetime)
+subsample_frequencyAnalaysis_end <- sample_frequencyAnalaysis_5min %>% group_by(follow) %>% dplyr::top_n(-1,manualDatetime)
+subsample_frequencyAnalaysis_start_end <- subsample_frequencyAnalaysis_start %>% rbind(subsample_frequencyAnalaysis_end)
+sample_frequencyAnalaysis_rest<- setdiff(sample_frequencyAnalaysis_5min,subsample_frequencyAnalaysis_start_end)
+
+##### Create a Dataframe with subsamplings
+subsample_frequencyAnalaysis15min <- sample_frequencyAnalaysis_rest %>% group_by(follow) %>%
+  slice(seq(2, n(), by = 2))
+subsample_frequencyAnalaysis15min <- subsample_frequencyAnalaysis15min %>% rbind(subsample_frequencyAnalaysis_start_end)
+
+##### Create a Dataframe with subsamplings
+subsample_frequencyAnalaysis30min <- sample_frequencyAnalaysis_rest %>% group_by(follow) %>%
+  slice(seq(4, n(), by = 4))
+subsample_frequencyAnalaysis30min <- subsample_frequencyAnalaysis30min %>% rbind(subsample_frequencyAnalaysis_start_end)
 
 
-subsample_frequencyAnalaysis <- sample_frequencyAnalaysis %>% top_n(follow,1,manualTime)
-
-test <- sample_frequencyAnalaysis %>% group_by(follow) %>% sample_n(500)
-
-sample_frequencyAnalaysis<- sample_frequencyAnalaysis %>% 
+##### Create analysis DF #####
+subsample_frequencyAnalaysis15min<- subsample_frequencyAnalaysis15min %>% 
+  group_by(follow)%>% arrange(manualTime,.by_group = TRUE) %>% 
+  mutate(timelag=as.numeric(difftime(as.POSIXlt(manualTime),
+                                     as.POSIXlt(lag(manualTime)),units 
+                                     ="secs")),
+         # calculate distance with approach number 1 --> st_distance but to do that we need to calculate lead first because the lead function doesnt work within st distance (not same datatype (df))
+         timelag_lead=as.numeric(difftime(as.POSIXlt(lead(manualTime)),
+                                          as.POSIXlt(manualTime),units ="secs")),
+         manual_distTolast=sqrt((E-lag(E))^2+(N-lag(N))^2),
+         manual_distToNext=sqrt((E-lead(E))^2+(N-lead(N))^2),
+         speed_last = manual_distTolast/timelag,
+         speed_next = manual_distToNext/timelag_lead,
+         turningAngle=turning_angle(E,N),
+         altitudediff_next=altitude-lead(altitude),
+         )
+subsample_frequencyAnalaysis30min<- subsample_frequencyAnalaysis30min %>% 
   group_by(follow)%>% arrange(manualTime,.by_group = TRUE) %>% 
   mutate(timelag=as.numeric(difftime(as.POSIXlt(manualTime),
                                      as.POSIXlt(lag(manualTime)),units 
@@ -441,8 +492,90 @@ sample_frequencyAnalaysis<- sample_frequencyAnalaysis %>%
          altitudediff_next=altitude-lead(altitude),
          )
 
+DJL_follows_subsample_15min <- subsample_frequencyAnalaysis15min %>%
+  filter(followtype == "NN") %>%
+  group_by(
+    follow
+  ) %>%
+  summarise(DJL_15min = sum(as.numeric(manual_distTolast), na.rm = TRUE), count_15min =
+              n(), turningAngleSum_15min=sum(as.numeric(turningAngle), na.rm = TRUE), meanTimelag_15min=mean(timelag_lead,na.rm=TRUE), medianTimelag_15min=median(timelag_lead,na.rm=TRUE))
+DJL_follows_subsample_30min <- subsample_frequencyAnalaysis30min %>%
+  filter(followtype == "NN") %>%
+  group_by(
+    follow,
+  ) %>%
+  summarise(DJL_30min = sum(as.numeric(manual_distTolast), na.rm = TRUE), count_30min =
+              n(), turningAngleSum_30min=sum(as.numeric(turningAngle), na.rm = TRUE), meanTimelag_30min=mean(timelag_lead,na.rm=TRUE), medianTimelag_30min=median(timelag_lead,na.rm=TRUE))
 
+DJL_follows <- DJL_follows %>% left_join(DJL_follows_subsample_15min,by=c("follow"="follow"))
+DJL_follows <- DJL_follows %>% left_join(DJL_follows_subsample_30min,by=c("follow"="follow"))
+
+DJL_follows_sample_long <- DJL_follows %>% ungroup() %>% 
+  dplyr::select(follow,DJL,count,turningAngleSum,meanTimelag,medianTimelag) %>% filter(follow %in% sample_FN_5min) %>% 
+  mutate(samplingrate="every")  
+
+DJL_follows_subsample_15min <- DJL_follows_subsample_15min %>% mutate(samplingrate="every 2nd")
+DJL_follows_subsample_30min <- DJL_follows_subsample_30min %>% mutate(samplingrate="every 4th")
+colnames(DJL_follows_subsample_15min) <- colnames(DJL_follows_sample_long)
+colnames(DJL_follows_subsample_30min) <- colnames(DJL_follows_sample_long)
+
+DJL_follows_sample_long <- DJL_follows_sample_long %>% rbind(DJL_follows_subsample_15min) 
+DJL_follows_sample_long <- DJL_follows_sample_long %>% rbind(DJL_follows_subsample_30min)
+
+##### Visiualize
+DJL_follows %>% filter(follow %in% sample_FN_5min) %>% ggplot(aes(DJL,meanTimelag))+
+  geom_point(colour="black")+
+  geom_point(data=DJL_follows,aes(DJL_15min,meanTimelag_15min),colour="blue")+
+  geom_point(data=DJL_follows,aes(DJL_30min,meanTimelag_30min),colour="red")
+
+DJL_follows_sample<- DJL_follows %>% filter(follow %in% sample_FN_5min) 
+DJL_follows_sample%>% ggplot(aes(DJL,meanTimelag,colour=as.factor(follow)))+
+  geom_point(size=5)+
+  geom_point(data=DJL_follows_sample,aes(DJL_15min,meanTimelag_15min),shape=17,size=5)+
+  geom_point(data=DJL_follows_sample,aes(DJL_30min,meanTimelag_30min),shape=15,size=5)+
+  geom_path()+
+  theme(legend.title = element_blank())
+
+plot_DJLxTimelagxSubsampling<- DJL_follows_sample_long%>% ggplot(aes(DJL,meanTimelag,colour=as.factor(follow)))+
+  geom_point(size=5,shape=as.factor(DJL_follows_sample_long$samplingrate))+
+  geom_path(size=0.2)+
+  theme(legend.position = "none")+labs(title = "Subsampling of 18 high frequency follows \n (triangle = every 2nd, cross= every 4th point)",x="DJL [m]",y="mean timelag [s]")+theme(plot.title = element_text(hjust = 0.5))
+plot_DJLxTimelagxSubsampling
+ggsave(filename = paste(
+  paste(
+    "/Users/stefgr/Dropbox/Apps/Overleaf/Msc_Thesis/figures/",
+    format(Sys.Date(), "%Y%m%d"),"_",
+    "plot_DJLxTimelagxSubsampling",
+    sep = ""
+  ),
+  "pdf",
+  sep = "."
+), plot = plot_DJLxTimelagxSubsampling)
+
+#### With ctmm
+data("buffalo")
+Cilla <- buffalo$
+plot(Cilla)
+title("1 Buffalo")
+plot(buffalo,col=rainbow(length(buffalo)))
+title("5 Buffalo")
+SUAQ_move_ellie <- SUAQ_rangepoints_11all20_loc %>% filter(focal=="ellie")
+SUAQ_move_ellie <- move(x=SUAQ_move_ellie$E, y=SUAQ_move_ellie$N, 
+              time=as.POSIXct(SUAQ_move_ellie$manualDatetime, format="%Y-%m-%d %H:%M:%OS", tz="Asia/Pontianak"),
+              proj=CRS("+proj=utm +zone=47 +datum=WGS84 +units=m +no_defs"), 
+              data=SUAQ_move_ellie, animal=SUAQ_move_ellie$focal, sensor="gps")
+
+SUAQ_telemetry<- as.telemetry(SUAQ_move_ellie)
+SUAQ_telemetry
+SVF <- variogram(SUAQ_telemetry)
+level <- c(0.5,0.95) # 50% and 95% CIs
+xlim <- c(0,12 %#% "hour") # 0-12 hour window
+plot(SVF,xlim=xlim,level=level)
+title("zoomed in")
+plot(SVF,fraction=0.65,level=level)
+title("zoomed out")
 ```
+
 
 ```{r analysis with move}
 
@@ -463,10 +596,19 @@ duplicates <-
   )
 duplicates<- duplicates%>% filter(count>1) # retrieve duplicates where E N Follow Focal and the ManualDatetime is the same. These are must have attributes.
 
-SUAQ_move <- move(x=SUAQ_rangepoints_11all20_loc$E, y=SUAQ_rangepoints_11all20_loc$N, 
+SUAQ_rangepoints_11all20_loc <- SUAQ_rangepoints_11all20_loc[with(SUAQ_rangepoints_11all20_loc, order(focal,manualDatetime)),]
+
+SUAQ_rangepoints_11all20_loc_2<- SUAQ_rangepoints_11all20_loc[order(SUAQ_rangepoints_11all20_loc$focal,SUAQ_rangepoints_11all20_loc$manualDatetime , decreasing = TRUE ),] 
+SUAQ_move_2 <- move(x=SUAQ_rangepoints_11all20_loc$E, y=SUAQ_rangepoints_11all20_loc$N, 
               time=as.POSIXct(SUAQ_rangepoints_11all20_loc$manualDatetime, format="%Y-%m-%d %H:%M:%OS", tz="Asia/Pontianak"),
               proj=CRS("+proj=utm +zone=47 +datum=WGS84 +units=m +no_defs"), 
               data=SUAQ_rangepoints_11all20_loc, animal=SUAQ_rangepoints_11all20_loc$focal, sensor="gps")
+
+corridor<- corridor(SUAQ_move_2)
+
+
+SUAQ_move <- spTransform(SUAQ_move_2,CRSobj="+proj=longlat +datum=WGS84 +no_defs")
+
 ```
 
 ```{r errorsearching}
@@ -550,7 +692,7 @@ plot_scatterDistanceTimelag <-
   SUAQ_rangepoints_11all20_loc %>% ggplot(aes(manual_distToNext, timelag_lead)) +
   scale_y_log10() +
   geom_point() + labs(title = "Manual distance X Timelag to next point (edge length) scatterplot", x = "distance [m]", y = "timelag")
-plot_scatterEdgeLengths
+
 
 plot_scatterDistanceSpeed <-
   SUAQ_rangepoints_11all20_loc %>% ggplot(aes(manual_distToNext, speed_next)) +
