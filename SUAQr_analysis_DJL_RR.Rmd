@@ -176,7 +176,7 @@ calculate_mode <- function(x) {
 1. Getting data from excel/csv files
 2. Getting data from gpx files, clean and order it
 3. Merge Files
-```{r GPS Loader}
+```{r GPS Loader,echo=FALSE, message=FALSE,comment=FALSE, warning=FALSE}
 
 ### Load Project variables ### 
 ##### waypoints ##### "data/Processed_data/SUAQ_waypoints_11all20.csv"
@@ -445,9 +445,10 @@ sample_frequencyAnalaysis<- sample_frequencyAnalaysis %>%
 ```
 
 ```{r analysis with move}
-temp <-
+
+duplicates <-
   SUAQ_rangepoints_11all20_loc %>%
-  group_by(E, N, follow, focal, manualDatetime) %>%
+  group_by(focal, manualDatetime) %>%
   summarise(
     count = n(),
     follow = as.character(list(follow)),
@@ -455,8 +456,13 @@ temp <-
     automaticDate = as.character(list(automaticDate)),
     manualDate = as.character(list(as.character(manualDate))),
     automaticTime = as.character(list(as.character(automaticTime))),
-    manualTime = as.character(list(as.character(manualTime)))
+    manualTime = list(as.numeric(manualTime)),
+    E=list(as.numeric(E)),
+    N=list(as.numeric(N)),
+    id=list(as.numeric(id))
   )
+duplicates<- duplicates%>% filter(count>1) # retrieve duplicates where E N Follow Focal and the ManualDatetime is the same. These are must have attributes.
+
 SUAQ_move <- move(x=SUAQ_rangepoints_11all20_loc$E, y=SUAQ_rangepoints_11all20_loc$N, 
               time=as.POSIXct(SUAQ_rangepoints_11all20_loc$manualDatetime, format="%Y-%m-%d %H:%M:%OS", tz="Asia/Pontianak"),
               proj=CRS("+proj=utm +zone=47 +datum=WGS84 +units=m +no_defs"), 

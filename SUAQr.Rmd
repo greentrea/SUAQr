@@ -264,6 +264,11 @@ calculate_mode <- function(x) {
   uniqx[which.max(tabulate(match(x, uniqx)))]
 }
 
+mutate_cond <- function(.data, condition, ..., envir = parent.frame()) {
+  condition <- eval(substitute(condition), .data, envir)
+  .data[condition, ] <- .data[condition, ] %>% mutate(...)
+  .data
+}
 ```
 
 #### SUAQ research site
@@ -271,7 +276,7 @@ calculate_mode <- function(x) {
 1. Getting data from excel/csv files
 2. Getting data from gpx files, clean and order it
 3. Merge Files
-```{r GPS Processing}
+```{r GPS Processing,echo=FALSE, message=FALSE,comment=FALSE, warning=FALSE}
 start<- Sys.time()
 
 ## 0. Loading metadatasets
@@ -564,7 +569,7 @@ SUAQ_waypoints_11_20 <-
   SUAQ_waypoints_11_20 %>%
   mutate(
     cmt = dmy_hms(cmt, tz = "Asia/Pontianak"),
-    automaticDatetime = ymd_hms(time, tz = "Asia/Pontianak"),
+    time = ymd_hms(time, tz= "MET"),
     manualDatetime = as.POSIXct(
       paste0(ymd(filedate), " ", str_extract(name, "^\\d{4}")),
       format = "%Y-%m-%d %H%M",
@@ -579,9 +584,11 @@ SUAQ_waypoints_11_20 <-
       format = "%H%M",
       tz = "Asia/Pontianak"
     )),
+  ) %>% mutate(
+    automaticDatetime=ymd_hms(cmt, tz = "Asia/Pontianak")
   ) %>% 
   mutate(
-    automaticDatetime= if_else(is.na(automaticDatetime),ymd_hms(cmt, tz = "Asia/Pontianak"),automaticDatetime),
+    automaticDatetime= if_else(is.na(automaticDatetime),with_tz(time, tz = "Asia/Pontianak"),automaticDatetime),
     manualTime=if_else(is.na(manualTime),hms::as_hms(manualDatetime),manualTime),
     manualDate=if_else(is.na(manualDate),date(manualDatetime),manualDate)
     ) %>% 
@@ -1107,6 +1114,7 @@ SUAQ_waypoints_11all20 <- SUAQ_waypoints_11all20 %>% # replaces the found focal 
 ##### Deleting and manipulating main dataset based on GPS Duplicates analysis
 SUAQ_waypoints_11all20 <- SUAQ_waypoints_11all20 %>% dplyr::filter(!(fileN %in% c("20200129_Zackey(Guess)_Armas_NN","20150205_EllieEden_NN_Eric","20110117_Friska_Unk_NN","20110325_Cissy_Unk_NN","20110116_Friska_Unk_NN","20110215_Lisa_SofiaArmas_NN",'20110222_Friska_MudinToni_NN',"20110213_Lisa_SofiaArmas_NN","20110118_Friska_Unk1_NL","20110118_Friska_Unk2_NL","20130509_Jebi(prob)_Armas_NN","20131105_Cissy_UNK_NN","20101217_Friska_Sofia_NN","20101223_Friska_ToniArmas_NN","20100115_Friska_Unk_FN","20110119_Raffi_Unk_FN","20110121_Cissy_Unk_NN","20130323_Halte(prob)_Caco_FN","20130326_Halte(prob)_Caco_NN","20130521_Friska(prob)_Izumi_FN","20200129_Zackey(Guess)_Armas_NN","20150205_EllieEden_NN_Eric","20130630_Lilli_Mudin_FN"))) # 20110222_Friska_MudinToni_NN doesnt work? why? still existing in df
 
+##### Duplicates to delete by id
 SUAQ_waypoints_11all20 <- SUAQ_waypoints_11all20 %>% filter(!(id %in% c(8136,8138,8140,8142,8143,8145,8147)))
 
 
@@ -1131,12 +1139,32 @@ specs_percentageOfFollowGPSPointsInNight<- SUAQ_waypoints_11all20 %>% filter((ma
 specs_percentageOfFollowGPSPointsInNight<- specs_percentageOfFollowGPSPointsInNight %>% mutate(percOfPointsInNight=1/(numGPSofFollow/numberOfGPSinNighresting))
 
 
-##### Manual time corrections (quality unsure is it 6 or 7 hours shift)
-SUAQ_waypoints_11all20<- SUAQ_waypoints_11all20 %>% mutate(manualTime=if_else(id==24101,automaticTime,manualTime)) # wrong time for one point probably in fn 2047
+
+
+##### Manual time corrections (quality unsure is it 6 or 7 hours shift) there are many wrong especially automatic time zones
+SUAQ_waypoints_11all20<- SUAQ_waypoints_11all20 %>% mutate_cond(id==24101,manualTime=automaticTime) # wrong time for one point probably in fn 2047
 SUAQ_waypoints_11all20 <-
   SUAQ_waypoints_11all20 %>% 
-  mutate(manualDatetime = if_else(follow %in% c(2326,1101277,2341,2336,2331,2409,2412,2415,2343), manualDatetime+hours(7), manualDatetime)) %>%  # wrong time for the whole follow
-  mutate(manualTime = if_else(follow %in% c(2326,1101277,2341,2336,2331,2409,2412,2415,2343), hms::as_hms(manualDatetime), manualTime), manualDatetime= ymd_hms(paste(manualDate,manualTime))) 
+  mutate_cond(follow %in% c(2326,1101277,2341,2336,2331,2409,2412,2415,2343),manualDatetime = manualDatetime+hours(7)) %>%  # wrong time for the whole follow
+  mutate_cond(follow %in% c(2326,1101277,2341,2336,2331,2409,2412,2415,2343),manualTime =  hms::as_hms(manualDatetime), 
+         manualDatetime= ymd_hms(paste(manualDate,manualTime),tz = "Asia/Pontianak")) 
+
+# ##### Correcting some automatic times
+# #####  6 hours
+# SUAQ_waypoints_11all20 <-
+#   SUAQ_waypoints_11all20 %>% 
+#   mutate(automaticDatetime = if_else(follow %in% c(), automaticDatetime+hours(6), automaticDatetime)) %>%  # wrong time for the whole follow
+#   mutate(automaticTime = if_else(follow %in% c(), hms::as_hms(automaticDatetime), automaticTime), 
+#          automaticDatetime= if_else(follow %in% c(), ymd_hms(paste(automaticDate,automaticTime),tz = "Asia/Pontianak"), automaticDatetime)
+#            ) # set old date because if time adition goes over midnight date is changed. And that doesnt make sense
+# 
+# #####  5 hours
+# SUAQ_waypoints_11all20 <-
+#   SUAQ_waypoints_11all20 %>% 
+#   mutate(automaticDatetime = if_else(follow %in% c(), automaticDatetime+hours(6), automaticDatetime)) %>%  # wrong time for the whole follow
+#   mutate(automaticTime = if_else(follow %in% c(), hms::as_hms(manualDatetime), automaticTime), 
+#          automaticDatetime= ymd_hms(paste(automaticDate,automaticTime),tz = "Asia/Pontianak")) # set old date because if time adition goes over midnight date is changed. And that doesnt make sense
+
 
 # 1101277 wrong time for all points
 
@@ -1179,23 +1207,6 @@ SUAQ_waypoints_11all20 <- SUAQ_waypoints_11all20 %>% mutate(manualDatetime=if_el
 ###### Deleting empty E N or Time
 SUAQ_waypoints_11all20 <- SUAQ_waypoints_11all20 %>% filter(!(is.na(E)|is.na(N)|is.na(manualTime)))
 
-###### Deleting duplicates
-duplicates <-
-  SUAQ_waypoints_11all20 %>%
-  group_by(E, N, follow, focal, manualDatetime) %>%
-  summarise(
-    count = n(),
-    follow = as.character(list(follow)),
-    fileN = as.character(list(fileN)),
-    automaticDate = as.character(list(automaticDate)),
-    manualDate = as.character(list(as.character(manualDate))),
-    automaticTime = as.character(list(as.character(automaticTime))),
-    manualTime = list(as.numeric(manualTime),),
-    id=list(as.numeric(id))
-  ) %>% ungroup()
-
-tmp<- tmp%>% filter(count>1) # retrieve duplicates where E N Follow Focal and the ManualDatetime is the same. These are must have attributes.
-SUAQ_waypoints_11all20 <- SUAQ_waypoints_11all20 %>% filter(!(id %in% map(tmp$id, 2))) # only select first id's of the duplicates dataframe, and therefore keep the first rows of the duplicates in the dataset. Hopefully they have the most information but this is not sure. To do a function which would select the row with more information.
 
 ## 6. Adding informative attributes, cleaning attributes, and finishing data frame
 ### 6.1. Joining orangutans info
@@ -1259,34 +1270,7 @@ SUAQ_waypoints_11all20<- SUAQ_waypoints_11all20 %>%
   mutate(currentOffspring=if_else(ageOfCurrentOffspring%in%c(ageOfOffspring3),SUAQ_orangutans.offspring3_id,currentOffspring)) %>% 
   mutate(ageOfCurrentOffspring=if_else(is.infinite(ageOfCurrentOffspring),NA_real_,ageOfCurrentOffspring))
 
-##### View offspring ages and focals
-test<- SUAQ_waypoints_11all20 %>% filter((!is.na(currentOffspring))) %>% filter(focal=="alice",currentOffspring=="Luther")
-plot_OffspringAgeAndMotherTracking <-
-  SUAQ_waypoints_11all20 %>% filter((!is.na(currentOffspring))) %>% ungroup() %>% 
-  ggplot(
-    aes(manualDate, .$focal, colour = currentOffspring, size =
-          ageOfCurrentOffspring)
-  ) + geom_point() + labs(colour = "Offspring",x="Date", y="Orangutan mother",size="Age [years]")
 
-ggsave(filename = paste(
-  paste(
-    "/Users/stefgr/Dropbox/Apps/Overleaf/Msc_Thesis_frombeginning/figures/",
-    format(Sys.Date(), "%Y%m%d"),
-    "_plot_OffspringAgeAndMotherTracking",
-    sep = ""
-  ),
-  "pdf",
-  sep = "."
-), plot = plot_OffspringAgeAndMotherTracking)
-
-
-
-
-### 6.4. Only keep gps points within Bounding box of 330000-360000N / 323000-328000E because some points are wrong probably the N and the E variable are the same (accidently copied)
-SUAQ_waypoints_11all20 <- SUAQ_waypoints_11all20 %>% filter(E>323000 & 
-                                                            E<328000 & 
-                                                            N>330000 & 
-                                                            N<360000)
 
 
 
@@ -1295,6 +1279,66 @@ id <- rownames(SUAQ_waypoints_11all20)
 SUAQ_waypoints_11all20 <- SUAQ_waypoints_11all20 %>% dplyr::select(-id)
 SUAQ_waypoints_11all20 <- cbind(id=id, SUAQ_waypoints_11all20)
 
+### 6.4. Only keep gps points within Bounding box of 330000-360000N / 323000-328000E because some points are wrong probably the N and the E variable are the same (accidently copied)
+SUAQ_waypoints_11all20 <- SUAQ_waypoints_11all20 %>% filter(E>323000 & 
+                                                            E<328000 & 
+                                                            N>330000 & 
+                                                            N<360000)
+
+
+###### Deleting duplicates
+duplicates <-
+  SUAQ_waypoints_11all20 %>%
+  group_by(E, N, follow, focal, manualDatetime) %>%
+  summarise(
+    count = n(),
+    follow = as.character(list(follow)),
+    fileN = as.character(list(fileN)),
+    automaticDate = as.character(list(automaticDate)),
+    manualDate = as.character(list(as.character(manualDate))),
+    automaticTime = as.character(list(as.character(automaticTime))),
+    manualTime = list(as.numeric(manualTime)),
+    id=list(as.numeric(id))
+  ) %>% ungroup()
+duplicates<- duplicates%>% filter(count>1) # retrieve duplicates where E N Follow Focal and the ManualDatetime is the same. These are must have attributes.
+SUAQ_waypoints_11all20 <- SUAQ_waypoints_11all20 %>% filter(!(id %in% map(duplicates$id, 2))) # only select first id's of the duplicates dataframe, and therefore keep the first rows of the duplicates in the dataset. Hopefully they have the most information but this is not sure. To do a function which would select the row with more information.
+
+duplicates_datefocal <-
+  SUAQ_waypoints_11all20 %>%
+  group_by(focal, manualDatetime) %>%
+  summarise(
+    count = n(),
+    follow = as.character(list(follow)),
+    fileN = as.character(list(fileN)),
+    automaticDatetime = list(automaticDatetime),
+    manualDate = list(as.character(manualDate)),
+    automaticTime = list(automaticTime),
+    manualTime = list(as.numeric(manualTime)),
+    id=list(as.numeric(id))
+  ) %>% ungroup()
+duplicates_datefocal<- duplicates_datefocal%>% filter(count>1) 
+
+duplicates_datefocal <-duplicates_datefocal %>% unnest_wider(automaticDatetime) %>% 
+  rename(c("automaticDatetime1"="...1","automaticDatetime2"="...2","automaticDatetime3"="...3")) %>% 
+  mutate(automaticDatetime1=as.POSIXct(automaticDatetime1,tz = "Asia/Pontianak"),
+         automaticDatetime2=as.POSIXct(automaticDatetime2,tz = "Asia/Pontianak"),
+         automaticDatetime3=as.POSIXct(automaticDatetime3,tz = "Asia/Pontianak"))
+
+
+##### Find the ids of points which are the nearest in respect of automatic time to the manual datetime. Create a vector of all the other ids and overwrite the manualTime with the automatic time.
+duplicates_datefocal <-duplicates_datefocal %>% rowwise() %>% 
+  mutate( nearestAutomaticTimeValueKeepTime=
+            which.min(abs(c(automaticDatetime1,automaticDatetime2,automaticDatetime3) - manualDatetime))) 
+duplicates_datefocal <- duplicates_datefocal %>%   mutate(correctID=id[nearestAutomaticTimeValueKeepTime])
+nearestTimeID<- as_vector(duplicates_datefocal$correctID)
+allID <- as_vector(duplicates_datefocal$id)
+alterID<- setdiff(allID,nearestTimeID) # IDS of points which should be changed because the same animal has the same time already used by a nearer automatic Time point
+##### Changeing the manualTime in the main data
+SUAQ_waypoints_11all20 <-
+  SUAQ_waypoints_11all20 %>% 
+  mutate_cond((.$id %in% alterID),manualDatetime=automaticDatetime,manualTime= hms::as_hms(manualDatetime))
+  
+mutate()
 # #### For trackpoints aswell
 # SUAQ_followertracks_11_20 <-
 #   SUAQ_followertracks_11_20 %>% filter(E > 323000 &
@@ -1302,6 +1346,9 @@ SUAQ_waypoints_11all20 <- cbind(id=id, SUAQ_waypoints_11all20)
 #                                          N > 336000 &
 #                                          N < 365000)
 
+
+view(alterID)
+print(c(1:100))
 
 ### 6.5. Cleaning important attributes
 ##### Sexes overview
@@ -1603,6 +1650,26 @@ write_csv(SUAQ_waypoints_11all20,path="shinyapp/orangapp/data/SUAQ_waypoints_11a
 # tmp <- SUAQ_waypoints_11all20 %>% filter(followtype=="Jg")
 ####################################################################################################################
 
+##### TODELETE
+
+temp_follows <- SUAQ_waypoints_11all20 %>% filter(follow %in% c(746,746,2593,2593,2298,2298,1101360,1101360,2891,2891,2903,2903,1000013,1000013,1225,1225,2904,2904,2833,2833,2833,2786,2786,2634,2634,2775,2775,2775,2775,2775,2775,2636,2636,2665,2665,2665,2665,2665,2665,2686,2686,2713,2713,2771,2771,2830,2830,2808,2808,2808,2808,2811,2811,1135,1135,2623,2623,2628,2628,2680,2680,2646,2646,2646,2646,2787,2787,2827,2827,971,971,2751,2751,1333,1333,2674,2674,2801,2801,2801,2801,2801,2801,2607,2607,2607,2593,2593,2593,2941,2941,2920,2920,1468,1468,2901,2901,2901,2901,1466,1466,1492,1492,2579,2579,2855,2855,2896,2896,2910,2910,2912,2912,2912,2912,1479,1479,1479,1479,2564,2564,2607,2607,2609,2609,2868,2868,2843,2843,2858,2858,2946,2946,953,953,953,953,953,953,956,956,2650,2650,2621,2621,2925,2925,1047,1047,2627,2627,2854,2854,2597,2597,2597,2597,2598,2598,2581,2581,671,671,671,671,671,671,671,671,671,671,671,671,2604,2604,978,978,979,979,2637,2637,799,799,799,799,1693,1693,1797,1797,1833,1833,714,714,2265,2265,1738,1738,718,718,719,719,1744,1744,1744,1744,1761,1761,2185,2185,2235,2235,2242,2242,2217,2217,1244,1244,657,657,663,663,663,663,687,687,687,687,689,689,689,689,689,689,689,689,765,765,1035,1035,1052,1052,1268,1268,2215,2215,2228,2228,2166,2166,2204,2204,1961,1961,2210,2210,735,735,735,735,735,735,735,735,735,735,735,735,735,735,735,735,749,749,1101352,1101352,2160,2160,1206,1206,2073,2073,1101360,1101360,1238,1238,2098,2098,1725,1725,2303,2303,2303,2303))
+
+temp_duplicates <- SUAQ_waypoints_11all20 %>% filter(id %in% c(1391,1392,9975,9976,27729,27730,27995,27996,14874,14875,15094,15095,13983,13984,5815,5816,15110,15111,13848,13849,13850,13039,13040,10541,10542,12727,12728,12735,12736,12746,12747,10621,10622,11018,11019,11020,11021,11027,11028,11345,11346,11772,11773,12692,12693,13795,13796,13452,13453,13455,13456,13509,13510,4543,4544,10392,10393,10399,10400,11213,11214,10757,10758,10776,10777,13078,13079,13778,13779,2483,2484,12372,12373,7061,7062,11134,11135,13367,13368,13370,13371,13378,13379,10204,10205,10206,9959,9960,9961,15970,15971,15462,15463,8135,8136,15060,15061,15068,15069,8114,8115,8484,8485,9785,9786,14321,14322,14955,14956,15240,15241,15283,15284,15292,15293,8329,8330,8333,8334,9559,9560,10193,10194,10226,10227,14567,14568,14076,14077,14349,14350,15992,15993,2405,2406,2409,2410,2415,2416,2431,2432,10788,10789,10352,10353,15559,15560,3349,3350,10098,10099,14287,14288,10029,10030,10048,10049,10075,10076,9809,9810,357,376,359,384,364,401,367,421,368,426,373,443,10168,10169,2585,2586,2605,2606,10597,10598,2170,2171,2198,2199,17655,17656,19455,19456,20102,20103,724,725,27242,27243,18465,18466,841,842,918,919,18581,18582,18591,18592,18911,18912,25803,25804,26628,26629,26853,26854,26349,26350,6015,6016,169,170,277,278,306,307,531,532,621,622,640,663,642,664,649,667,650,668,1984,1985,3215,3216,3369,3370,6353,6354,26328,26329,26515,26526,25435,25436,26150,26151,22174,22175,26093,26094,1047,1115,1050,1116,1053,1117,1066,1122,1075,1124,1088,1127,1092,1128,1093,1129,1627,1628,27249,27250,25259,25260,5465,5466,23780,23799,27997,27998,5965,5966,24329,24342,18325,18326,27895,27896,27898,27899))
+
+
+
+plot_gps_pttype<-temp_duplicates[order(temp_duplicates$manualTime , decreasing = TRUE ),] %>% 
+  group_by(follow) %>%
+  ggplot()+
+  geom_point(aes(E,N,color=as.factor(follow)),size=1)+
+  #geom_point(data = temp_duplicates,aes(E,N,fill=as.factor(follow)),size=2)+
+  geom_path(aes(E,N,color=as.factor(follow)), alpha = 0.7,size=0.5)
+ggplotly(plot_gps_pttype)
+
+
+
+##### TODELETE
+
 
 Sys.time()-start
 ```
@@ -1837,6 +1904,27 @@ write_csv(SUAQ_weather, path = paste(
 ## First visuals SUAQ
 ```{r Visualization social relationships}
 ##### VISUALIZE ######
+##### View offspring ages and focals
+test<- SUAQ_waypoints_11all20 %>% filter((!is.na(currentOffspring))) %>% filter(focal=="alice",currentOffspring=="Luther")
+plot_OffspringAgeAndMotherTracking <-
+  SUAQ_waypoints_11all20 %>% filter((!is.na(currentOffspring))) %>% ungroup() %>% 
+  ggplot(
+    aes(manualDate, .$focal, colour = currentOffspring, size =
+          ageOfCurrentOffspring)
+  ) + geom_point() + labs(colour = "Offspring",x="Date", y="Orangutan mother",size="Age [years]")
+
+ggsave(filename = paste(
+  paste(
+    "/Users/stefgr/Dropbox/Apps/Overleaf/Msc_Thesis_frombeginning/figures/",
+    format(Sys.Date(), "%Y%m%d"),
+    "_plot_OffspringAgeAndMotherTracking",
+    sep = ""
+  ),
+  "pdf",
+  sep = "."
+), plot = plot_OffspringAgeAndMotherTracking)
+
+
 #### number of points per individual no matter if its as a infant or focal ####
 SUAQ_tracksperorangutanfocal_sf <-
   SUAQ_waypoints_11all20_sf %>% 
