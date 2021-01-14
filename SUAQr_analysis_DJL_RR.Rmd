@@ -50,6 +50,7 @@ packages_checker(
     'ggraph', # visualization
     'igraph',
     'tmap',
+    'vioplot',
     'scales',
     'trajr',
     'plotly', # zoomable, pannable ggplot
@@ -88,10 +89,13 @@ packages_checker(
     'MASS',
     'GGally', # usefull pairs function to create many scatterplots
     'maptools',# used in move package
-    'circular' # used in move package
+    'circular', # used in move package
+    'hrbrthemes',
+    'viridis'
     ))
 rm(list = ls())
 getwd()
+
 
 
 ### CUSTOM FUNCTIONS ###
@@ -172,6 +176,8 @@ calculate_mode <- function(x) {
   uniqx[which.max(tabulate(match(x, uniqx)))]
 }
 
+setwd("/Users/stefgr/Nextcloud/UZH/12_Semester/20200313_Masterthesis/R/")
+
 ```
 
 #### SUAQ research site
@@ -183,7 +189,7 @@ calculate_mode <- function(x) {
 
 ### Load Project variables ### 
 ##### waypoints ##### "data/Processed_data/SUAQ_waypoints_11all20.csv"
-SUAQ_waypoints_11all20_loc <- read_csv(paste0("data/Processed_data/",str_remove_all(Sys.Date(), "-"),"_SUAQ_waypoints_11all20.csv"))
+SUAQ_waypoints_11all20_loc <- read_csv(paste0("data/Processed_data/",str_remove_all(Sys.Date()-1, "-"),"_SUAQ_waypoints_11all20.csv"))
 SUAQ_waypoints_11all20_loc <- SUAQ_waypoints_11all20_loc %>% mutate(monthYearDate=format(as.Date(manualDate), "%Y-%m"))
 SUAQ_waypoints_11all20_loc <- SUAQ_waypoints_11all20_loc %>% mutate(automaticDatetime=with_tz(automaticDatetime,tz = "Asia/Pontianak"))
 SUAQ_waypoints_11all20_loc <- SUAQ_waypoints_11all20_loc %>% mutate(manualDatetime=with_tz(manualDatetime,tz = "Asia/Pontianak"))
@@ -247,7 +253,7 @@ SUAQ_waypoints_11all20_loc<- SUAQ_waypoints_11all20_loc %>%
   mutate(PtType=if_else(((manual_distTolast>40)|(manual_distToNext>40)|(manual_distToNext==0))&((N>336992)&(N<337052))&((E>324023)&(E<324083)),"potentially campside",PtType)) # these follows have a campsite point "1113","1730","1805","1805","1949","1951","2841","2841"
 
 ##### Selection only pointtypes which are taken on the orangutan way? is this true for all? ##### 
-SUAQ_rangepoints_11all20_loc <- SUAQ_waypoints_11all20_loc %>% filter(PtType %in% c("daynest","found","lost","mornnest","nightnest","range","tree","party")) # get rid of lcg lch points and 
+SUAQ_rangepoints_11all20_loc <- SUAQ_waypoints_11all20_loc %>% filter(PtType %in% c("daynest","found","lost","mornnest","nightnest","range","tree")) # get rid of lcg lch points and
 
 
 
@@ -346,6 +352,108 @@ DJL_follows %>%  ggplot(aes(DJL)) + geom_histogram(bins = 60)
 # sind nicht ok follows c(1874)
 
 ##### Scatters #####
+plot_ClassxDJL <-
+  DJL_follows %>% ggplot(aes(ClassFocal,DJL,colour=ClassFocal)) +
+  #scale_y_log10(labels=fancy_scientific) +
+  geom_point(binwidth = 1) + labs(title = "Histogram of focal classes", x = "focal class", y = "DJL [m]")
+plot_ClassxDJL
+
+with(DJL_follows , vioplot( 
+  DJL[ClassFocal=="flanged male"] , DJL[ClassFocal=="unflanged male"], DJL[ClassFocal=="infant"],DJL[ClassFocal=="mother"],DJL[ClassFocal=="adult female"],
+  col=rgb(0.1,0.4,0.7,0.7) , names=c("flanged male","unflanged male","infant","mother","adult female") 
+))
+
+plot_DJLxClassFocal<- DJL_follows %>%
+  ggplot( aes(x=ClassFocal, y=DJL, fill=ClassFocal)) +
+    geom_boxplot() +
+    scale_fill_viridis(discrete = TRUE, alpha=0.6) +
+    geom_jitter(color="black", size=0.4, alpha=0.3) +
+    theme_ipsum() +
+    theme(
+      legend.position="none",
+      plot.title = element_text(size=11)
+    ) +
+    ggtitle("Class focal and day journey length") +
+    ylab("DJL [m]")+
+  ylim(0,2500)
+plot_DJLxClassFocal
+
+
+plot_RRxClassFocal<- DJL_follows %>%
+  ggplot( aes(x=ClassFocal, y=RR, fill=ClassFocal)) +
+    geom_boxplot() +
+    scale_fill_viridis(discrete = TRUE, alpha=0.6) +
+    geom_jitter(color="black", size=0.4, alpha=0.3) +
+    theme_ipsum() +
+    theme(
+      legend.position="none",
+      plot.title = element_text(size=11)
+    ) +
+    ggtitle("Class focal and day journey length") +
+    ylab("RR")+
+  ylim(0,10)
+plot_RRxClassFocal
+
+
+plot_FAIxDJL <-
+  DJL_follows %>% ggplot(aes(fai,DJL)) +
+  #scale_y_log10(labels=fancy_scientific) +
+  geom_point(binwidth = 1) + labs(title = "Scatterplot of FAI and DJL", x = "FAI", y = "DJL [m]")+
+  geom_smooth(method="lm")
+plot_FAIxDJL
+
+
+plot_AgeCurrentOffspringxDJL <-
+  DJL_follows %>% ggplot(aes(ageOfCurrentOffspring,DJL)) +
+  #scale_y_log10(labels=fancy_scientific) +
+  geom_point(binwidth = 1) + labs(title = "Scatterplot of DJL and Age of current offspring", x = "Age of current offspring [years]", y = "DJL [m]")+
+  geom_smooth(method="lm")
+plot_AgeCurrentOffspringxDJL
+
+##### Save important plots
+ggsave(filename = paste(
+  paste(
+    "/Users/stefgr/Dropbox/Apps/Overleaf/Msc_Thesis/figures/",
+    format(Sys.Date(), "%Y%m%d"),"_",
+    "plot_DJLxClassFocal",
+    sep = ""
+  ),
+  "pdf",
+  sep = "."
+), plot = plot_DJLxClassFocal)
+ggsave(filename = paste(
+  paste(
+    "/Users/stefgr/Dropbox/Apps/Overleaf/Msc_Thesis/figures/",
+    format(Sys.Date(), "%Y%m%d"),"_",
+    "plot_RRxClassFocal",
+    sep = ""
+  ),
+  "pdf",
+  sep = "."
+), plot = plot_RRxClassFocal)
+
+ggsave(filename = paste(
+  paste(
+    "/Users/stefgr/Dropbox/Apps/Overleaf/Msc_Thesis/figures/",
+    format(Sys.Date(), "%Y%m%d"),"_",
+    "plot_FAIxDJL_ungrouped",
+    sep = ""
+  ),
+  "pdf",
+  sep = "."
+), plot = plot_FAIxDJL)
+ggsave(filename = paste(
+  paste(
+    "/Users/stefgr/Dropbox/Apps/Overleaf/Msc_Thesis/figures/",
+    format(Sys.Date(), "%Y%m%d"),"_",
+    "plot_AgeCurrentOffspringxDJL",
+    sep = ""
+  ),
+  "pdf",
+  sep = "."
+), plot = plot_AgeCurrentOffspringxDJL)
+
+##### Plot all
 plot_Allscatter <- SUAQ_rangepoints_11all20_loc %>%dplyr::select(c("id","focal","follow","followtype","automaticDatetime","manualDatetime","manualDate","manualTime","automaticDate","automaticTime","timelag_lead","manual_distToNext","speed_next","turningAngle","altitudediff_next","PtType","currentOffspring","ageFromDOB","ageOfCurrentOffspring","SUAQ_followlog.ClassFocal","infantname","altitude","followername","E","N","gpsextraction"))
 plot_Allscatter <- DJL_follows %>% ungroup() %>% dplyr::select(follow,ClassFocal,rain_eve,watlevel_mo,walevel_eve,rain_mo,avg_temp_tot,max_temp_average,min_temp_average,temp_max_mo,temp_min_mo,fai,ageOfCurrentOffspring,DJL,RR)
 plot_Allscatter<- plot_Allscatter%>% GGally::ggpairs(echo=FALSE, message=FALSE)
@@ -364,6 +472,9 @@ ggsave(filename = paste(
 
 
 ##### GLM #####
+### Automated model selection
+am <- lmer(DJL~.,DJL_follows)
+
 
 # lm see autoplot ?
 lm<-
@@ -376,24 +487,32 @@ lm<-
 autoplot(lm)
 summary(lm)
 
-glm_rainfall <-
-  lmer(
-    DJL ~ 
-      rain_eve + 
-      rain_mo + 
-      watlevel_mo + 
-      walevel_eve + 
-      max_temp_average + 
-      min_temp_average +
-      temp_max_mo+
-      temp_min_mo+
-      avg_temp_tot + 
-      ClassFocalID + 
-      fai +
-      ageOfCurrentOffspring + (1 | monthYearDate) + (1 | focal), # random effects to correct for
-    data = DJL_follows
+glm1 <-lmer(DJL ~ rain_eve + rain_mo + watlevel_mo + walevel_eve + max_temp_average + min_temp_average 
+                    +temp_max_mo+temp_min_mo+avg_temp_tot + ClassFocal + fai +ageOfCurrentOffspring + (1 | monthYearDate)
+                    + (1 | focal), # random effects to correct for
+  data = DJL_follows
   )
+glm2 <-lmer(DJL ~ rain_eve + rain_mo + watlevel_mo + walevel_eve + max_temp_average + min_temp_average 
+                    +temp_max_mo+temp_min_mo+avg_temp_tot + ClassFocal + fai +ageOfCurrentOffspring + (1 | monthYearDate)
+                    + (1 | focal), # random effects to correct for
+  data = DJL_follows
+  )
+glm3 <-lmer(DJL ~ rain_eve + rain_mo + watlevel_mo + walevel_eve + max_temp_average + min_temp_average 
+                    +temp_max_mo+temp_min_mo+avg_temp_tot + ClassFocal + fai +ageOfCurrentOffspring + (1 | monthYearDate)
+                    + (1 | focal), # random effects to correct for
+  data = DJL_follows
+  )
+glm4 <-lmer(DJL ~ rain_eve*walevel_eve + rain_mo*watlevel_mo + max_temp_average + min_temp_average 
+                    +temp_max_mo+temp_min_mo+avg_temp_tot + ClassFocal*ageOfCurrentOffspring + fai + (1 | monthYearDate)
+                    + (1 | focal), # random effects to correct for
+  data = DJL_follows
+  )
+anova(glm1,  glm4)
+
+
+
 autoplot(glm_rainfall)
+
 install.packages("mulcomp")
 library(multcomp)
 cftest
@@ -410,6 +529,11 @@ qqnorm(resid(glm_rainfall))
 
 
 
+require(lmerTest)
+coefs <- data.frame(coef(summary(glm1)))
+# use normal distribution to approximate p-value
+coefs$p.z <- 2 * (1 - pnorm(abs(coefs$t.value)))
+coefs
 
 
 
@@ -499,6 +623,8 @@ DJL_follows_subsample_15min <- subsample_frequencyAnalaysis15min %>%
   ) %>%
   summarise(DJL_15min = sum(as.numeric(manual_distTolast), na.rm = TRUE), count_15min =
               n(), turningAngleSum_15min=sum(as.numeric(turningAngle), na.rm = TRUE), meanTimelag_15min=mean(timelag_lead,na.rm=TRUE), medianTimelag_15min=median(timelag_lead,na.rm=TRUE))
+DJL_follows_subsample_15min <- DJL_follows_subsample_15min %>% left_join(TDD_follows,by=c("follow"="follow")) %>% mutate(RR_15min=DJL_15min/TDD)%>% dplyr::select(-firstE,-firstN,-lastE,-lastN,-TDD)
+
 DJL_follows_subsample_30min <- subsample_frequencyAnalaysis30min %>%
   filter(followtype == "NN") %>%
   group_by(
@@ -506,13 +632,13 @@ DJL_follows_subsample_30min <- subsample_frequencyAnalaysis30min %>%
   ) %>%
   summarise(DJL_30min = sum(as.numeric(manual_distTolast), na.rm = TRUE), count_30min =
               n(), turningAngleSum_30min=sum(as.numeric(turningAngle), na.rm = TRUE), meanTimelag_30min=mean(timelag_lead,na.rm=TRUE), medianTimelag_30min=median(timelag_lead,na.rm=TRUE))
+DJL_follows_subsample_30min <- DJL_follows_subsample_30min %>% left_join(TDD_follows,by=c("follow"="follow")) %>% mutate(RR_30min=DJL_30min/TDD) %>% dplyr::select(-firstE,-firstN,-lastE,-lastN,-TDD)
 
 DJL_follows <- DJL_follows %>% left_join(DJL_follows_subsample_15min,by=c("follow"="follow"))
 DJL_follows <- DJL_follows %>% left_join(DJL_follows_subsample_30min,by=c("follow"="follow"))
 
 DJL_follows_sample_long <- DJL_follows %>% ungroup() %>% 
-  dplyr::select(follow,DJL,count,turningAngleSum,meanTimelag,medianTimelag) %>% filter(follow %in% sample_FN_5min) %>% 
-  mutate(samplingrate="every")  
+  dplyr::select(follow,DJL,count,turningAngleSum,meanTimelag,medianTimelag,RR) %>% filter(follow %in% sample_FN_5min) %>% mutate(samplingrate="every")  
 
 DJL_follows_subsample_15min <- DJL_follows_subsample_15min %>% mutate(samplingrate="every 2nd")
 DJL_follows_subsample_30min <- DJL_follows_subsample_30min %>% mutate(samplingrate="every 4th")
@@ -551,6 +677,23 @@ ggsave(filename = paste(
   "pdf",
   sep = "."
 ), plot = plot_DJLxTimelagxSubsampling)
+
+plot_RRxTimelagxSubsampling<- DJL_follows_sample_long%>% ggplot(aes(RR,meanTimelag,colour=as.factor(follow)))+
+  geom_point(size=5,shape=as.factor(DJL_follows_sample_long$samplingrate))+
+  geom_path(size=0.2)+
+  theme(legend.position = "none")+labs(title = "Subsampling of 18 high frequency follows \n (triangle = every 2nd, cross= every 4th point)",x="RR [m]",y="mean timelag [s]")+theme(plot.title = element_text(hjust = 0.5))
+plot_RRxTimelagxSubsampling
+
+ggsave(filename = paste(
+  paste(
+    "/Users/stefgr/Dropbox/Apps/Overleaf/Msc_Thesis/figures/",
+    format(Sys.Date(), "%Y%m%d"),"_",
+    "plot_RRxTimelagxSubsampling",
+    sep = ""
+  ),
+  "pdf",
+  sep = "."
+), plot = plot_RRxTimelagxSubsampling)
 
 #### With ctmm
 data("buffalo")

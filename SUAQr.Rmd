@@ -568,6 +568,7 @@ SUAQ_waypoints_11_20 <- SUAQ_waypoints_11_20[,(colSums(is.na(SUAQ_waypoints_11_2
 SUAQ_waypoints_11_20 <-
   SUAQ_waypoints_11_20 %>%
   mutate(
+    name_original=name,
     cmt = dmy_hms(cmt, tz = "Asia/Pontianak"),
     time = ymd_hms(time, tz= "MET"),
     manualDatetime = as.POSIXct(
@@ -1335,20 +1336,26 @@ allID <- as_vector(duplicates_datefocal$id)
 alterID<- setdiff(allID,nearestTimeID) # IDS of points which should be changed because the same animal has the same time already used by a nearer automatic Time point
 ##### Changeing the manualTime in the main data
 SUAQ_waypoints_11all20 <-
-  SUAQ_waypoints_11all20 %>% 
-  mutate_cond((.$id %in% alterID),manualDatetime=automaticDatetime,manualTime= hms::as_hms(manualDatetime))
-  
+  SUAQ_waypoints_11all20%>% 
+  mutate_cond((.$id %in% alterID),manualDatetime=automaticDatetime)
+
+id <- NA
+
+
 # #### For trackpoints aswell
 # SUAQ_followertracks_11_20 <-
 #   SUAQ_followertracks_11_20 %>% filter(E > 323000 &
 #                                          E < 328000 &
 #                                          N > 336000 &
 #                                          N < 365000)
+
+
+#### Replacing the manualDatetimes which are missing with the first autmaticDatetime of the follows because the once I found were all mornnests
+temp<- SUAQ_waypoints_11all20 %>% filter(follow==2235)
+
 specs_noManualDatetime<- SUAQ_waypoints_11all20 %>% filter(is.na(manualDatetime))
-tmp<- SUAQ_waypoints_11all20[order(SUAQ_waypoints_11all20$manualTime , decreasing = TRUE ),] %>%filter(!is.na(manualDatetime)) %>%  group_by(follow) %>% slice_head()
-SUAQ_waypoints_11all20 <- SUAQ_waypoints_11all20 %>% mutate_cond(is.na(manualDatetime),manualDatetime=tmp$automaticDatetime[tmp$follow==follow])
-
-
+tmp<- SUAQ_waypoints_11all20[order(SUAQ_waypoints_11all20$manualTime , decreasing = FALSE ),] %>%filter(!is.na(manualDatetime)) %>%  group_by(follow) %>% slice_head()
+SUAQ_waypoints_11all20 <- SUAQ_waypoints_11all20 %>%  mutate_cond(is.na(manualDatetime)&&(PtType=="mornnest"),manualDatetime=tmp$automaticDatetime[tmp$follow==follow]-minutes(30))
 
 ### 6.5. Cleaning important attributes
 ##### Sexes overview
