@@ -91,7 +91,8 @@ packages_checker(
     'maptools',# used in move package
     'circular', # used in move package
     'hrbrthemes',
-    'viridis'
+    'viridis',
+    'lmerTest'
     ))
 rm(list = ls())
 getwd()
@@ -176,6 +177,30 @@ calculate_mode <- function(x) {
   uniqx[which.max(tabulate(match(x, uniqx)))]
 }
 
+
+# Statistics from here: https://github.com/aufrank/R-hacks/blob/master/mer-utils.R
+vif.mer <- function (fit) {
+    ## adapted from rms::vif
+
+    v <- vcov(fit)
+    nam <- names(fixef(fit))
+
+    ## exclude intercepts
+    ns <- sum(1 * (nam == "Intercept" | nam == "(Intercept)"))
+    if (ns > 0) {
+        v <- v[-(1:ns), -(1:ns), drop = FALSE]
+        nam <- nam[-(1:ns)]
+    }
+
+    d <- diag(v)^0.5
+    v <- diag(solve(v/(d %o% d)))
+    names(v) <- nam
+    v
+}
+
+
+
+
 setwd("/Users/stefgr/Nextcloud/UZH/12_Semester/20200313_Masterthesis/R/")
 
 ```
@@ -233,24 +258,7 @@ SUAQ_waypoints_11all20_loc<- SUAQ_waypoints_11all20_loc %>%
          turningAngle=turning_angle(E,N),
          altitudediff_next=altitude-lead(altitude),
          )
-SUAQ_waypoints_11all20_loc<- SUAQ_waypoints_11all20_loc %>% 
-  group_by(follow)%>% arrange(manualTime,.by_group = TRUE) %>% 
-  mutate(timelag=as.numeric(difftime(as.POSIXlt(manualTime),
-                                     as.POSIXlt(lag(manualTime)),units 
-                                     ="secs")),
-         # calculate distance with approach number 1 --> st_distance but to do that we need to calculate lead first because the lead function doesnt work within st distance (not same datatype (df))
-         timelag_lead=as.numeric(difftime(as.POSIXlt(lead(manualTime)),
-                                          as.POSIXlt(manualTime),units ="secs")),
-         manual_distTolast=sqrt((E-lag(E))^2+(N-lag(N))^2),
-         manual_distToNext=sqrt((E-lead(E))^2+(N-lead(N))^2),
-         speed_last = manual_distTolast/timelag,
-         speed_next = manual_distToNext/timelag_lead,
-         turningAngle=turning_angle(E,N)
-         )
 
-##### Delete all points around Research camp if edges are longer than 60m thats in the upper quartile of manual distances of edges
-SUAQ_waypoints_11all20_loc<- SUAQ_waypoints_11all20_loc %>% 
-  mutate(PtType=if_else(((manual_distTolast>40)|(manual_distToNext>40)|(manual_distToNext==0))&((N>336992)&(N<337052))&((E>324023)&(E<324083)),"potentially campside",PtType)) # these follows have a campsite point "1113","1730","1805","1805","1949","1951","2841","2841"
 
 ##### Selection only pointtypes which are taken on the orangutan way? is this true for all? ##### 
 SUAQ_rangepoints_11all20_loc <- SUAQ_waypoints_11all20_loc %>% filter(PtType %in% c("daynest","found","lost","mornnest","nightnest","range","tree")) # get rid of lcg lch points and
@@ -320,6 +328,8 @@ DJL_follows <- SUAQ_rangepoints_11all20_loc %>%
     SUAQ_weather.min_temp_average,
     SUAQ_weather.temperature_max_morning,
     SUAQ_weather.temperature_min_morning,
+    SUAQ_weather.temperature_max_evening,
+    SUAQ_weather.temperature_min_evening,
     SUAQ_fai.fai,
     ageOfCurrentOffspring,
     monthYearDate
@@ -327,7 +337,7 @@ DJL_follows <- SUAQ_rangepoints_11all20_loc %>%
   summarise(DJL = sum(as.numeric(manual_distTolast), na.rm = TRUE), count =
               n(), turningAngleSum=sum(as.numeric(turningAngle), na.rm = TRUE), meanTimelag=mean(timelag_lead,na.rm=TRUE), medianTimelag=median(timelag_lead,na.rm=TRUE))
 
-colnames(DJL_follows) <- c("follow","focal","ClassFocal","rain_eve","watlevel_mo","walevel_eve","rain_mo","avg_temp_tot","max_temp_average","min_temp_average","temp_max_mo","temp_min_mo","fai","ageOfCurrentOffspring","monthYearDate","DJL","count","turningAngleSum","meanTimelag","medianTimelag")
+colnames(DJL_follows) <- c("follow","focal","ClassFocal","rain_eve","watlevel_mo","walevel_eve","rain_mo","avg_temp_tot","max_temp_average","min_temp_average","temp_max_mo","temp_min_mo","temp_max_eve","temp_min_eve","fai","ageOfCurrentOffspring","monthYearDate","DJL","count","turningAngleSum","meanTimelag","medianTimelag")
 
 
 
@@ -404,10 +414,10 @@ plot_FAIxDJL
 
 
 plot_AgeCurrentOffspringxDJL <-
-  DJL_follows %>% ggplot(aes(ageOfCurrentOffspring,DJL)) +
+  DJL_follows %>% ggplot(aes(ageOfCurrentOffspring,DJL,colour=as.character(meanTimelag))) +
   #scale_y_log10(labels=fancy_scientific) +
   geom_point(binwidth = 1) + labs(title = "Scatterplot of DJL and Age of current offspring", x = "Age of current offspring [years]", y = "DJL [m]")+
-  geom_smooth(method="lm")
+  geom_smooth(method="lm")+theme(legend.position="none")
 plot_AgeCurrentOffspringxDJL
 
 ##### Save important plots
@@ -470,6 +480,21 @@ ggsave(filename = paste(
 ), plot = plot_Allscatter,dpi=300,width = 60,height = 60,units="cm")
 
 
+##### Plot all weather variables
+plot_AllscatterWeather <- DJL_follows %>% ungroup() %>% 
+  dplyr::select(rain_eve,watlevel_mo,walevel_eve,rain_mo,avg_temp_tot,max_temp_average,min_temp_average,temp_max_mo,temp_min_mo,temp_max_eve,temp_min_eve)
+plot_AllscatterWeather<- plot_AllscatterWeather%>% GGally::ggpairs(echo=FALSE, message=FALSE)
+
+ggsave(filename = paste(
+  paste(
+    "/Users/stefgr/Dropbox/Apps/Overleaf/Msc_Thesis/figures/",
+    format(Sys.Date(), "%Y%m%d"),"_",
+    "plot_AllscatterWeather",
+    sep = ""
+  ),
+  "pdf",
+  sep = "."
+), plot = plot_AllscatterWeather,dpi=300,width = 60,height = 60,units="cm")
 
 ##### GLM #####
 ### Automated model selection
@@ -487,16 +512,88 @@ lm<-
 autoplot(lm)
 summary(lm)
 
-glm1 <-lmer(DJL ~ rain_eve + rain_mo + watlevel_mo + walevel_eve + max_temp_average + min_temp_average 
+### Basic model
+lm_fullbasic <-lm(DJL ~ rain_eve + rain_mo + watlevel_mo + walevel_eve + max_temp_average + min_temp_average 
+                    +temp_max_mo+temp_min_mo+avg_temp_tot + ClassFocal + fai +ageOfCurrentOffspring , # random effects to correct for
+  data = DJL_follows
+  )
+autoplot(lm_fullbasic)
+
+
+### Full model
+glm_full <-lmer(DJL ~ rain_eve + rain_mo + watlevel_mo + walevel_eve + max_temp_average + min_temp_average 
                     +temp_max_mo+temp_min_mo+avg_temp_tot + ClassFocal + fai +ageOfCurrentOffspring + (1 | monthYearDate)
+                    + (1 | focal)+ (1 | meanTimelag), # random effects to correct for
+  data = DJL_follows
+  )
+anova(glm_full)
+drop1(glm_full)
+vif.mer(glm_full)
+
+##### Create P values for lm
+coefs <- data.frame(coef(summary(glm_full)))
+# use normal distribution to approximate p-value
+coefs$p.z <- 2 * (1 - pnorm(abs(coefs$t.value)))
+coefs
+
+
+### Stepwise
+data<-na.omit(DJL_follows)
+glm_step <-lmer(DJL ~ rain_eve + rain_mo + watlevel_mo + walevel_eve + max_temp_average + min_temp_average 
+                    +temp_max_mo+temp_min_mo+avg_temp_tot + ClassFocal + fai +ageOfCurrentOffspring + (1 | monthYearDate)
+                    + (1 | focal) + (1 | meanTimelag), # random effects to correct for
+  data = data
+  )
+
+ranova(glm_step)
+step_result_backward<- step(glm_step)
+get_model(step_result_backward,direction="backward")
+
+step_result_forward<- step(glm_step,direction="forward")
+get_model(step_result_forward)
+
+#### backward
+glm_best_backward <-lmer(DJL ~ max_temp_average + min_temp_average + avg_temp_tot + ageOfCurrentOffspring + (1 | monthYearDate), # random effects to correct for
+  data = DJL_follows
+  )
+
+##### Create P values for lm
+coefs <- data.frame(coef(summary(glm_best_backward)))
+# use normal distribution to approximate p-value
+coefs$p.z <- 2 * (1 - pnorm(abs(coefs$t.value)))
+coefs
+
+vif.mer(glm_best_backward)
+
+#### forward
+glm_best_forward <-lmer(DJL ~ max_temp_average + min_temp_average + avg_temp_tot + ageOfCurrentOffspring +      (1 | monthYearDate), # random effects to correct for
+  data = DJL_follows
+  )
+
+##### Create P values for lm
+coefs <- data.frame(coef(summary(glm_best_backward)))
+# use normal distribution to approximate p-value
+coefs$p.z <- 2 * (1 - pnorm(abs(coefs$t.value)))
+coefs
+vif.mer(glm_best_backward)
+
+##### Best model plus fai
+glm_best_plusFAI <-lmer(DJL ~ max_temp_average + min_temp_average + avg_temp_tot + ageOfCurrentOffspring + (1 | monthYearDate)
                     + (1 | focal), # random effects to correct for
   data = DJL_follows
   )
-glm2 <-lmer(DJL ~ rain_eve + rain_mo + watlevel_mo + walevel_eve + max_temp_average + min_temp_average 
-                    +temp_max_mo+temp_min_mo+avg_temp_tot + ClassFocal + fai +ageOfCurrentOffspring + (1 | monthYearDate)
-                    + (1 | focal), # random effects to correct for
-  data = DJL_follows
-  )
+
+
+##### Create P values for lm
+coefs <- data.frame(coef(summary(glm_best_plusFAI)))
+# use normal distribution to approximate p-value
+coefs$p.z <- 2 * (1 - pnorm(abs(coefs$t.value)))
+coefs
+vif.mer(glm_best_plusFAI)
+
+
+### Manual deletion of effects
+
 glm3 <-lmer(DJL ~ rain_eve + rain_mo + watlevel_mo + walevel_eve + max_temp_average + min_temp_average 
                     +temp_max_mo+temp_min_mo+avg_temp_tot + ClassFocal + fai +ageOfCurrentOffspring + (1 | monthYearDate)
                     + (1 | focal), # random effects to correct for
@@ -527,13 +624,8 @@ cbind(ctable, pvals)
 
 qqnorm(resid(glm_rainfall))
 
+##### Weather which variable is most explained by the other variables
 
-
-require(lmerTest)
-coefs <- data.frame(coef(summary(glm1)))
-# use normal distribution to approximate p-value
-coefs$p.z <- 2 * (1 - pnorm(abs(coefs$t.value)))
-coefs
 
 
 
@@ -541,6 +633,11 @@ coefs
 
 
 ```{r higher frequency analysis}
+
+
+
+
+
 ##### Plot DJL and mean timelag
 plot_DJLxMeanTimelag<- DJL_follows %>% ggplot(aes(DJL, meanTimelag)) +
   geom_point() + 
@@ -697,12 +794,13 @@ ggsave(filename = paste(
 
 #### With ctmm
 data("buffalo")
-Cilla <- buffalo$
+Cilla <- buffalo
 plot(Cilla)
 title("1 Buffalo")
 plot(buffalo,col=rainbow(length(buffalo)))
 title("5 Buffalo")
-SUAQ_move_ellie <- SUAQ_rangepoints_11all20_loc %>% filter(focal=="ellie")
+
+SUAQ_move_ellie <- SUAQ_rangepoints_11all20_loc[order(SUAQ_rangepoints_11all20_loc$focal,SUAQ_rangepoints_11all20_loc$manualDatetime , decreasing = FALSE ),] %>% filter(focal=="ellie") %>% ungroup()
 SUAQ_move_ellie <- move(x=SUAQ_move_ellie$E, y=SUAQ_move_ellie$N, 
               time=as.POSIXct(SUAQ_move_ellie$manualDatetime, format="%Y-%m-%d %H:%M:%OS", tz="Asia/Pontianak"),
               proj=CRS("+proj=utm +zone=47 +datum=WGS84 +units=m +no_defs"), 
@@ -735,7 +833,7 @@ duplicates <-
     manualTime = list(as.numeric(manualTime)),
     E=list(as.numeric(E)),
     N=list(as.numeric(N)),
-    id=list(as.numeric(id))
+    id=list(as.character(.$id))
   )
 duplicates<- duplicates%>% filter(count>1) # retrieve duplicates where E N Follow Focal and the ManualDatetime is the same. These are must have attributes.
 
