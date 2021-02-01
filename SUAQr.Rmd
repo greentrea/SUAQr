@@ -2071,7 +2071,6 @@ write_csv(SUAQ_weather, path = paste(
 ```{r Visualization social relationships}
 ##### VISUALIZE ######
 ##### View offspring ages and focals
-test<- SUAQ_waypoints_11all20 %>% filter((!is.na(currentOffspring))) %>% filter(focal=="alice",currentOffspring=="Luther")
 plot_OffspringAgeAndMotherTracking <-
   SUAQ_waypoints_11all20 %>% filter((!is.na(currentOffspring))) %>% ungroup() %>% 
   ggplot(
