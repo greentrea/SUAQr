@@ -214,7 +214,7 @@ setwd("/Users/stefgr/Nextcloud/UZH/12_Semester/20200313_Masterthesis/R/")
 
 ### Load Project variables ### 
 ##### waypoints ##### "data/Processed_data/SUAQ_waypoints_11all20.csv"
-SUAQ_waypoints_11all20_loc <- read_csv(paste0("data/Processed_data/",str_remove_all(Sys.Date()-2, "-"),"_SUAQ_waypoints_11all20.csv"))
+SUAQ_waypoints_11all20_loc <- read_csv(paste0("data/Processed_data/",str_remove_all(Sys.Date(), "-"),"_SUAQ_waypoints_11all20.csv"))
 SUAQ_waypoints_11all20_loc <- SUAQ_waypoints_11all20_loc %>% mutate(monthYearDate=format(as.Date(manualDate), "%Y-%m"))
 SUAQ_waypoints_11all20_loc <- SUAQ_waypoints_11all20_loc %>% mutate(automaticDatetime=with_tz(automaticDatetime,tz = "Asia/Pontianak"))
 SUAQ_waypoints_11all20_loc <- SUAQ_waypoints_11all20_loc %>% mutate(manualDatetime=with_tz(manualDatetime,tz = "Asia/Pontianak"))
@@ -246,7 +246,7 @@ SUAQ_rangepoints_11all20_loc <- SUAQ_waypoints_11all20_loc %>% filter(PtType %in
 
 ##### Recalculate edge lengths etc. based on new point selection for rangepoints dataframe
 SUAQ_rangepoints_11all20_loc<- SUAQ_rangepoints_11all20_loc %>% 
-  group_by(follow)%>% arrange(manualDatetime,.by_group = TRUE) %>% 
+  group_by(follow)%>% arrange(manualTime,.by_group = TRUE) %>% 
   mutate(timelag=as.numeric(difftime(as.POSIXlt(manualTime),
                                      as.POSIXlt(lag(manualTime)),units 
                                      ="secs")),
@@ -427,7 +427,10 @@ Tree_follows <- Tree_follows %>%
   left_join(Tree_follows_count,by=c("follow"="follow")) %>% 
   dplyr::select(c("follow","tree_numOfPoints","tree_DJL","tree_GPScount","tree_turningAngleSum","tree_meanTimelag","tree_medianTimelag"))
 
-DJL_follows <- DJL_follows %>% left_join(Tree_follows,by=c("follow"="follow")) %>% left_join(Tree_follows_count,by=c("follow"="follow"))
+DJL_follows <- DJL_follows %>% 
+  left_join(Tree_follows,by=c("follow"="follow")) %>% 
+  left_join(Tree_follows_count,by=c("follow"="follow")) %>% 
+  mutate(fruittreecount=if_else(is.na(fruittreecount),as.integer(0),fruittreecount))
 ```
 
 ```{r visuals of DJL and explanatory variables ,echo=FALSE, message=FALSE,comment=FALSE, warning=FALSE}
@@ -829,7 +832,7 @@ drop1(glm_full)
 vif.mer(glm_full)
 
 ##### Age of Focal
-DJL_follows_naomit_age <- DJL_follows %>% dplyr::select(ageFromDOB,DJL,rain_eve, walevel_eve, rain_mo, temp_min_eve, temp_min_mo, avg_temp_tot, ClassFocal, fai, ageOfCurrentOffspring, monthYearDate,focal,meanTimelag,numOfPoints) %>% na.omit()
+DJL_follows_naomit_age <- DJL_follows %>% dplyr::select(ageFromDOB,DJL,rain_eve, walevel_eve, rain_mo, temp_min_eve, temp_min_mo, avg_temp_tot, ClassFocal, fai, ageOfCurrentOffspring, monthYearDate,focal,meanTimelag,numOfPoints,fruittreecount) %>% na.omit()
 glm_full_age <-lmer(DJL ~ fai+ ClassFocal + ageFromDOB  + ageOfCurrentOffspring +rain_eve + walevel_eve + rain_mo + temp_min_eve + temp_min_mo + avg_temp_tot  + (1 | monthYearDate)
                     + (1 | meanTimelag), # random effects to correct for
   data = DJL_follows_naomit_age
@@ -867,16 +870,23 @@ vif.mer(glm_full)
 
 ### Analysing explanation of how many fruit trees are visited and RR of only fruit tree route
 ### Full model mit NA's
-glm_full <-lmer(as.numeric(fruittreecount) ~ rain_eve + walevel_eve + rain_mo + temp_min_eve + temp_min_mo + avg_temp_tot  + fai + ageOfCurrentOffspring + (1 | monthYearDate)
+
+glm_full_fruittrees <-lmer(fruittreecount ~ rain_eve + walevel_eve + rain_mo + temp_min_eve + temp_min_mo + avg_temp_tot  + fai + ageFromDOB  + (1 | monthYearDate)
                     + (1 | meanTimelag), # random effects to correct for
-  data = DJL_follows
+  data = DJL_follows_naomit_age
   )
-anova(glm_full)
-drop1(glm_full)
-vif.mer(glm_full)
+glm_significant_fruittrees <-lmer(fruittreecount ~ avg_temp_tot + ageFromDOB  + (1 | monthYearDate)
+                    + (1 | meanTimelag), # random effects to correct for
+  data = DJL_follows_naomit_age
+  )
+glm_randomeffects_fruittrees <- lmer(fruittreecount~(1 | monthYearDate)+ (1 | meanTimelag),data=DJL_follows_naomit_age)
+
+anova(glm_significant_fruittrees,glm_randomeffects_fruittrees)
+drop1(glm_significant_fruittrees)
+vif.mer(glm_full_fruittrees)
 
 ##### Create P values for lm
-coefs <- data.frame(coef(summary(glm_full)))
+coefs <- data.frame(coef(summary(glm_full_fruittrees)))
 # use normal distribution to approximate p-value
 coefs$p.z <- 2 * (1 - pnorm(abs(coefs$t.value)))
 coefs
@@ -1043,10 +1053,9 @@ ggsave(filename = paste(
 
 ```
 
-```{r analysis with move, further methods to calculate DJL}
+```{r analysis with move/ ctmm, further methods to calculate DJL}
 #### Must replace all duplicates where focal and timestamp is the same --> See SUAQr script implemented there.
-
-
+### CTMM online
 SUAQ_rangepoints_11all20_loc_wgs <- SUAQ_rangepoints_11all20_loc_wgs[order(SUAQ_rangepoints_11all20_loc_wgs$focal,SUAQ_rangepoints_11all20_loc_wgs$manualDatetime , decreasing = TRUE ),] %>% rename(
     c("event-id"="identification","timestamp"="manualDatetime","location-long"="long","location-lat"="lat","Animal ID"="focal","Tag No"="follow")
   ) %>% filter(`Animal ID`%in% c("lisa","friska","ellie","cissy","lilly","yulia","raffi","sarabi","trident","alice","mocca","cinnamon")) %>% mutate("sensor-type"="gps")
@@ -1060,6 +1069,7 @@ write_csv(SUAQ_rangepoints_11all20_loc_wgs, path = paste(
   sep = "."
 ))
 
+### Move
 SUAQ_move_stack <-
   move(
     x = SUAQ_rangepoints_11all20_loc_wgs$`location-long`,

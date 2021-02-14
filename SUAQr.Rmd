@@ -279,7 +279,7 @@ mutate_cond <- function(.data, condition, ..., envir = parent.frame()) {
 1. Getting data from excel/csv files
 2. Getting data from gpx files, clean and order it
 3. Merge Files
-```{r GPS Processing}
+```{r GPS Processing, echo= 'F',results='hide'}
 # ,echo=FALSE, message=FALSE,comment=FALSE, warning=FALSE
 start<- Sys.time()
 
@@ -472,7 +472,9 @@ SUAQ_waypoints_17_18 <- cbind(originalFileRownumber=as.integer(originalFileRownu
 
 
 SUAQ_waypoints_17_18 <- SUAQ_waypoints_17_18 %>% 
-  mutate(Focal=tolower(Focal), 
+  mutate(original_automaticTime=as.character(`Actual Time`),
+         original_manualTime=as.character(Time),
+         Focal=tolower(Focal), 
          gpsextraction="Steven Hayward",
          gpsextractionquality = "very bad. GPS file as GPX with no metadata, FN already indicated, timezones sometimes different but not indicated, then joined further info (attribute states from where with '.')",
          Age.Sex = if_else(`Age Sex`=="adolescent","juvenile",`Age Sex`),
@@ -579,12 +581,13 @@ SUAQ_waypoints_11_20 <-
 SUAQ_waypoints_11_20 <-SUAQ_waypoints_11_20 %>% slice(1:nrow(SUAQ_waypoints_11_20)) # BUG: some kind of bug related to the rbind of rows of sf data frames, when applying the function read_gpx with map_df is causing a problem. The sf df are not index-able and dropping the geometry is also not possible
 st_geometry(SUAQ_waypoints_11_20) <- SUAQ_waypoints_11_20$geometry
 SUAQ_waypoints_11_20 <- SUAQ_waypoints_11_20[,(colSums(is.na(SUAQ_waypoints_11_20))<nrow(SUAQ_waypoints_11_20))]
-#### 2.2.3 creating automatic Datetime (from gps collumn time or collumn cmt) and manual Datetime (from input user GPS Device and from name of Data file)
 
+#### 2.2.3 creating automatic Datetime (from gps collumn time or collumn cmt) and manual Datetime (from input user GPS Device and from name of Data file)
 SUAQ_waypoints_11_20 <-
   SUAQ_waypoints_11_20 %>%
   mutate(
     name_original=name,
+    original_automaticTime= as.character(time),
     cmt = dmy_hms(cmt, tz = "Asia/Pontianak"),
     time = ymd_hms(time, tz= "MET"),
     manualDatetime = as.POSIXct(
@@ -602,13 +605,16 @@ SUAQ_waypoints_11_20 <-
       tz = "Asia/Pontianak"
     )),
   ) %>% mutate(
+    original_automaticTime2= as.character(cmt),
     automaticDatetime=ymd_hms(cmt, tz = "Asia/Pontianak")
   ) %>% 
   mutate(
+    original_automaticTime=if_else(is.na(original_automaticTime),original_automaticTime2,original_automaticTime),
     automaticDatetime= if_else(is.na(automaticDatetime),with_tz(time, tz = "Asia/Pontianak"),automaticDatetime),
     manualTime=if_else(is.na(manualTime),hms::as_hms(manualDatetime),manualTime),
     manualDate=if_else(is.na(manualDate),date(manualDatetime),manualDate)
     ) %>% 
+  dplyr::select(-original_automaticTime2) %>%  
   mutate(
     automaticDate = date(automaticDatetime),
     automaticTime = hms::as_hms(automaticDatetime),
@@ -644,7 +650,8 @@ SUAQ_waypoints_11_20<- SUAQ_waypoints_11_20 %>% mutate(
     fileN=="20110130_Friska_Wiebe_NL"|
     fileN=="20130317_Dodi(prob)_Unk_FL"|
     fileN=="20130510_Jebi(prob)_UNK_NL",TRUE,FALSE)
-) %>% filter(tmp_delete==FALSE)
+) %>% filter(tmp_delete==FALSE) %>% dplyr::select(-tmp_delete)
+
 #### 2.2.4 Extracting information from Name field: PtType--> Type of point: Longcall, Nest etc. See GPS processing information sheet. 
 ##### To lowercase name collumn
 SUAQ_waypoints_11_20<- SUAQ_waypoints_11_20 %>% mutate(name=tolower(name)) # reduces complexity by around 277 combinations to total 897
@@ -1125,7 +1132,7 @@ SUAQ_waypoints_11all20 <- SUAQ_waypoints_11all20 %>% filter(!((identification %i
 
 
 ##### Visualization: Correcting follows where timesetting is probably wrong (f.e. follows in the night)
-SUAQ_waypoints_11all20 %>% ggplot(aes(manualTime))+geom_histogram(bins = 1000)
+#SUAQ_waypoints_11all20 %>% ggplot(aes(manualTime))+geom_histogram(bins = 1000)
 SUAQ_waypoints_11all20 %>% filter(is.na(manualTime)) %>% 
   ggplot(aes(hms::as_hms(automaticTime)))+geom_histogram(bins = 1000) # time before conversion
 
@@ -1146,7 +1153,7 @@ specs_percentageOfFollowGPSPointsInNight<- specs_percentageOfFollowGPSPointsInNi
 
 
 ##### Manual time corrections (quality unsure is it 6 or 7 hours shift) there are many wrong especially automatic time zones
-SUAQ_waypoints_11all20<- SUAQ_waypoints_11all20 %>% mutate_cond(identification==24101,manualTime=automaticTime) # wrong time for one point probably in fn 2047
+SUAQ_waypoints_11all20<- SUAQ_waypoints_11all20 %>% mutate_cond(identification==24101,manualTime=automaticTime) %>% mutate_cond(identification==24101,manualDatetime=ymd_hms(paste(manualDate,manualTime),tz = "Asia/Pontianak")) # wrong time for one point probably in fn 2047
 SUAQ_waypoints_11all20 <-
   SUAQ_waypoints_11all20 %>% 
   mutate_cond(follow %in% c(2326,1101259,2341,2336,2331,2409,2412,2415,2343),manualDatetime = manualDatetime+hours(7)) %>%  # wrong time for the whole follow
@@ -1186,40 +1193,100 @@ SUAQ_waypoints_11all20 <- SUAQ_waypoints_11all20 %>%
 ##### Marking points which are way off GPS-Track (Excel) (took out because maybe I am miscorrecting)
 SUAQ_waypoints_11all20 <- SUAQ_waypoints_11all20 %>% mutate(PtType=if_else((manualTime==hms::as_hms("	07:00:00"))&(follow==1089),"abnormal off point",PtType)) # strange because another point has also a totally different automatic time. Additionally all other points have an automatic Time within an hour.
 
-SUAQ_waypoints_11all20 <- SUAQ_waypoints_11all20 %>% mutate(PtType=if_else((manualTime==hms::as_hms("12:30:00"))&(follow==1771),"abnormal off point",PtType))
+SUAQ_waypoints_11all20 <- SUAQ_waypoints_11all20 %>% 
+  mutate(PtType=if_else((manualTime==hms::as_hms("12:30:00"))&(follow==1771),"abnormal off point",PtType))
+
 SUAQ_waypoints_11all20 <- SUAQ_waypoints_11all20 %>%
   mutate(PtType=if_else((manualTime==hms::as_hms("09:00:00"))&(follow==1776)&(PtType=="range"),"abnormal off point",PtType))
+
 SUAQ_waypoints_11all20 <- SUAQ_waypoints_11all20 %>% 
   mutate(PtType=if_else((manualTime%in% c(hms::as_hms("08:00:00"),hms::as_hms("10:00:00")))&(follow==1822),"abnormal off point",PtType))
+
 SUAQ_waypoints_11all20 <- SUAQ_waypoints_11all20 %>% 
   mutate(PtType=if_else((manualTime%in% c(hms::as_hms("17:30:00")))&(follow==1874),"abnormal off point",PtType))
+
 SUAQ_waypoints_11all20 <- SUAQ_waypoints_11all20 %>% 
   mutate(manualTime=if_else((automaticTime%in% c(hms::as_hms("16:11:30")))&(follow==1819),hms::as_hms("16:00:00"),manualTime))
+
 SUAQ_waypoints_11all20 <- SUAQ_waypoints_11all20 %>% 
   mutate(manualTime=if_else((automaticTime%in% c(hms::as_hms("18:02:01")))&(follow==1819),hms::as_hms("18:00:00"),manualTime))
+
 SUAQ_waypoints_11all20 <- SUAQ_waypoints_11all20 %>% 
   mutate(manualTime=if_else((automaticTime%in% c(hms::as_hms("12:21:30")))&(follow==1819),hms::as_hms("12:21:30"),manualTime))
+
 SUAQ_waypoints_11all20 <- SUAQ_waypoints_11all20 %>% 
   mutate(manualTime=if_else((automaticTime%in% c(hms::as_hms("17:30:25")))&(follow==671),hms::as_hms("17:30:00"),manualTime))
+
 SUAQ_waypoints_11all20 <- SUAQ_waypoints_11all20 %>% 
   mutate(automaticTime=if_else((automaticTime%in% c(hms::as_hms("06:31:22")))&(follow==1501),hms::as_hms("11:31:22"),automaticTime))
+
 SUAQ_waypoints_11all20 <- SUAQ_waypoints_11all20 %>% 
   mutate(manualTime=if_else((automaticTime%in% c(hms::as_hms("11:31:22")))&(follow==1501),hms::as_hms("11:31:22"),manualTime))
+
 SUAQ_waypoints_11all20 <- SUAQ_waypoints_11all20 %>% 
   mutate(manualTime=if_else((automaticTime%in% c(hms::as_hms("13:09:49")))&(follow==1501),hms::as_hms("18:00:00"),manualTime))
+
 SUAQ_waypoints_11all20 <- SUAQ_waypoints_11all20 %>% 
   mutate(automaticTime=if_else((automaticTime%in% c(hms::as_hms("13:09:49")))&(follow==1501),hms::as_hms("18:09:49"),automaticTime))
+
 SUAQ_waypoints_11all20 <- SUAQ_waypoints_11all20 %>% 
   mutate(manualTime=if_else((automaticTime%in% c(hms::as_hms("06:30:58")))&(follow==1761),hms::as_hms("06:30:00"),manualTime))
+
+SUAQ_waypoints_11all20 <- SUAQ_waypoints_11all20 %>% 
+  mutate(manualTime=if_else((automaticTime%in% c(hms::as_hms("11:33:46")))&(follow==2210),hms::as_hms("11:33:46"),manualTime))
+
 SUAQ_waypoints_11all20 <- SUAQ_waypoints_11all20 %>% 
   mutate(PtType=if_else((manualTime%in% c(hms::as_hms("06:30:00"),hms::as_hms("10:00:00"),hms::as_hms("13:00:00")))&(follow==1780),"abnormal off point",PtType))
 
+##### Altering times of duplicated points before the duplicate analysis. These points cannot be corrected in the automatical adjustment of duplicated points afterwards. Because f.e. the automatic Date is wrong and therefore it is not usefull to overwrite the datetime by the automatic datetime to get rid of the duplicate.
+SUAQ_waypoints_11all20 <- SUAQ_waypoints_11all20 %>% 
+  mutate(manualTime=if_else((automaticTime%in% c(hms::as_hms("12:35:14")))&(follow==979),hms::as_hms("06:25:00"),manualTime))
+
+SUAQ_waypoints_11all20 <- SUAQ_waypoints_11all20 %>% 
+  mutate(manualTime=if_else((automaticTime%in% c(hms::as_hms("15:32:50")))&(follow==1035),hms::as_hms("06:25:00"),manualTime))
+
+SUAQ_waypoints_11all20 <- SUAQ_waypoints_11all20 %>% 
+  mutate(manualTime=if_else((automaticTime%in% c(hms::as_hms("16:26:10")))&(follow==2637),hms::as_hms("08:59:00"),manualTime))
+
+SUAQ_waypoints_11all20 <- SUAQ_waypoints_11all20 %>% 
+  mutate(manualTime=if_else((automaticTime%in% c(hms::as_hms("20:49:32")))&(follow==2681),hms::as_hms("11:55:00"),manualTime))
+
+SUAQ_waypoints_11all20 <- SUAQ_waypoints_11all20 %>% 
+  mutate(manualTime=if_else((automaticTime%in% c(hms::as_hms("09:30:02")))&(follow==2843),hms::as_hms("09:35:00"),manualTime))
+
+SUAQ_waypoints_11all20 <- SUAQ_waypoints_11all20 %>% 
+  mutate(manualTime=if_else((automaticTime%in% c(hms::as_hms("03:41:58")))&(follow==2891),hms::as_hms("13:25:00"),manualTime))
+
+SUAQ_waypoints_11all20 <- SUAQ_waypoints_11all20 %>% 
+  mutate(manualTime=if_else((automaticTime%in% c(hms::as_hms("15:30:11")))&(follow==1797),hms::as_hms("06:25:00"),manualTime))
+
+SUAQ_waypoints_11all20 <- SUAQ_waypoints_11all20 %>% 
+  mutate(manualTime=if_else((automaticTime%in% c(hms::as_hms("21:43:38")))&(follow==2204),hms::as_hms("14:10:00"),manualTime))
+
+SUAQ_waypoints_11all20 <- SUAQ_waypoints_11all20 %>% 
+  mutate(manualTime=if_else((automaticTime%in% c(hms::as_hms("07:05:12")))&(follow==2210),hms::as_hms("06:55:00"),manualTime))
+
+SUAQ_waypoints_11all20 <- SUAQ_waypoints_11all20 %>% 
+  mutate(manualTime=if_else((automaticTime%in% c(hms::as_hms("22:08:04")))&(follow==2593),hms::as_hms("11:08:04"),manualTime)) %>% 
+  mutate(automaticTime=if_else((automaticTime%in% c(hms::as_hms("22:08:04")))&(follow==2593),hms::as_hms("11:08:04"),automaticTime))
+
+#### Analysis of dates which are not the same (automaticDate!=manualDate) --> See "meldesheet" excel.
+SUAQ_waypoints_11all20 <- SUAQ_waypoints_11all20 %>%  # ManualDate is wrong Sources of error: f.e. typing error in filename
+  mutate(manualDate=if_else((follow%in%c(2627,682,770)),automaticDate,manualDate))
+
+SUAQ_waypoints_11all20 <- SUAQ_waypoints_11all20 %>%  # ManualDate is right f.e. conversion error of automaticDate --> timezones
+  mutate(automaticDate=if_else((follow%in%c(1100346)),manualDate,automaticDate))
 
 ###### Applying automaticTime if manual Time is empty
 SUAQ_waypoints_11all20 <- SUAQ_waypoints_11all20 %>% mutate(manualTime=if_else(is.na(manualTime),automaticTime,manualTime))
 SUAQ_waypoints_11all20 <- SUAQ_waypoints_11all20 %>% mutate(manualDate=if_else(is.na(manualDate),date(automaticDate),manualDate))
 SUAQ_waypoints_11all20 <- SUAQ_waypoints_11all20 %>% 
   mutate(manualDatetime=if_else(is.na(manualDatetime),ymd_hms(paste(manualDate,manualTime),tz = "Asia/Pontianak"),manualDatetime))
+
+#### Refresh manualDatetimes automaticDatetimes
+SUAQ_waypoints_11all20 <- SUAQ_waypoints_11all20 %>% 
+  mutate(manualDatetime=ymd_hms(paste(manualDate,manualTime),tz = "Asia/Pontianak"),
+         automaticDatetime=ymd_hms(paste(automaticDate,automaticTime),tz = "Asia/Pontianak"))
 
 ###### Deleting empty E N or Time. To do: Do we really have to delete it.
 SUAQ_waypoints_11all20 <- SUAQ_waypoints_11all20 %>% filter(!(is.na(E)|is.na(N)|is.na(manualTime)))
@@ -1229,7 +1296,8 @@ SUAQ_waypoints_11all20 <- SUAQ_waypoints_11all20 %>% filter(E>323000 &
                                                             E<328000 & 
                                                             N>330000 & 
                                                             N<360000)
-
+```
+```{r GPS Processing II, echo= 'F',results='hide'}
 
 ## 6. Adding informative attributes, cleaning attributes, and finishing data frame
 ### 6.1. Joining orangutans info
@@ -1350,10 +1418,11 @@ duplicates_datefocal <-
     fileN = as.character(list(fileN)),
     automaticDatetime = list(automaticDatetime),
     manualDate = list(as.character(manualDate)),
-    automaticTime = list(automaticTime),
-    manualTime = list(as.numeric(manualTime)),
+    automaticTime = list(as.character(automaticTime)),
+    manualTime = list(as.character(manualTime)),
     identification=list(as.character(identification)),
     orig_rownumber=list(as.character(originalFileRownumber)),
+    PtType=list(PtType)
   ) %>% ungroup()
 duplicates_datefocal<- duplicates_datefocal%>% filter(count>1) 
 
@@ -1386,6 +1455,11 @@ SUAQ_waypoints_11all20 <-
                                      automaticDatetime,
                                     if_else(duplicates_datefocal$beforeSelected[duplicates_datefocal$identification==identification]
 ,manualDatetime-minutes(1),manualDatetime+minutes(1)))) # for the ones where there is no automatic datetime we take a minute after the event to differentiate from the other
+
+# SUAQ_waypoints_11all20 <-SUAQ_waypoints_11all20 %>% 
+#   mutate_cond((identification %in% duplicates_datefocal$identification),
+#               manualTime=hms::as_hms(manualDatetime)) # defining manualTime with new altered times
+
 SUAQ_waypoints_11all20 <- SUAQ_waypoints_11all20 %>% ungroup()
 
 
@@ -1717,15 +1791,33 @@ write_csv(SUAQ_waypoints_11all20,path="shinyapp/orangapp/data/SUAQ_waypoints_11a
 
 # specs_focalsWithoutDOB <- SUAQ_waypoints_11all20 %>% group_by(focal,as.character(SUAQ_orangutans.dateofbirth),orangutan_tot_num_of_gps) %>% summarise()
 
+
+
+##### Analysing duplicates
+# test <- SUAQ_waypoints_11all20 %>% filter(hms::as_hms(manualDatetime)!=manualTime) %>% mutate(diffmanualtime=hms::as_hms(manualDatetime)-manualTime) 
+# test<- test %>% dplyr::select(identification,fileN,follow,gpsextraction,original_automaticTime,manualDatetime,manualTime,diffmanualtime, automaticDatetime,automaticTime,focal,follow,name_original)
+# 
+# 
+# test_follow<- SUAQ_waypoints_11all20 %>% filter(follow %in% c("2210")) 
+# 
+# 
+# plot_gps_pttype<-SUAQ_waypoints_11all20[order(SUAQ_waypoints_11all20$manualDatetime , decreasing = FALSE ),] %>% 
+#   filter(follow %in% c("979","1035","2593","2627","2637","2681","2843","2891","1797","2204","2210")) %>% 
+#   group_by(follow) %>%
+#   ggplot()+
+#   geom_point(aes(E,N,color=as.character(manualDatetime)),size=1)+
+#   geom_path(aes(E,N,color=as.character(follow)), alpha = 0.7,size=0.5)
+# ggplotly(plot_gps_pttype)
 ####################################################################################################################
+
+
+
 
 
 
 
 Sys.time()-start
 ```
-
-
 
 ```{r R-specific preparation}
 ##### Create analysis collumns ######
@@ -1748,7 +1840,7 @@ specs_follows_points_in_night_automaticTime<- SUAQ_waypoints_11all20_sf %>%
 ## DJL ##
 #### Create timelag to last waypoints in not spatial dataframe #### 
 SUAQ_waypoints_11all20<- SUAQ_waypoints_11all20 %>% 
-  group_by(follow)%>% arrange(manualDatetime,.by_group = TRUE) %>% 
+  group_by(follow)%>% arrange(manualTime,.by_group = TRUE) %>% 
   mutate(timelag=as.numeric(difftime(as.POSIXlt(manualTime),
                                      as.POSIXlt(lag(manualTime)),units 
                                      ="secs")),
@@ -1765,18 +1857,21 @@ SUAQ_waypoints_11all20<- SUAQ_waypoints_11all20 %>%
 ##### Delete all points around Research camp if edges are longer than 60m thats in the upper quartile of manual distances of edges
 SUAQ_waypoints_11all20<- SUAQ_waypoints_11all20 %>% mutate(PtType=if_else(((manual_distTolast>40)|(manual_distToNext>40))&((N>336992)&(N<337052))&((E>324023)&(E<324083)),"potentially campside",PtType)) # these follows have a campsite point "1113","1730","1805","1805","1949","1951","2841","2841"
 
-##### Histogramm for timelags of edges.
+### Histogramm for timelags of edges. (Including ALL POINTS)
 tmp_mean<- mean(SUAQ_waypoints_11all20$timelag,na.rm=TRUE)
 plot_timelagToLast_Histo_log <-
-  SUAQ_waypoints_11all20 %>% ggplot(aes(.$timelag)) + geom_histogram(bins = 100) +
-  scale_y_log10() + labs(x = "timelag [seconds]", y = "count")+
+  SUAQ_waypoints_11all20 %>% ggplot(aes(.$timelag)) + geom_histogram(bins = 100) + 
+  labs(x = "timelag [seconds]", y = "count")+
+  scale_y_log10()+
   geom_vline(xintercept = tmp_mean,
              size = 1,
              color = "red")+
-  geom_text(aes(tmp_mean+50, 150, label = paste0("Mean\n",round(tmp_mean, 2))), data.frame())
+  geom_text(aes(tmp_mean+50, 150, label = paste0("Mean\n",round(tmp_mean, 2))), data.frame())+
+  xlim(0,10000)
+
 ggsave(filename = paste(
   paste(
-    "/Users/stefgr/Dropbox/Apps/Overleaf/Msc_Thesis_frombeginning/figures/",
+    "/Users/stefgr/Dropbox/Apps/Overleaf/Msc_Thesis/figures/",
     format(Sys.Date(), "%Y%m%d"),
     "_plot_timelagToLast_Histo_log",
     sep = ""
@@ -1784,6 +1879,28 @@ ggsave(filename = paste(
   "pdf",
   sep = "."
 ), plot = plot_timelagToLast_Histo_log)
+
+plot_timelagToLast_Histo <-
+  SUAQ_waypoints_11all20 %>% ggplot(aes(.$timelag)) + geom_histogram(binwidth = 60) + 
+  labs(x = "timelag [seconds]", y = "count")+
+  geom_vline(xintercept = tmp_mean,
+             size = 0.5,
+             color = "red",
+             alpha=0.5)+
+  geom_text(aes(tmp_mean-600, 10000, label = paste0("Mean:\n",round(tmp_mean, 2)),colour="red"), data.frame())+
+  xlim(0,10000)+
+  theme(legend.position = "none")
+ggsave(filename = paste(
+  paste(
+    "/Users/stefgr/Dropbox/Apps/Overleaf/Msc_Thesis/figures/",
+    format(Sys.Date(), "%Y%m%d"),
+    "plot_timelagToLast_Histo",
+    sep = ""
+  ),
+  "pdf",
+  sep = "."
+), plot = plot_timelagToLast_Histo)
+
 ##### Histogramm for distances of edges, looks the same for distance to next or distance to last ;), same edges are calculated
 tmp_mean<- mean(SUAQ_waypoints_11all20$manual_distTolast,na.rm=TRUE)
 plot_manualDistLast_Histo_log <-
@@ -1796,7 +1913,7 @@ plot_manualDistLast_Histo_log <-
   geom_text(aes(tmp_mean+50, 150, label = paste0("Mean\n",round(tmp_mean, 2))), data.frame())
 ggsave(filename = paste(
   paste(
-    "/Users/stefgr/Dropbox/Apps/Overleaf/Msc_Thesis_frombeginning/figures/",
+    "/Users/stefgr/Dropbox/Apps/Overleaf/Msc_Thesis/figures/",
     format(Sys.Date(), "%Y%m%d"),
     "_plot_manualDistLast_Histo_log",
     sep = ""
@@ -1804,9 +1921,6 @@ ggsave(filename = paste(
   "pdf",
   sep = "."
 ), plot = plot_manualDistLast_Histo_log)
-
-
-
 
 
 DJL_follows<- SUAQ_waypoints_11all20 %>% 
@@ -1826,6 +1940,11 @@ DJL_follows %>%
     coord_cartesian(ylim=c(0, 5000))+
     theme(legend.position = "none")+
     theme(axis.text.x = element_text(angle = 90))
+
+SUAQ_waypoints_11all20 <- SUAQ_waypoints_11all20 %>% 
+  dplyr::select(timelag,timelag_lead,manual_distTolast,manual_distToNext,speed_last,speed_next,turningAngle,altitudediff_nex)
+
+
 
 #### number of follows ####
 result_numoffollows<- SUAQ_waypoints_11all20 %>% group_by(follow,focal) %>% summarize(count=n()) %>% group_by(focal) %>% summarize(count=n())
@@ -1954,7 +2073,6 @@ harmonize_waypoints <- function(flnm){
 
 ```
 
-
 ```{r saving project data}
 
 ### Make Project variables ### 
@@ -2070,6 +2188,9 @@ write_csv(SUAQ_weather, path = paste(
 ## First visuals SUAQ
 ```{r Visualization social relationships}
 ##### VISUALIZE ######
+##### Visualisation of sampling intervals
+
+
 ##### View offspring ages and focals
 plot_OffspringAgeAndMotherTracking <-
   SUAQ_waypoints_11all20 %>% filter((!is.na(currentOffspring))) %>% ungroup() %>% 
@@ -2080,7 +2201,7 @@ plot_OffspringAgeAndMotherTracking <-
 
 ggsave(filename = paste(
   paste(
-    "/Users/stefgr/Dropbox/Apps/Overleaf/Msc_Thesis_frombeginning/figures/",
+    "/Users/stefgr/Dropbox/Apps/Overleaf/Msc_Thesis/figures/",
     format(Sys.Date(), "%Y%m%d"),
     "_plot_OffspringAgeAndMotherTracking",
     sep = ""
@@ -2300,7 +2421,7 @@ p<- arrangeGrob( # Use only grobs to save it
 ) 
 ggsave(filename = paste(
   paste(
-    "/Users/stefgr/Dropbox/Apps/Overleaf/Msc_Thesis_frombeginning/figures/",
+    "/Users/stefgr/Dropbox/Apps/Overleaf/Msc_Thesis/figures/",
     format(Sys.Date(), "%Y%m%d"),
     "_Data_FemaleOrangutansFollowDensityTemporal",
     sep = ""
