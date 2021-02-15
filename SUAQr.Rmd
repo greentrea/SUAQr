@@ -1454,7 +1454,7 @@ SUAQ_waypoints_11all20 <-
               manualDatetime=if_else(!is.na(automaticDatetime),
                                      automaticDatetime,
                                     if_else(duplicates_datefocal$beforeSelected[duplicates_datefocal$identification==identification]
-,manualDatetime-minutes(1),manualDatetime+minutes(1)))) # for the ones where there is no automatic datetime we take a minute after the event to differentiate from the other
+,manualDatetime-minutes(5),manualDatetime+minutes(5)))) # for the ones where there is no automatic datetime we take a minute after the event to differentiate from the other
 
 # SUAQ_waypoints_11all20 <-SUAQ_waypoints_11all20 %>% 
 #   mutate_cond((identification %in% duplicates_datefocal$identification),
@@ -1942,7 +1942,7 @@ DJL_follows %>%
     theme(axis.text.x = element_text(angle = 90))
 
 SUAQ_waypoints_11all20 <- SUAQ_waypoints_11all20 %>% 
-  dplyr::select(timelag,timelag_lead,manual_distTolast,manual_distToNext,speed_last,speed_next,turningAngle,altitudediff_nex)
+  dplyr::select(-timelag,-timelag_lead,-manual_distTolast,-manual_distToNext,-speed_last,-speed_next,-turningAngle,-altitudediff_next)
 
 
 
@@ -1977,7 +1977,7 @@ specs_followsStartAndEndWrong_follows <- specs_followsStartAndEndWrong %>% group
 
 plot_gps_pttype <- SUAQ_waypoints_11all20[order(SUAQ_waypoints_11all20$manualDatetime , decreasing = TRUE ),] %>% 
   group_by(follow) %>%
-  filter((follow %in% c(2298))) %>%
+  filter((follow %in% c(1228))) %>%
   ggplot()+
   geom_point(aes(E,N,color=as.character(manualDatetime)),size=1)+
   #geom_point(data = temp_duplicates,aes(E,N,fill=as.factor(follow)),size=2)+
@@ -2081,6 +2081,7 @@ SUAQ_waypoints_11all20_sf <-  st_as_sf(SUAQ_waypoints_11all20,
                           coords = c("E","N"), 
                           crs = 32647) # can also do that in the new sricpts
 
+SUAQ_waypoints_11all20 <- SUAQ_waypoints_11all20[order(SUAQ_waypoints_11all20$manualDatetime , decreasing = FALSE ),] # order by default with Datetime not as original anymore
 
 ##### Project datasets one time with date for backup and one time without f.e. using ##### 
 write_csv(SUAQ_waypoints_11all20, path = paste(

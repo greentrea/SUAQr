@@ -276,7 +276,7 @@ SUAQ_rangepoints_11all20_loc_wgs <- cbind(SUAQ_rangepoints_11all20_loc_wgs,coord
 SUAQ_rangepoints_11all20_loc_wgs<- st_drop_geometry(SUAQ_rangepoints_11all20_loc_wgs)
 
 
-##### Selection only females ##### 
+##### Selection only females / most tracked females ##### 
 SUAQ_rangepoints_11all20_loc_females <-
   SUAQ_rangepoints_11all20_loc %>%   filter(!(SUAQ_orangutans.Sex == "male"))
 SUAQ_rangepoints_11all20_loc_females_10 <-
@@ -332,7 +332,7 @@ colnames(DJL_follows) <- c("follow","focal","ageFromDOB","ClassFocal","rain_eve"
 
 
 ##### Adding total displacement distance
-TDD_follows <- SUAQ_rangepoints_11all20_loc[order(SUAQ_rangepoints_11all20_loc$manualTime , decreasing = TRUE ),] %>% 
+TDD_follows <- SUAQ_rangepoints_11all20_loc[order(SUAQ_rangepoints_11all20_loc$manualDatetime , decreasing = TRUE ),] %>% 
   filter(followtype == "NN") %>% 
   group_by(follow) %>% 
   summarize(firstE=first(E),firstN=first(N),lastE=last(E),lastN=last(N)) %>% 
@@ -405,13 +405,13 @@ Tree_follows <- Tree_rangepoints %>%
 
 colnames(Tree_follows) <- c("follow","focal","ageFromDOB","ClassFocal","rain_eve","watlevel_mo","walevel_eve","rain_mo","avg_temp_tot","max_temp_average","min_temp_average","temp_max_mo","temp_min_mo","temp_max_eve","temp_min_eve","fai","ageOfCurrentOffspring","monthYearDate","tree_numOfPoints","tree_DJL","tree_GPScount","tree_turningAngleSum","tree_meanTimelag","tree_medianTimelag")
 
-Tree_follows_count <- SUAQ_rangepoints_11all20_loc[order(SUAQ_rangepoints_11all20_loc$manualTime , decreasing = TRUE ),] %>%
+Tree_follows_count <- SUAQ_rangepoints_11all20_loc[order(SUAQ_rangepoints_11all20_loc$manualDatetime , decreasing = TRUE ),] %>%
   filter(followtype == "NN") %>% 
   filter(PtType=="tree") %>% 
   group_by(follow) %>% 
   summarize(fruittreecount=n())
 
-TDD_tree_follows <- SUAQ_rangepoints_11all20_loc[order(SUAQ_rangepoints_11all20_loc$manualTime , decreasing = TRUE ),] %>% 
+TDD_tree_follows <- SUAQ_rangepoints_11all20_loc[order(SUAQ_rangepoints_11all20_loc$manualDatetime , decreasing = TRUE ),] %>% 
   filter(followtype == "NN") %>%
   filter(PtType%in%c("mornnest","nightnest","tree")) %>% 
   group_by(follow) %>% 

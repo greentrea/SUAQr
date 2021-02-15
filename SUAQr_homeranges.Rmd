@@ -1,0 +1,454 @@
+---
+title: "SUAQr_homeranges"
+author: "Stefan Graf"
+date: "2/14/2021"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+# Markings:
+#### Quality check: --> are quality checks of chunks executed before
+########### DELETE ############--> are chunks to delete
+## Title --> are titles for sections
+### explanations of the following chunk
+##### SUAQ TRACKS 2018 & 2019 ##### --> Code sections to understand code better
+
+```{r import, echo= 'F',results='hide'}
+# CLASSICAL PACKAGE IMPORTER (Stefan Graf & Tobias Frey)
+packages_checker <- function(packages_list){
+  for (package in packages_list){
+    if (!require(package, character.only = T)) {
+      install.packages(package)
+    }
+    library(package, character.only = T)
+  }
+}
+packages_checker(
+  c('rgdal',
+    'ctmm',
+    'lubridate',
+    'plyr',
+    'dplyr',
+    'tidyr',
+    'tidyverse',
+    'sf', # Simple feature --> super spatial data handling structure
+    'raster', # For raster data
+    'rgdal',
+    'plotly', # zoomable, pannable ggplot
+    'move',# Brownian Bridge Movement Model
+    'adehabitatHR',
+    'lme4',
+    'nlme',
+    'ggplot2',
+    'ggpubr',
+    'GGally',
+    'ggfortify', #check linear regression assumptions
+    'GGally', # usefull pairs function to create many scatterplots
+    'maptools',# used in move package
+    'viridis',
+    'lmerTest',
+    'sp',
+    'ks' # used in KDE functions
+    ))
+rm(list = ls())
+getwd()
+
+
+
+### CUSTOM FUNCTIONS ###
+
+# Function for displaying scale labels in ggplot not as f.e. 4e+05
+fancy_scientific <- function(l) {
+     # turn in to character string in scientific notation
+     l <- format(l, scientific = TRUE)
+     # quote the part before the exponent to keep all the digits
+     l <- gsub("^(.*)e", "'\\1'e", l)
+     # turn the 'e+' into plotmath format
+     l <- gsub("e", "%*%10^", l)
+     # return this as an expression
+     parse(text=l)
+}
+
+
+clockS = function(t){hour(t)*3600+minute(t)*60+second(t)}
+st_kde <- function(points,cellsize, bandwith, extent = NULL){
+  require(MASS)
+  require(raster)
+  require(sf)
+  if(is.null(extent)){
+    extent_vec <- st_bbox(points)[c(1,3,2,4)]
+  } else{
+    extent_vec <- st_bbox(extent)[c(1,3,2,4)]
+  }
+  
+  n_y <- ceiling((extent_vec[4]-extent_vec[3])/cellsize)
+  n_x <- ceiling((extent_vec[2]-extent_vec[1])/cellsize)
+  
+  extent_vec[2] <- extent_vec[1]+(n_x*cellsize)-cellsize
+  extent_vec[4] <- extent_vec[3]+(n_y*cellsize)-cellsize
+  
+  coords <- st_coordinates(points)
+  matrix <- kde2d(coords[,1],coords[,2],h = bandwith,n = c(n_x,n_y),lims = extent_vec)
+  raster(matrix)
+}
+
+
+
+
+#### Custom functions for analysis
+clockS = function(t){hour(t)*3600+minute(t)*60+second(t)}
+
+
+euclid <- function(x1,y1,x2,y2){
+  return(sqrt((x1-x2)^2+(y1-y2)^2))
+}
+
+turning_angle <- function(x,y,lead_lag = 1){ 
+  if(length(x) < 3){return(NA)}
+  if(length(x) != length(y)){stop("x and y must be of the same length")}
+  p1x <- lag(x,lead_lag)
+  p1y <- lag(y,lead_lag)
+  p2x <- x
+  p2y <- y
+  p3x <- lead(x,lead_lag)
+  p3y <- lead(y,lead_lag)
+  p12 <- euclid(p1x,p1y,p2x,p2y)
+  p13 <- euclid(p1x,p1y,p3x,p3y)
+  p23 <- euclid(p2x,p2y,p3x,p3y)
+  rad <- acos((p12^2+p23^2-p13^2)/(2*p12*p23))
+  grad <- (rad*180)/pi
+  grad[p12 == 0 | p23 == 0] <- NA
+  d <-  (p3x-p1x)*(p2y-p1y)-(p3y-p1y)*(p2x-p1x)
+  d <- ifelse(d == 0,1,d)
+  d[d>0] <- 1
+  d[d<0] <- -1
+  d[d==0] <- 1
+  turning <- grad*d*-1+180
+  return(turning)
+}
+
+# Source https://exploratory.io/note/kanaugust/1701090969905358
+calculate_mode <- function(x) {
+  uniqx <- unique(na.omit(x))
+  uniqx[which.max(tabulate(match(x, uniqx)))]
+}
+
+
+# Statistics from here: https://github.com/aufrank/R-hacks/blob/master/mer-utils.R
+vif.mer <- function (fit) {
+    ## adapted from rms::vif
+
+    v <- vcov(fit)
+    nam <- names(fixef(fit))
+
+    ## exclude intercepts
+    ns <- sum(1 * (nam == "Intercept" | nam == "(Intercept)"))
+    if (ns > 0) {
+        v <- v[-(1:ns), -(1:ns), drop = FALSE]
+        nam <- nam[-(1:ns)]
+    }
+
+    d <- diag(v)^0.5
+    v <- diag(solve(v/(d %o% d)))
+    names(v) <- nam
+    v
+}
+
+
+
+
+setwd("/Users/stefgr/Nextcloud/UZH/12_Semester/20200313_Masterthesis/R/")
+
+```
+
+#### SUAQ homerange analysis
+
+```{r GPS Loader,echo=FALSE, message=FALSE,comment=FALSE, warning=FALSE}
+
+### Load Project variables ### 
+##### waypoints ##### "data/Processed_data/SUAQ_waypoints_11all20.csv"
+SUAQ_waypoints_11all20_loc <- read_csv(paste0("data/Processed_data/",str_remove_all(Sys.Date()-1, "-"),"_SUAQ_waypoints_11all20.csv"))
+SUAQ_waypoints_11all20_loc <- SUAQ_waypoints_11all20_loc %>% mutate(monthYearDate=format(as.Date(manualDate), "%Y-%m"))
+SUAQ_waypoints_11all20_loc <- SUAQ_waypoints_11all20_loc %>% mutate(automaticDatetime=with_tz(automaticDatetime,tz = "Asia/Pontianak"))
+SUAQ_waypoints_11all20_loc <- SUAQ_waypoints_11all20_loc %>% mutate(manualDatetime=with_tz(manualDatetime,tz = "Asia/Pontianak"))
+
+SUAQ_waypoints_11all20_loc_test <- SUAQ_waypoints_11all20_loc %>% filter(focal!=SUAQ_followlog.FocalName)
+SUAQ_waypoints_11all20_loc_test2 <- SUAQ_waypoints_11all20_loc %>% filter((ClassFocal!="mother")&!is.na(ageOfCurrentOffspring))
+
+
+##### Weather and FAI #####
+SUAQ_weather <- read_csv("data/Processed_data/SUAQ_weather.csv")
+SUAQ_fai <- read_csv("data/Processed_data/SUAQ_fai.csv")
+
+SUAQ_weather_monthly<-SUAQ_weather %>% 
+  group_by(SUAQ_weather.year,SUAQ_weather.month) %>% 
+  summarise_all(funs(mean))
+SUAQ_weather_monthly<- SUAQ_weather_monthly%>% dplyr::select(-SUAQ_weather.weather_id,-SUAQ_weather.day,-SUAQ_weather.daymonthyear)
+
+##### location network ##### 
+SUAQ_locationnetwork_sf <- st_read("data/20201201_StudyBalimbingStudyArea_points.GPX")
+SUAQ_locationnetwork_sf_loc <- st_transform(SUAQ_locationnetwork_sf,crs = 32647)
+##### for locale coordinate system
+coordinates_tmp <- st_coordinates(SUAQ_locationnetwork_sf_loc)
+colnames(coordinates_tmp) <- c("E","N")
+SUAQ_locationnetwork_sf_loc <- cbind(SUAQ_locationnetwork_sf_loc,coordinates_tmp)
+SUAQ_locationnetwork_loc <- st_drop_geometry(SUAQ_locationnetwork_sf_loc)
+
+##### Selection only pointtypes which are taken on the orangutan way? is this true for all? ##### 
+SUAQ_rangepoints_11all20_loc <- SUAQ_waypoints_11all20_loc %>% filter(PtType %in% c("daynest","found","lost","mornnest","nightnest","range","tree")) # get rid of lcg lch points and
+
+##### Recalculate edge lengths etc. based on new point selection for rangepoints dataframe
+SUAQ_rangepoints_11all20_loc<- SUAQ_rangepoints_11all20_loc %>% 
+  group_by(follow)%>% arrange(manualTime,.by_group = TRUE) %>% 
+  mutate(timelag=as.numeric(difftime(as.POSIXlt(manualTime),
+                                     as.POSIXlt(lag(manualTime)),units 
+                                     ="secs")),
+         # calculate distance with approach number 1 --> st_distance but to do that we need to calculate lead first because the lead function doesnt work within st distance (not same datatype (df))
+         timelag_lead=as.numeric(difftime(as.POSIXlt(lead(manualTime)),
+                                          as.POSIXlt(manualTime),units ="secs")),
+         manual_distTolast=sqrt((E-lag(E))^2+(N-lag(N))^2),
+         manual_distToNext=sqrt((E-lead(E))^2+(N-lead(N))^2),
+         speed_last = manual_distTolast/timelag,
+         speed_next = manual_distToNext/timelag_lead,
+         turningAngle=turning_angle(E,N),
+         altitudediff_next=altitude-lead(altitude),
+         )
+
+
+
+
+
+##### WGS84 file
+SUAQ_rangepoints_11all20_loc_sf <-  st_as_sf(SUAQ_rangepoints_11all20_loc, 
+                          coords = c("E","N"), 
+                          crs = 32647) # can also do that in the new sricpts
+SUAQ_rangepoints_11all20_loc_wgs <- st_transform(SUAQ_rangepoints_11all20_loc_sf,4326)
+coordinates_tmp <- st_coordinates(SUAQ_rangepoints_11all20_loc_wgs)
+colnames(coordinates_tmp) <- c("long","lat")
+SUAQ_rangepoints_11all20_loc_wgs <- cbind(SUAQ_rangepoints_11all20_loc_wgs,coordinates_tmp)
+SUAQ_rangepoints_11all20_loc_wgs<- st_drop_geometry(SUAQ_rangepoints_11all20_loc_wgs)
+
+
+##### Selection only females / most tracked females ##### 
+SUAQ_rangepoints_11all20_loc_females <-
+  SUAQ_rangepoints_11all20_loc %>%   filter(!(SUAQ_orangutans.Sex == "male")) %>% ungroup()
+
+SUAQ_rangepoints_11all20_loc_above50GPS <- SUAQ_rangepoints_11all20_loc %>% filter(orangutan_tot_num_of_gps>250) %>% 
+  filter(!(ClassFocal%in%c("character(0)","infant","juvenile")))
+levels(as.factor(SUAQ_rangepoints_11all20_loc$ClassFocal))
+SUAQ_rangepoints_11all20_loc_females_above50GPS <- SUAQ_rangepoints_11all20_loc %>% filter(!(SUAQ_orangutans.Sex == "male")) %>% filter(orangutan_tot_num_of_gps>50)
+
+SUAQ_rangepoints_11all20_loc_males_above50GPS <- SUAQ_rangepoints_11all20_loc %>% filter((SUAQ_orangutans.Sex == "male")) %>% filter(orangutan_tot_num_of_gps>50)
+
+SUAQ_rangepoints_11all20_loc_females_10 <-
+  SUAQ_rangepoints_11all20_loc %>%   filter(!(SUAQ_orangutans.Sex == "male")) %>% filter(
+    focal %in% c(
+      "lisa",
+      "friska",
+      "ellie",
+      "cissy",
+      "lilly",
+      "yulia",
+      "raffi",
+      "sarabi",
+      "trident",
+      "tiara"
+    )
+  )%>% ungroup()
+
+##### Save Dataset for CTMM online f.e.
+SUAQ_rangepoints_11all20_loc_females12_wgs <- SUAQ_rangepoints_11all20_loc_wgs[order(SUAQ_rangepoints_11all20_loc_wgs$focal,SUAQ_rangepoints_11all20_loc_wgs$manualDatetime , decreasing = TRUE ),] %>% rename(
+    c("event-id"="identification","timestamp"="manualDatetime","location-long"="long","location-lat"="lat","Animal ID"="focal","Tag No"="follow")
+  ) %>% filter(`Animal ID`%in% c("lisa","friska","ellie","cissy","lilly","yulia","raffi","sarabi","trident","alice","tiara","cinnamon")) %>% mutate("sensor-type"="gps")
+write_csv(SUAQ_rangepoints_11all20_loc_wgs, path = paste(
+  paste(
+    "/Users/stefgr/Nextcloud/UZH/12_Semester/20200313_Masterthesis/R/data/Processed_data/",
+    "SUAQ_rangepoints_11all20_loc_females12_wgs",
+    sep = ""
+  ),
+  "csv",
+  sep = "."
+))
+SUAQ_rangepoints_11all20_loc_females6_wgs <- SUAQ_rangepoints_11all20_loc_wgs[order(SUAQ_rangepoints_11all20_loc_wgs$focal,SUAQ_rangepoints_11all20_loc_wgs$manualDatetime , decreasing = TRUE ),] %>% rename(
+    c("event-id"="identification","timestamp"="manualDatetime","location-long"="long","location-lat"="lat","Animal ID"="focal","Tag No"="follow")
+  ) %>% filter(`Animal ID`%in% c("lisa","friska","ellie","cissy","lilly","yulia")) %>% mutate("sensor-type"="gps")
+write_csv(SUAQ_rangepoints_11all20_loc_females6_wgs, path = paste(
+  paste(
+    "/Users/stefgr/Nextcloud/UZH/12_Semester/20200313_Masterthesis/R/data/Processed_data/",
+    "SUAQ_rangepoints_11all20_loc_females6_wgs",
+    sep = ""
+  ),
+  "csv",
+  sep = "."
+))
+
+```
+### Analysis
+```{r MCP - HR sizes  Loader,echo=FALSE, message=FALSE,comment=FALSE, warning=FALSE}
+### Create MCP with percentage #### 
+SUAQ_rangepoints_11all20_loc_females_more50GPS.sp<- SUAQ_rangepoints_11all20_loc_females_10 %>% 
+dplyr::select(focal,E,N) 
+
+coordinates(SUAQ_rangepoints_11all20_loc_females_more50GPS.sp) <- c("E","N")
+
+proj4string(SUAQ_rangepoints_11all20_loc_females_more50GPS.sp) <- CRS( "+proj=utm +zone=47 +datum=WGS84 +units=m +no_defs" )
+
+mcp(SUAQ_rangepoints_11all20_loc_females_more50GPS.sp,percent = 95)
+mcp.area(SUAQ_rangepoints_11all20_loc_females_more50GPS.sp, percent = 95)
+mcp.area(SUAQ_rangepoints_11all20_loc_females_more50GPS.sp, percent = 50)
+
+
+### Homerange Stability
+##### Using MCP --> The latter plot probably shows more the usage then the stability because mcp.area takes the points away based on their spatial location
+mcp.area(SUAQ_rangepoints_11all20_loc_females_more50GPS.sp, percent = seq(30, 90, by = 5))
+
+##### FEMALES: Using MCP bootstrapping, randomly selecting points
+SUAQ_move_selected <- SUAQ_rangepoints_11all20_loc_females_above50GPS[order(SUAQ_rangepoints_11all20_loc_females_above50GPS$focal,SUAQ_rangepoints_11all20_loc_females_above50GPS$manualDatetime , decreasing = FALSE ),] %>% ungroup()
+
+SUAQ_move_selected <- move(x=SUAQ_move_selected$E, y=SUAQ_move_selected$N, 
+              time=as.POSIXct(SUAQ_move_selected$manualDatetime, format="%Y-%m-%d %H:%M:%OS", tz="Asia/Pontianak"),
+              proj=CRS("+proj=utm +zone=47 +datum=WGS84 +units=m +no_defs"), 
+              data=SUAQ_move_selected, animal=SUAQ_move_selected$focal, sensor="gps")
+hrBootstrap(x=SUAQ_move_selected, rep=25,level=100,
+            levelMax=100, unin="m",unout='km2')
+
+##### Exkurs MALES: Using MCP bootstrapping, randomly selecting points
+SUAQ_move_selected <- SUAQ_rangepoints_11all20_loc_above50GPS[order(SUAQ_rangepoints_11all20_loc_above50GPS$focal,SUAQ_rangepoints_11all20_loc_above50GPS$manualDatetime , decreasing = FALSE ),] %>% ungroup()
+
+SUAQ_move_selected <- move(x=SUAQ_move_selected$E, y=SUAQ_move_selected$N, 
+              time=as.POSIXct(SUAQ_move_selected$manualDatetime, format="%Y-%m-%d %H:%M:%OS", tz="Asia/Pontianak"),
+              proj=CRS("+proj=utm +zone=47 +datum=WGS84 +units=m +no_defs"), 
+              data=SUAQ_move_selected, animal=SUAQ_move_selected$focal, sensor="gps")
+all<- hrBootstrap(x=SUAQ_move_selected, rep=25,level=100,plot=FALSE,
+            levelMax=100, unin="m",unout='km2')
+all_flatten<- data.frame(do.call(rbind, all))
+all_flatten$name<- rownames(all_flatten)
+all_flatten <- all_flatten %>% rowwise() %>%  mutate(focal=strsplit(name,"\\.")[[1]][1],points=as.numeric(strsplit(name,"\\.")[[1]][2])) %>% 
+  dplyr::select(-name) %>% left_join(SUAQ_orangutans[,c(1,3)],by=c("focal"="orangutanname")) 
+
+all_flatten %>% ggplot()+geom_path(aes(x=points,X50.,colour=focal,linetype=Sex)) + scale_x_log10()+
+  geom_path(aes(x=points,X50.,colour=focal,linetype=Sex))+
+  geom_path(aes(x=points,X0.,colour=focal,linetype=Sex,alpha=0.5))+
+  geom_path(aes(x=points,X100.,colour=focal,linetype=Sex,alpha=0.5))
+```
+
+```{r KDE - HR sizes  Loader,echo=FALSE, message=FALSE,comment=FALSE, warning=FALSE}
+##### Determine the smoothing parameters
+selected_females <- SUAQ_rangepoints_11all20_loc_females_10 %>% group_by(focal) %>% summarise()
+selected_females <- as_vector(selected_females)
+
+bandwiths <- df <- data.frame(focal=as_vector(selected_females),
+                 hpi=vector(mode="numeric", length=10),hbcv=vector(mode="numeric", length=10),hscv=vector(mode="numeric", length=10),
+                 stringsAsFactors=FALSE)
+iterator <- 1
+for (i in selected_females){
+  xy_selected <- SUAQ_rangepoints_11all20_loc_females_10 %>% filter(focal%in%c(i)) %>% dplyr::select(E,N)
+  colnames(xy_selected) <- c("x","y") #adjust column names
+  hpi <- sqrt(prod(sqrt(diag(Hpi.diag(xy_selected[,1:2], nstage=2))))) # using diagonal bandwith not full bandwith? why?
+  hbcv <- sqrt(prod(sqrt(diag(Hbcv.diag(xy_selected[,1:2], whichbcv=1)))))
+  hscv <- sqrt(prod(sqrt(diag(Hscv.diag(xy_selected[,1:2], nstage=2)))))
+  bandwiths[iterator,"focal"] <- i
+  bandwiths[iterator,"hpi"] <- as.numeric(hpi)
+  bandwiths[iterator,"hbcv"] <- as.numeric(hbcv)
+  bandwiths[iterator,"hscv"] <- as.numeric(hscv)
+
+  iterator <- iterator+1
+}
+rownames(bandwiths) <- c(1:10)
+
+### KDE: Calculate UD, HR
+iterator <- 1
+for (i in selected_females){ # compute KDE home range for every individual
+  xy_selected <- SUAQ_rangepoints_11all20_loc_females_10 %>% filter(focal%in%c(i)) %>% dplyr::select(E,N)
+  colnames(xy_selected) <- c("x","y") #adjust column names
+  
+  resultList <- list()
+  methListTitle <- list("REF", "PI", "BCV", "SCV")
+  methList <- list("HREF", "HPI", "HBCV", "HSCV")
+  
+  xy_selected_sp <- SpatialPoints(xy_selected,proj4string = CRS( "+proj=utm +zone=47 +datum=WGS84 +units=m +no_defs" )) # Converts SpatialPointDataFrame to SpatialPoint (only x & y)
+  
+  extVal <- 0.3 #0.3 How much bigger the UD should be calculated than the research are (minimum bounding box). The higher the more Computation
+  gridVal <- 700 #700 How much cells or pixels should be considered for UD calculation. The higher the more Computation
+  
+  for (j in seq(1, length(methList))) { # compute one home range for each bandwidth method and individual
+    if (j == 1) {
+      UD <- (kernelUD(xy_selected, grid=gridVal, extent=extVal, h="href"))
+    }
+    else if (j == 2) {
+      UD <- (kernelUD(xy_selected, grid=gridVal, extent=extVal, h=bandwiths[iterator,"hpi"]))
+    }
+    else if (j == 3) {
+      UD <- (kernelUD(xy_selected, grid=gridVal, extent=extVal, h=bandwiths[iterator,"hbcv"]))
+    }
+    else if (j == 4) {
+      UD <- (kernelUD(xy_selected, grid=gridVal, extent=extVal, h=bandwiths[iterator,"hscv"])) 
+    }
+    else {
+      print("Error")
+    }
+    
+    hr95 <- getverticeshr(UD, percent=95)
+    hr50 <- getverticeshr(UD, percent=50)
+    
+    ########## plot results ##########
+    imdir <- paste("~/Users/stefgr/Dropbox/Apps/Overleaf/Msc_Thesis/figures/Homeranges/KDE/plots/", "/", sep="")
+    imdirUD <- paste("~/Users/stefgr/Dropbox/Apps/Overleaf/Msc_Thesis/figures/Homeranges/KDE/plots/UD/", "/", sep="")
+    
+    png(paste(imdirUD, selected_females[i], "_KDE_UD_", methList[[j]], ".png", sep=""), width=900, height=700, res=120, units="px")
+    image(UD, xlab="x [m]")
+    par(mar=c(5.1,1,4.1,1))
+    step <- 20000
+    xmin <- min(UD@coords[,1]); xmax <- max(UD@coords[,1])
+    ymin <- min(UD@coords[,2]); ymax <- max(UD@coords[,2])
+    yaxpos <- step*round(xmin/step)-step/5
+    plot(hr50, lty=4, lwd=3, border="black", add=T,axes=F)
+    plot(hr95, lty=1, lwd=2, border="blue", add=T, axes=F)
+    axis(1, at=c(step*(ceiling(xmin/step)):(round(xmax/step))))
+    axis(2, at=c(step*(round(ymin/step)):(round(ymax/step))), pos=xmin-5000)
+    text(xmin-5000, ymin+(ymax-ymin)/2, "y [m]", adj=c(NA,-4), srt=90)
+    title(paste(selected_females[i], ": KDE ", "(", methListTitle[[j]], ")", sep=""), line=-0.3)
+    legend("topright", c("HR 50%", "HR 95%"), col=c("black", "blue"), lwd=c(3,2), lty=c(4,1), inset=c(0.14,0.06))
+    dev.off()
+    
+    png(paste(imdir, selected_females[i], "_KDE_VUD_", methList[[j]], ".png", sep=""), width=900, height=700, res=120, units="px")
+    image(getvolumeUD(UD), xlab="x [m]")
+    par(mar=c(5.1,1,4.1,1))
+    step <- 20000
+    xmin <- min(UD@coords[,1]); xmax <- max(UD@coords[,1])
+    ymin <- min(UD@coords[,2]); ymax <- max(UD@coords[,2])
+    yaxpos <- step*round(xmin/step)-step/5
+    plot(hr50, lty=4, lwd=3, border="black", add=T,axes=F)
+    plot(hr95, lty=1, lwd=2, border="blue", add=T, axes=F)
+    axis(1, at=c(step*(ceiling(xmin/step)):(round(xmax/step))))
+    axis(2, at=c(step*(round(ymin/step)):(round(ymax/step))), pos=xmin-5000)
+    text(xmin-5000, ymin+(ymax-ymin)/2, "y [m]", adj=c(NA,-4), srt=90)
+    title(paste(selected_females[i], ": KDE ", "(", methListTitle[[j]], ")", sep=""), line=-0.3)
+    legend("topright", c("HR 50%", "HR 95%"), col=c("black", "blue"), lwd=c(3,2), lty=c(4,1), inset=c(0.14,0.06))
+    dev.off()
+    
+    ########## export results #########
+    resultList <- list(hr50=hr50, hr95=hr95, UD=UD)
+    assign(methList[[j]], resultList) #resultList is renamed according to the ith element of methList
+  }
+  animRes <- list(HREF=HREF, HPI=HPI, HBCV=HBCV, HSCV=HSCV)
+  assign(selected_females[i], animRes) # is renamed according to the ith element of animList
+  print(paste(selected_females[i], ": Calculation finished", sep=""))
+  
+  iterator <- iterator+1
+}
+
+kde <- list(PF07_Ronja = PF07_Ronja, PM07_Mothamongwe = PM07_Mothamongwe, PM08_Bogarigka = PM08_Bogarigka, PM09_Gham = PM09_Gham,
+            LF12_Verity = LF12_Verity, LF13_Ella = LF13_Ella, LF16_Jane = LF16_Jane, LM06_Hitchcock = LM06_Hitchcock,
+            LM07_Mexico = LM07_Mexico, LF14_Madge = LF14_Madge, LM08_Orange = LM08_Orange, LF07_Getika = LF07_Getika)   
+    
+save(kde, file = "~/_MyData/Masterarbeit Movement Analysis/Resultate/thesis/calculations/KDE/KDE.RData")    
+
+
+
+
+```
