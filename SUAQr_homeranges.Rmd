@@ -341,7 +341,7 @@ all_flatten %>% ggplot()+geom_path(aes(x=points,X50.,colour=focal,linetype=Sex))
 selected_females <- SUAQ_rangepoints_11all20_loc_females_10 %>% group_by(focal) %>% summarise()
 selected_females <- as_vector(selected_females)
 
-bandwiths <- df <- data.frame(focal=as_vector(selected_females),
+bandwiths <-  data.frame(focal=as_vector(selected_females),
                  hpi=vector(mode="numeric", length=10),hbcv=vector(mode="numeric", length=10),hscv=vector(mode="numeric", length=10),
                  stringsAsFactors=FALSE)
 iterator <- 1
@@ -365,15 +365,14 @@ iterator <- 1
 for (i in selected_females){ # compute KDE home range for every individual
   xy_selected <- SUAQ_rangepoints_11all20_loc_females_10 %>% filter(focal%in%c(i)) %>% dplyr::select(E,N)
   colnames(xy_selected) <- c("x","y") #adjust column names
-  
   resultList <- list()
   methListTitle <- list("REF", "PI", "BCV", "SCV")
   methList <- list("HREF", "HPI", "HBCV", "HSCV")
   
-  xy_selected_sp <- SpatialPoints(xy_selected,proj4string = CRS( "+proj=utm +zone=47 +datum=WGS84 +units=m +no_defs" )) # Converts SpatialPointDataFrame to SpatialPoint (only x & y)
+  xy_selected <- SpatialPoints(xy_selected,proj4string = CRS( "+proj=utm +zone=47 +datum=WGS84 +units=m +no_defs" )) # Converts SpatialPointDataFrame to SpatialPoint (only x & y)
   
   extVal <- 0.3 #0.3 How much bigger the UD should be calculated than the research are (minimum bounding box). The higher the more Computation
-  gridVal <- 700 #700 How much cells or pixels should be considered for UD calculation. The higher the more Computation
+  gridVal <- 800 #700 How much cells or pixels should be considered for UD calculation. The higher the more Computation
   
   for (j in seq(1, length(methList))) { # compute one home range for each bandwidth method and individual
     if (j == 1) {
@@ -392,43 +391,43 @@ for (i in selected_females){ # compute KDE home range for every individual
       print("Error")
     }
     
-    hr95 <- getverticeshr(UD, percent=95)
-    hr50 <- getverticeshr(UD, percent=50)
+    hr95 <- getverticeshr(UD, percent=95,unin = c("m"),unout = c("km2"))
+    hr50 <- getverticeshr(UD, percent=50,unin = c("m"),unout = c("km2"))
     
     ########## plot results ##########
-    imdir <- paste("~/Users/stefgr/Dropbox/Apps/Overleaf/Msc_Thesis/figures/Homeranges/KDE/plots/", "/", sep="")
-    imdirUD <- paste("~/Users/stefgr/Dropbox/Apps/Overleaf/Msc_Thesis/figures/Homeranges/KDE/plots/UD/", "/", sep="")
+    imdir <- paste("output/Homeranges/KDE", "/", sep="")
+    imdirUD <- paste("output/Homeranges/KDE/plots/UD", "/", sep="")
     
-    png(paste(imdirUD, selected_females[i], "_KDE_UD_", methList[[j]], ".png", sep=""), width=900, height=700, res=120, units="px")
+    png(paste(imdirUD, selected_females[[iterator]], "_KDE_UD_", methList[[j]], ".png", sep=""), width=900, height=700, res=120, units="px")
     image(UD, xlab="x [m]")
     par(mar=c(5.1,1,4.1,1))
-    step <- 20000
+    step <- 500
     xmin <- min(UD@coords[,1]); xmax <- max(UD@coords[,1])
     ymin <- min(UD@coords[,2]); ymax <- max(UD@coords[,2])
     yaxpos <- step*round(xmin/step)-step/5
-    plot(hr50, lty=4, lwd=3, border="black", add=T,axes=F)
-    plot(hr95, lty=1, lwd=2, border="blue", add=T, axes=F)
+    plot(hr50, lty=4, lwd=1, border="azure4", add=T,axes=F)
+    plot(hr95, lty=1, lwd=0.6, border="cadetblue2", add=T, axes=F)
     axis(1, at=c(step*(ceiling(xmin/step)):(round(xmax/step))))
-    axis(2, at=c(step*(round(ymin/step)):(round(ymax/step))), pos=xmin-5000)
-    text(xmin-5000, ymin+(ymax-ymin)/2, "y [m]", adj=c(NA,-4), srt=90)
-    title(paste(selected_females[i], ": KDE ", "(", methListTitle[[j]], ")", sep=""), line=-0.3)
-    legend("topright", c("HR 50%", "HR 95%"), col=c("black", "blue"), lwd=c(3,2), lty=c(4,1), inset=c(0.14,0.06))
+    axis(2, at=c(step*(round(ymin/step)):(round(ymax/step))), pos=xmin-10)
+    text(xmin-10, ymin+(ymax-ymin)/2, "y [m]", adj=c(NA,-4), srt=90)
+    title(paste(selected_females[[iterator]], ": KDE ", "(", methListTitle[[j]], ")", sep=""), line=-0.3)
+    legend("topright", c("HR 50%", "HR 95%"), col=c("black", "blue"), lwd=c(1,0.6), lty=c(4,1), inset=c(0.14,0.06))
     dev.off()
-    
-    png(paste(imdir, selected_females[i], "_KDE_VUD_", methList[[j]], ".png", sep=""), width=900, height=700, res=120, units="px")
+
+    png(paste(imdir, selected_females[[iterator]], "_KDE_VUD_", methList[[j]], ".png", sep=""), width=900, height=700, res=120, units="px")
     image(getvolumeUD(UD), xlab="x [m]")
     par(mar=c(5.1,1,4.1,1))
-    step <- 20000
+    step <- 500
     xmin <- min(UD@coords[,1]); xmax <- max(UD@coords[,1])
     ymin <- min(UD@coords[,2]); ymax <- max(UD@coords[,2])
     yaxpos <- step*round(xmin/step)-step/5
-    plot(hr50, lty=4, lwd=3, border="black", add=T,axes=F)
-    plot(hr95, lty=1, lwd=2, border="blue", add=T, axes=F)
+    plot(hr50, lty=4, lwd=1, border="azure4", add=T,axes=F)
+    plot(hr95, lty=1, lwd=0.6, border="cadetblue2", add=T, axes=F)
     axis(1, at=c(step*(ceiling(xmin/step)):(round(xmax/step))))
-    axis(2, at=c(step*(round(ymin/step)):(round(ymax/step))), pos=xmin-5000)
-    text(xmin-5000, ymin+(ymax-ymin)/2, "y [m]", adj=c(NA,-4), srt=90)
-    title(paste(selected_females[i], ": KDE ", "(", methListTitle[[j]], ")", sep=""), line=-0.3)
-    legend("topright", c("HR 50%", "HR 95%"), col=c("black", "blue"), lwd=c(3,2), lty=c(4,1), inset=c(0.14,0.06))
+    axis(2, at=c(step*(round(ymin/step)):(round(ymax/step))), pos=xmin-10)
+    text(xmin-10, ymin+(ymax-ymin)/2, "y [m]", adj=c(NA,-4), srt=90)
+    title(paste(selected_females[[iterator]], ": KDE ", "(", methListTitle[[j]], ")", sep=""), line=-0.3)
+    legend("topright", c("HR 50%", "HR 95%"), col=c("azure4", "cadetblue2"), lwd=c(1,0.6), lty=c(4,1), inset=c(0.14,0.06))
     dev.off()
     
     ########## export results #########
@@ -436,19 +435,180 @@ for (i in selected_females){ # compute KDE home range for every individual
     assign(methList[[j]], resultList) #resultList is renamed according to the ith element of methList
   }
   animRes <- list(HREF=HREF, HPI=HPI, HBCV=HBCV, HSCV=HSCV)
-  assign(selected_females[i], animRes) # is renamed according to the ith element of animList
-  print(paste(selected_females[i], ": Calculation finished", sep=""))
+  assign(selected_females[[iterator]], animRes) # is renamed according to the ith element of animList
+  print(paste(selected_females[[iterator]], ": Calculation finished", sep=""))
   
   iterator <- iterator+1
 }
+kde <- data.frame(focal=as_vector(selected_females),
+                 HREF_hr50area=vector(mode="numeric", length=10),
+                 HREF_hr95area=vector(mode="numeric", length=10),
+                 HPI_hr50area=vector(mode="numeric", length=10),
+                 HPI_hr95area=vector(mode="numeric", length=10),
+                 HBCV_hr50area=vector(mode="numeric", length=10),
+                 HBCV_hr95area=vector(mode="numeric", length=10),
+                 HSCV_hr50area=vector(mode="numeric", length=10),
+                 HSCV_hr95area=vector(mode="numeric", length=10),
+                 stringsAsFactors=FALSE)
+kde_list <- list(lisa=lisa,
+      friska=friska,
+      ellie=ellie,
+      cissy=cissy,
+      lilly=lilly,
+      yulia=yulia,
+      raffi=raffi,
+      sarabi=sarabi,
+      trident=trident,
+      tiara=tiara)
+iterator <- 1
+for(i in as_vector(selected_females)){
+  kde[iterator,"HREF_hr50area"] <-  kde_list[[i]]$HREF$hr50$area
+  kde[iterator,"HREF_hr95area"] <- kde_list[[i]]$HREF$hr95$area
+  kde[iterator,"HPI_hr50area"] <-kde_list[[i]]$HPI$hr50$area
+  kde[iterator,"HPI_hr95area"] <- kde_list[[i]]$HPI$hr95$area
+  kde[iterator,"HBCV_hr50area"] <-  kde_list[[i]]$HBCV$hr50$area
+  kde[iterator,"HBCV_hr95area"] <-  kde_list[[i]]$HBCV$hr95$area
+  kde[iterator,"HSCV_hr50area"] <-  kde_list[[i]]$HSCV$hr50$area
+  kde[iterator,"HSCV_hr95area"] <-  kde_list[[i]]$HSCV$hr95$area
+  iterator <- iterator+1
+}
+rownames(kde) <- c(1:10)
 
-kde <- list(PF07_Ronja = PF07_Ronja, PM07_Mothamongwe = PM07_Mothamongwe, PM08_Bogarigka = PM08_Bogarigka, PM09_Gham = PM09_Gham,
-            LF12_Verity = LF12_Verity, LF13_Ella = LF13_Ella, LF16_Jane = LF16_Jane, LM06_Hitchcock = LM06_Hitchcock,
-            LM07_Mexico = LM07_Mexico, LF14_Madge = LF14_Madge, LM08_Orange = LM08_Orange, LF07_Getika = LF07_Getika)   
+### KDE-stability:
+for(iter in c(2:30)){
+amountofdata <- seq(0.5,10,by=0.5)/10
+kde95_bootstrap <- data.frame(focal=as_vector(selected_females),
+                 HSCV_area_5=vector(mode="numeric", length=10),             
+                 HSCV_area_10=vector(mode="numeric", length=10),
+                 HSCV_area_15=vector(mode="numeric", length=10),
+                 HSCV_area_20=vector(mode="numeric", length=10),
+                 HSCV_area_25=vector(mode="numeric", length=10),
+                 HSCV_area_30=vector(mode="numeric", length=10),
+                 HSCV_area_35=vector(mode="numeric", length=10),
+                 HSCV_area_40=vector(mode="numeric", length=10),
+                 HSCV_area_45=vector(mode="numeric", length=10),
+                 HSCV_area_50=vector(mode="numeric", length=10),
+                 HSCV_area_55=vector(mode="numeric", length=10),
+                 HSCV_area_60=vector(mode="numeric", length=10),
+                 HSCV_area_65=vector(mode="numeric", length=10),
+                 HSCV_area_70=vector(mode="numeric", length=10),
+                 HSCV_area_75=vector(mode="numeric", length=10),
+                 HSCV_area_80=vector(mode="numeric", length=10),
+                 HSCV_area_85=vector(mode="numeric", length=10),
+                 HSCV_area_90=vector(mode="numeric", length=10),
+                 HSCV_area_95=vector(mode="numeric", length=10),
+                 HSCV_area_100=vector(mode="numeric", length=10),
+                 stringsAsFactors=FALSE)
+kde50_bootstrap <- data.frame(focal=as_vector(selected_females),
+                 HSCV_area_5=vector(mode="numeric", length=10),             
+                 HSCV_area_10=vector(mode="numeric", length=10),
+                 HSCV_area_15=vector(mode="numeric", length=10),
+                 HSCV_area_20=vector(mode="numeric", length=10),
+                 HSCV_area_25=vector(mode="numeric", length=10),
+                 HSCV_area_30=vector(mode="numeric", length=10),
+                 HSCV_area_35=vector(mode="numeric", length=10),
+                 HSCV_area_40=vector(mode="numeric", length=10),
+                 HSCV_area_45=vector(mode="numeric", length=10),
+                 HSCV_area_50=vector(mode="numeric", length=10),
+                 HSCV_area_55=vector(mode="numeric", length=10),
+                 HSCV_area_60=vector(mode="numeric", length=10),
+                 HSCV_area_65=vector(mode="numeric", length=10),
+                 HSCV_area_70=vector(mode="numeric", length=10),
+                 HSCV_area_75=vector(mode="numeric", length=10),
+                 HSCV_area_80=vector(mode="numeric", length=10),
+                 HSCV_area_85=vector(mode="numeric", length=10),
+                 HSCV_area_90=vector(mode="numeric", length=10),
+                 HSCV_area_95=vector(mode="numeric", length=10),
+                 HSCV_area_100=vector(mode="numeric", length=10),
+                 stringsAsFactors=FALSE)
+
+
+for(per in amountofdata){
+  iterator <- 1
+for (i in selected_females){ # compute KDE home range for every individual
+  xy_selected <- SUAQ_rangepoints_11all20_loc_females_10 %>% filter(focal%in%c(i)) %>% dplyr::select(E,N)
+  xy_selected<- sample_n(xy_selected, round(nrow(xy_selected)*per))
+
+  colnames(xy_selected) <- c("x","y") #adjust column names
+  xy_selected <- SpatialPoints(xy_selected,proj4string = CRS( "+proj=utm +zone=47 +datum=WGS84 +units=m +no_defs" )) # Converts SpatialPointDataFrame to SpatialPoint (only x & y)
+
+  
+  resultList <- list()
+  methListTitle <- list("SCV")
+  methList <- list("HSCV")
+  
+  
+  extVal <- 0.4 #0.3 How much bigger the UD should be calculated than the research are (minimum bounding box). The higher the more Computation
+  gridVal <- 800 #700 How much cells or pixels should be considered for UD calculation. The higher the more Computation
+  
+  for (j in seq(1, length(methList))) { # compute one home range for each bandwidth method and individual
+    if (j == 1) {
+      UD <- (kernelUD(xy_selected, grid=gridVal, extent=extVal, h=bandwiths[iterator,"hscv"])) 
+    }
+    else {
+      print("Error")
+    }
     
-save(kde, file = "~/_MyData/Masterarbeit Movement Analysis/Resultate/thesis/calculations/KDE/KDE.RData")    
+    hr95 <- getverticeshr(UD, percent=95,unin = c("m"),unout = c("km2"))
+    hr50 <- getverticeshr(UD, percent=50,unin = c("m"),unout = c("km2"))
+    
+    ########## export results #########
+    resultList <- list(hr50=hr50, hr95=hr95, UD=UD)
+    assign(methList[[j]], resultList) #resultList is renamed according to the ith element of methList
+  }
+  animRes <- list(HSCV=HSCV)
+  assign(selected_females[[iterator]], animRes) # is renamed according to the ith element of animList
+  print(paste(selected_females[[iterator]], ": Calculation finished with Subset of ",as.character(100*per),"% of Points", sep=""))
+  
+  iterator <- iterator+1
+}
+  kde_list <- list(lisa=lisa,
+      friska=friska,
+      ellie=ellie,
+      cissy=cissy,
+      lilly=lilly,
+      yulia=yulia,
+      raffi=raffi,
+      sarabi=sarabi,
+      trident=trident,
+      tiara=tiara)
+  itera <- 1
+for(n in as_vector(selected_females)){
+  kde50_bootstrap[itera,paste("HSCV_area","_",as.character(100*per),sep = "")] <-  kde_list[[n]]$HSCV$hr50$area
+  kde95_bootstrap[itera,paste("HSCV_area","_",as.character(100*per),sep = "")] <-  kde_list[[n]]$HSCV$hr95$area
+  itera <- itera+1
+}
+}
+colnames(kde95_bootstrap) <- c("focal",as.character(seq(0.5,10,0.5)*10))
+kde95_bootstrap_long_iter<- gather(kde95_bootstrap,as.character(seq(0.5,10,0.5)*10),key="subset %",value = "HR [km2]")
+kde95_bootstrap_long_iter <- kde95_bootstrap_long_iter %>% mutate(`subset %`=as.numeric(`subset %`))
+kde95_bootstrap_long_iter <- kde95_bootstrap_long_iter %>% mutate(iteration=iter)
+kde95_bootstrap_long <- kde95_bootstrap_long %>% rbind(kde95_bootstrap_long_iter)
+
+colnames(kde50_bootstrap) <- c("focal",as.character(seq(0.5,10,0.5)*10))
+kde50_bootstrap_long_iter<- gather(kde50_bootstrap,as.character(seq(0.5,10,0.5)*10),key="subset %",value = "HR [km2]")
+kde50_bootstrap_long_iter <- kde50_bootstrap_long_iter %>% mutate(`subset %`=as.numeric(`subset %`))
+kde50_bootstrap_long_iter <- kde50_bootstrap_long_iter %>% mutate(iteration=iter)
+kde50_bootstrap_long <- kde50_bootstrap_long %>% rbind(kde50_bootstrap_long_iter)
+}
 
 
 
 
+colnames(kde95_bootstrap) <- c("focal",as.character(seq(0.5,10,0.5)*10))
+kde95_bootstrap_long<- gather(kde95_bootstrap,as.character(seq(0.5,10,0.5)*10),key="subset %",value = "HR [km2]")
+kde95_bootstrap_long <- kde95_bootstrap_long %>% mutate(`subset %`=as.numeric(`subset %`))
+kde95_bootstrap_long <- kde95_bootstrap_long %>% mutate(iteration=1)
+
+colnames(kde50_bootstrap) <- c("focal",as.character(seq(0.5,10,0.5)*10))
+kde50_bootstrap_long<- gather(kde50_bootstrap,as.character(seq(0.5,10,0.5)*10),key="subset %",value = "HR [km2]")
+kde50_bootstrap_long <- kde50_bootstrap_long %>% mutate(`subset %`=as.numeric(`subset %`))
+kde50_bootstrap_long <- kde50_bootstrap_long %>% mutate(iteration=1)
+
+
+
+kde50_bootstrap_long %>%  ggplot(aes(`subset %`,`HR [km2]`,colour=focal)) + geom_line()
+rownames(kde) <- c(1:10)
+kde95_bootstrap_long %>%  ggplot(aes(`subset %`,`HR [km2]`,colour=focal)) + geom_point(size=0.3)+geom_jitter(size=0.3)
+rownames(kde) <- c(1:10)
 ```

@@ -214,7 +214,7 @@ setwd("/Users/stefgr/Nextcloud/UZH/12_Semester/20200313_Masterthesis/R/")
 
 ### Load Project variables ### 
 ##### waypoints ##### "data/Processed_data/SUAQ_waypoints_11all20.csv"
-SUAQ_waypoints_11all20_loc <- read_csv(paste0("data/Processed_data/",str_remove_all(Sys.Date(), "-"),"_SUAQ_waypoints_11all20.csv"))
+SUAQ_waypoints_11all20_loc <- read_csv(paste0("data/Processed_data/",str_remove_all(Sys.Date()-1, "-"),"_SUAQ_waypoints_11all20.csv"))
 SUAQ_waypoints_11all20_loc <- SUAQ_waypoints_11all20_loc %>% mutate(monthYearDate=format(as.Date(manualDate), "%Y-%m"))
 SUAQ_waypoints_11all20_loc <- SUAQ_waypoints_11all20_loc %>% mutate(automaticDatetime=with_tz(automaticDatetime,tz = "Asia/Pontianak"))
 SUAQ_waypoints_11all20_loc <- SUAQ_waypoints_11all20_loc %>% mutate(manualDatetime=with_tz(manualDatetime,tz = "Asia/Pontianak"))
@@ -422,10 +422,10 @@ TDD_tree_follows <- SUAQ_rangepoints_11all20_loc[order(SUAQ_rangepoints_11all20_
 
 Tree_follows <- Tree_follows %>% 
   left_join(TDD_tree_follows,by=c("follow"="follow")) %>%
-  mutate(RR_tree=tree_DJL/tree_TDD) %>%
+  mutate(tree_RR=tree_DJL/tree_TDD) %>%
   ungroup() %>% 
   left_join(Tree_follows_count,by=c("follow"="follow")) %>% 
-  dplyr::select(c("follow","tree_numOfPoints","tree_DJL","tree_GPScount","tree_turningAngleSum","tree_meanTimelag","tree_medianTimelag"))
+  dplyr::select(c("follow","tree_numOfPoints","tree_DJL","tree_RR","tree_GPScount","tree_turningAngleSum","tree_meanTimelag","tree_medianTimelag"))
 
 DJL_follows <- DJL_follows %>% 
   left_join(Tree_follows,by=c("follow"="follow")) %>% 
@@ -656,13 +656,14 @@ lm_meanTimelag <- lm(DJL~ meanTimelag,DJL_follows)
 
 
 #### Testing significance of random effects
-lmer_numOfPoints <- lmer(DJL~rain_eve + walevel_eve + rain_mo + temp_min_eve + temp_min_mo + avg_temp_tot + ClassFocal + fai + ageOfCurrentOffspring +(1 | numOfPoints),DJL_follows_naomit_mother,REML=FALSE)
-lmer_meanTimelag <- lmer(DJL~rain_eve + walevel_eve + rain_mo + temp_min_eve + temp_min_mo + avg_temp_tot + ClassFocal + fai + ageOfCurrentOffspring +(1 | meanTimelag),DJL_follows_naomit_mother,REML=FALSE)
-lmer_monthYearDate <- lmer(DJL~rain_eve + walevel_eve + rain_mo + temp_min_eve + temp_min_mo + avg_temp_tot + ClassFocal + fai + ageOfCurrentOffspring +(1 | monthYearDate),DJL_follows_naomit_mother,REML=FALSE)
-lmer_focal <- lmer(DJL~rain_eve + walevel_eve + rain_mo + temp_min_eve + temp_min_mo + avg_temp_tot + ClassFocal + fai + ageOfCurrentOffspring +(1 | focal),DJL_follows_naomit_mother,REML=FALSE)
-lmer_focalInter <- lmer(DJL~rain_eve + walevel_eve + rain_mo + temp_min_eve + temp_min_mo + avg_temp_tot + ClassFocal + fai + ageOfCurrentOffspring +(1+ ClassFocal | focal),DJL_follows_naomit_mother,REML=FALSE)
-lm_selected <- lm(DJL~rain_eve + walevel_eve + rain_mo + temp_min_eve + temp_min_mo + avg_temp_tot + ClassFocal + fai + ageOfCurrentOffspring,DJL_follows_naomit_mother,REML=FALSE)
-anova(lmer_numOfPoints,lmer_focalInter,lmer_meanTimelag,lmer_monthYearDate,lmer_focal,lm_selected) ## two sequential tests
+lmer_numOfPoints <- lmer(DJL~rain_eve + walevel_eve + rain_mo + temp_min_eve + temp_min_mo + avg_temp_tot + fai + ageOfCurrentOffspring +(1 | numOfPoints),DJL_follows_naomit_mother,REML=FALSE)
+lmer_meanTimelag <- lmer(DJL~rain_eve + walevel_eve + rain_mo + temp_min_eve + temp_min_mo + avg_temp_tot  + fai + ageOfCurrentOffspring +(1 | meanTimelag),DJL_follows_naomit_mother,REML=FALSE)
+lmer_monthYearDate <- lmer(DJL~rain_eve + walevel_eve + rain_mo + temp_min_eve + temp_min_mo + avg_temp_tot 
+                           + fai + ageOfCurrentOffspring +(1 | monthYearDate),DJL_follows_naomit_mother,REML=FALSE)
+lmer_focal <- lmer(DJL~rain_eve + walevel_eve + rain_mo + temp_min_eve + temp_min_mo + avg_temp_tot  + fai + ageOfCurrentOffspring +(1 | focal),DJL_follows_naomit_mother,REML=FALSE)
+
+lm_selected <- lm(DJL~rain_eve + walevel_eve + rain_mo + temp_min_eve + temp_min_mo + avg_temp_tot  + fai + ageOfCurrentOffspring,DJL_follows_naomit_mother,REML=FALSE)
+anova(lmer_numOfPoints,lmer_meanTimelag,lmer_monthYearDate,lmer_focal,lm_selected) ## two sequential tests
 
 
 #### Testing full vs. empty model
@@ -671,9 +672,12 @@ glm_selected_ageInteraction <- lmer(DJL~rain_eve + walevel_eve + rain_mo + temp_
 glm_randomEffects <- lmer(DJL~ (1 | monthYearDate)+ (1 | meanTimelag),data=DJL_follows_naomit_mother)
 anova(glm_selected,glm_randomEffects)
 anova(glm_selected)
+coefs <- data.frame(coef(summary(glm_selected)))
+coefs$p.z <- 2 * (1 - pnorm(abs(coefs$t.value)))
+coefs
 
 ### Full model mit NA's
-glm_full <-lmer(DJL ~ rain_eve + walevel_eve + rain_mo + temp_min_eve + temp_min_mo + avg_temp_tot  + fai + ageOfCurrentOffspring + (1 | monthYearDate)
+glm_full <-lmer(DJL ~ rain_eve + walevel_eve + rain_mo + temp_min_eve + temp_min_mo + avg_temp_tot  + fai +ClassFocal+ ageOfCurrentOffspring + (1 | monthYearDate)
                     + (1 | meanTimelag), # random effects to correct for
   data = DJL_follows
   )
@@ -798,27 +802,25 @@ qqnorm(resid(glm_rainfall))
 
 ### Tortuosity: Rambling Ratios
 #### Random effects single glm
-DJL_follows_naomit_rr <- DJL_follows %>% ungroup() %>%  dplyr::select(RR,ageFromDOB,rain_eve, walevel_eve, rain_mo, temp_min_eve, temp_min_mo, avg_temp_tot, ClassFocal, fai, ageOfCurrentOffspring, monthYearDate,focal,meanTimelag,numOfPoints) %>% na.omit()
+DJL_follows_naomit_rr <- DJL_follows %>% ungroup() %>%  dplyr::select(RR,ageFromDOB,rain_eve, walevel_eve, rain_mo, temp_min_eve, temp_min_mo, avg_temp_tot, ClassFocal, fai, ageOfCurrentOffspring, monthYearDate,focal,meanTimelag,numOfPoints) %>% na.omit() # only mothers are considered because they have offspring
 
 
 #### Testing significance of random effects
-lmer_RR_numOfPoints <- lmer(RR~rain_eve + walevel_eve + rain_mo + temp_min_eve + temp_min_mo + avg_temp_tot + ClassFocal + fai + ageOfCurrentOffspring +(1 | numOfPoints),DJL_follows_naomit_rr,REML=FALSE)
+lmer_RR_numOfPoints <- lmer(RR~rain_eve + walevel_eve + rain_mo + temp_min_eve + temp_min_mo + avg_temp_tot  + fai + ageOfCurrentOffspring +(1 | numOfPoints),DJL_follows_naomit_rr,REML=FALSE)
 
-lmer_RR_meanTimelag <- lmer(RR~rain_eve + walevel_eve + rain_mo + temp_min_eve + temp_min_mo + avg_temp_tot + ClassFocal + fai + ageOfCurrentOffspring +(1 | meanTimelag),DJL_follows_naomit_rr,REML=FALSE)
+lmer_RR_meanTimelag <- lmer(RR~rain_eve + walevel_eve + rain_mo + temp_min_eve + temp_min_mo + avg_temp_tot  + fai + ageOfCurrentOffspring +(1 | meanTimelag),DJL_follows_naomit_rr,REML=FALSE)
 
-lmer_RR_monthYearDate <- lmer(RR~rain_eve + walevel_eve + rain_mo + temp_min_eve + temp_min_mo + avg_temp_tot + ClassFocal + fai + ageOfCurrentOffspring +(1 | monthYearDate),DJL_follows_naomit_rr,REML=FALSE)
+lmer_RR_monthYearDate <- lmer(RR~rain_eve + walevel_eve + rain_mo + temp_min_eve + temp_min_mo + avg_temp_tot + fai + ageOfCurrentOffspring +(1 | monthYearDate),DJL_follows_naomit_rr,REML=FALSE)
 
-lmer_RR_focal <- lmer(RR~rain_eve + walevel_eve + rain_mo + temp_min_eve + temp_min_mo + avg_temp_tot + ClassFocal + fai + ageOfCurrentOffspring +(1 | focal),DJL_follows_naomit_rr,REML=FALSE)
+lmer_RR_focal <- lmer(RR~rain_eve + walevel_eve + rain_mo + temp_min_eve + temp_min_mo + avg_temp_tot +  fai + ageOfCurrentOffspring +(1 | focal),DJL_follows_naomit_rr,REML=FALSE)
 
-lmer_RR_focalInter <- lmer(RR~rain_eve + walevel_eve + rain_mo + temp_min_eve + temp_min_mo + avg_temp_tot + ClassFocal + fai + ageOfCurrentOffspring +(1+ ClassFocal | focal),DJL_follows_naomit_rr,REML=FALSE)
+lm_RR_selected <- lm(RR~rain_eve + walevel_eve + rain_mo + temp_min_eve + temp_min_mo + avg_temp_tot +  fai + ageOfCurrentOffspring,DJL_follows_naomit_rr,REML=FALSE)
 
-lm_RR_selected <- lm(RR~rain_eve + walevel_eve + rain_mo + temp_min_eve + temp_min_mo + avg_temp_tot + ClassFocal + fai + ageOfCurrentOffspring,DJL_follows_naomit_rr,REML=FALSE)
-
-anova(lmer_RR_numOfPoints,lmer_RR_meanTimelag,lmer_RR_monthYearDate,lmer_RR_focal,lmer_RR_focalInter,lm_RR_selected) ## two sequential tests
+anova(lmer_RR_numOfPoints,lmer_RR_meanTimelag,lmer_RR_monthYearDate,lmer_RR_focal,lm_RR_selected) ## two sequential tests
 
 #### Testing full vs. empty model
-glm_RR_selected <- lmer(RR~rain_eve + walevel_eve + rain_mo + temp_min_eve + temp_min_mo + avg_temp_tot + ClassFocal + fai + ageOfCurrentOffspring+ageFromDOB +(1 | monthYearDate)+ (1 | meanTimelag),data=DJL_follows_naomit_rr)
-glm_RR_selected_ageInteraction <- lmer(RR~rain_eve + walevel_eve + rain_mo + temp_min_eve + temp_min_mo + avg_temp_tot + ClassFocal + fai + ageOfCurrentOffspring*ageFromDOB +(1 | monthYearDate)+ (1 | meanTimelag),data=DJL_follows_naomit_rr)
+glm_RR_selected <- lmer(RR~rain_eve + walevel_eve + rain_mo + temp_min_eve + temp_min_mo + avg_temp_tot +  fai + ageOfCurrentOffspring + ageFromDOB +(1 | monthYearDate)+ (1 | meanTimelag),data=DJL_follows_naomit_rr)
+glm_RR_selected_ageInteraction <- lmer(RR~rain_eve + walevel_eve + rain_mo + temp_min_eve + temp_min_mo + avg_temp_tot +  fai + ageOfCurrentOffspring*ageFromDOB +(1 | monthYearDate)+ (1 | meanTimelag),data=DJL_follows_naomit_rr)
 glm_RR_randomEffects <- lmer(RR~(1 | monthYearDate)+ (1 | meanTimelag),data=DJL_follows_naomit_rr)
 anova(glm_RR_selected,glm_RR_selected_ageInteraction,glm_RR_randomEffects)
 
@@ -833,7 +835,7 @@ vif.mer(glm_full)
 
 ##### Age of Focal
 DJL_follows_naomit_age <- DJL_follows %>% dplyr::select(ageFromDOB,DJL,rain_eve, walevel_eve, rain_mo, temp_min_eve, temp_min_mo, avg_temp_tot, ClassFocal, fai, ageOfCurrentOffspring, monthYearDate,focal,meanTimelag,numOfPoints,fruittreecount) %>% na.omit()
-glm_full_age <-lmer(DJL ~ fai+ ClassFocal + ageFromDOB  + ageOfCurrentOffspring +rain_eve + walevel_eve + rain_mo + temp_min_eve + temp_min_mo + avg_temp_tot  + (1 | monthYearDate)
+glm_full_age <-lmer(DJL ~ fai+  ageFromDOB  + ageOfCurrentOffspring +rain_eve + walevel_eve + rain_mo + temp_min_eve + temp_min_mo + avg_temp_tot  + (1 | monthYearDate)
                     + (1 | meanTimelag), # random effects to correct for
   data = DJL_follows_naomit_age
   )
@@ -843,7 +845,7 @@ glm_only_age <-lmer(DJL ~ ageFromDOB*ageOfCurrentOffspring + (1 | monthYearDate)
 glm_randomEffects <- lmer(DJL~(1 | monthYearDate)+ (1 | meanTimelag),data=DJL_follows_naomit_age)
 
 anova(glm_full_age)
-anova(glm_only_age,glm_randomEffects)
+anova(glm_full_age,glm_only_age,glm_randomEffects)
 
 ##### Create P values for lm
 coefs <- data.frame(coef(summary(glm_full)))
@@ -869,20 +871,21 @@ vif.mer(glm_full)
 
 
 ### Analysing explanation of how many fruit trees are visited and RR of only fruit tree route
-### Full model mit NA's
+### FRUITTREECOUNT: Full model mit NA's
+DJL_follows_naomit_trees <- DJL_follows %>% dplyr::select(ageFromDOB,tree_RR,tree_DJL,rain_eve, walevel_eve, rain_mo, temp_min_eve, temp_min_mo, avg_temp_tot, ClassFocal, fai, ageOfCurrentOffspring, monthYearDate,focal,meanTimelag,numOfPoints,fruittreecount) %>% na.omit()
 
-glm_full_fruittrees <-lmer(fruittreecount ~ rain_eve + walevel_eve + rain_mo + temp_min_eve + temp_min_mo + avg_temp_tot  + fai + ageFromDOB  + (1 | monthYearDate)
+glm_full_fruittrees <-lmer(fruittreecount ~ rain_eve + walevel_eve + rain_mo + temp_min_eve + temp_min_mo + avg_temp_tot  + fai + ageFromDOB+ageOfCurrentOffspring  + (1 | monthYearDate)
                     + (1 | meanTimelag), # random effects to correct for
-  data = DJL_follows_naomit_age
+  data = DJL_follows_naomit_trees
   )
 glm_significant_fruittrees <-lmer(fruittreecount ~ avg_temp_tot + ageFromDOB  + (1 | monthYearDate)
                     + (1 | meanTimelag), # random effects to correct for
-  data = DJL_follows_naomit_age
+  data = DJL_follows_naomit_trees
   )
-glm_randomeffects_fruittrees <- lmer(fruittreecount~(1 | monthYearDate)+ (1 | meanTimelag),data=DJL_follows_naomit_age)
+glm_randomeffects_fruittrees <- lmer(fruittreecount~(1 | monthYearDate)+ (1 | meanTimelag),data=DJL_follows_naomit_trees)
 
-anova(glm_significant_fruittrees,glm_randomeffects_fruittrees)
-drop1(glm_significant_fruittrees)
+anova(glm_full_fruittrees,glm_significant_fruittrees,glm_randomeffects_fruittrees)
+drop1(glm_full_fruittrees)
 vif.mer(glm_full_fruittrees)
 
 ##### Create P values for lm
@@ -891,7 +894,43 @@ coefs <- data.frame(coef(summary(glm_full_fruittrees)))
 coefs$p.z <- 2 * (1 - pnorm(abs(coefs$t.value)))
 coefs
 
+### TREE - DJL: Analysing explanation of how many fruit trees are visited and RR of only fruit tree route
+### Full model mit NA's
 
+glm_full_DJLtree <-lmer(tree_DJL ~ rain_eve + walevel_eve + rain_mo + temp_min_eve + temp_min_mo + avg_temp_tot  + fai + ageFromDOB+ageOfCurrentOffspring  + (1 | monthYearDate)
+                    + (1 | meanTimelag), # random effects to correct for
+  data = DJL_follows_naomit_trees
+  )
+glm_randomeffects_DJLtree <- lmer(tree_DJL~(1 | monthYearDate)+ (1 | meanTimelag),data=DJL_follows_naomit_trees)
+
+anova(glm_full_DJLtree,glm_significant_DJLtree,glm_randomeffects_DJLtree)
+drop1(glm_full_DJLtree)
+vif.mer(glm_full_DJLtree)
+
+##### Create P values for lm
+coefs <- data.frame(coef(summary(glm_full_DJLtree)))
+# use normal distribution to approximate p-value
+coefs$p.z <- 2 * (1 - pnorm(abs(coefs$t.value)))
+coefs
+
+### TREE - RR: Analysing explanation of how many fruit trees are visited and RR of only fruit tree route
+### Full model mit NA's
+
+glm_full_RRtree <-lmer(tree_RR ~ rain_eve + walevel_eve + rain_mo + temp_min_eve + temp_min_mo + avg_temp_tot  + fai + ageFromDOB+ageOfCurrentOffspring  + (1 | monthYearDate)
+                    + (1 | meanTimelag), # random effects to correct for
+  data = DJL_follows_naomit_trees
+  )
+glm_randomeffects_RRtree <- lmer(tree_RR~(1 | monthYearDate)+ (1 | meanTimelag),data=DJL_follows_naomit_trees)
+
+anova(glm_full_RRtree,glm_randomeffects_RRtree)
+drop1(glm_full_RRtree)
+vif.mer(glm_full_RRtree)
+
+##### Create P values for lm
+coefs <- data.frame(coef(summary(glm_full_RRtree)))
+# use normal distribution to approximate p-value
+coefs$p.z <- 2 * (1 - pnorm(abs(coefs$t.value)))
+coefs
 
 ```
 
@@ -1476,6 +1515,22 @@ plot_weather_AvgMintemp<-SUAQ_fai %>%
   scale_fill_gradient(low="mintcream", high="deeppink3",na.value = NA) +
   labs(title = "Average minimum temperature",x="",y="") + labs(fill='temperature [C°]')+
     theme(axis.text.x = element_text(angle = 45, vjust = 0.7))
+
+##### Visualization of FAI ######
+SUAQ_fai <- SUAQ_fai %>% mutate(SUAQ_fai.fai=if_else((SUAQ_fai.year==2011)&(SUAQ_fai.monthnum==10),0.0,as.double(SUAQ_fai.fai)))
+plot_FAI<-SUAQ_fai %>% 
+  mutate(SUAQ_fai.month = fct_relevel(SUAQ_fai.month, 
+            "January", "February", "March", 
+            "April", "May", "June", 
+            "July", "August", "September", "October","November", "December")) %>% 
+  ggplot()+
+  geom_tile(aes(as.factor(SUAQ_fai.month), as.factor(SUAQ_fai.year), fill= SUAQ_fai$SUAQ_fai.fai))+
+  scale_fill_distiller() +
+  theme_ipsum() +
+  scale_fill_gradient(low="mintcream", high="chartreuse4",na.value = NA) +
+  labs(title = "Fruit availability index",x="",y="") + labs(fill='FAI')+
+    theme(axis.text.x = element_text(angle = 45, vjust = 0.7))
+plot_FAI
 
 
 ```
