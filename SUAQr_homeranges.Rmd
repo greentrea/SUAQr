@@ -171,14 +171,33 @@ setwd("/Users/stefgr/Nextcloud/UZH/12_Semester/20200313_Masterthesis/R/")
 
 ### Load Project variables ### 
 ##### waypoints ##### "data/Processed_data/SUAQ_waypoints_11all20.csv"
-SUAQ_waypoints_11all20_loc <- read_csv(paste0("data/Processed_data/",str_remove_all(Sys.Date()-1, "-"),"_SUAQ_waypoints_11all20.csv"))
+##### ATTENTION: read_csv guesses a columns type as boolean if first 1200 entries are NA
+SUAQ_waypoints_11all20_loc <-
+  read_csv(paste0("data/Processed_data/",str_remove_all(Sys.Date(), "-"),"_SUAQ_waypoints_11all20.csv"),guess_max = min(10000, 30000))
 SUAQ_waypoints_11all20_loc <- SUAQ_waypoints_11all20_loc %>% mutate(monthYearDate=format(as.Date(manualDate), "%Y-%m"))
 SUAQ_waypoints_11all20_loc <- SUAQ_waypoints_11all20_loc %>% mutate(automaticDatetime=with_tz(automaticDatetime,tz = "Asia/Pontianak"))
 SUAQ_waypoints_11all20_loc <- SUAQ_waypoints_11all20_loc %>% mutate(manualDatetime=with_tz(manualDatetime,tz = "Asia/Pontianak"))
 
-SUAQ_waypoints_11all20_loc_test <- SUAQ_waypoints_11all20_loc %>% filter(focal!=SUAQ_followlog.FocalName)
-SUAQ_waypoints_11all20_loc_test2 <- SUAQ_waypoints_11all20_loc %>% filter((ClassFocal!="mother")&!is.na(ageOfCurrentOffspring))
 
+
+#### add party individuals as individual gps points.
+SUAQ_waypoints_11all20_loc_party <- SUAQ_waypoints_11all20_loc %>% filter(PtType%in%c("party"))
+
+SUAQ_waypoints_11all20_loc_party1 <- SUAQ_waypoints_11all20_loc_party %>% 
+  dplyr::select(altitude,name_original,sym,fileN,gpsextraction,gpsextractionquality,filedate,followername,manualDatetime, manualTime, manualDate, automaticDatetime, automaticTime,automaticDate,PtType,E,N,AgeSex,follow,PtType_individual_1) %>% filter(!is.na(PtType_individual_1)) %>%  mutate(focal=PtType_individual_1) %>% dplyr::select(-PtType_individual_1) 
+
+SUAQ_waypoints_11all20_loc_party2 <- SUAQ_waypoints_11all20_loc_party %>% 
+  dplyr::select(altitude,name_original,sym,fileN,gpsextraction,gpsextractionquality,filedate,followername,manualDatetime, manualTime, manualDate, automaticDatetime, automaticTime,automaticDate,PtType,E,N,AgeSex,follow,PtType_individual_2) %>% filter(!is.na(PtType_individual_2)) %>%  mutate(focal=PtType_individual_2) %>% dplyr::select(-PtType_individual_2) 
+
+#### Combine datasets if for one follow there is an individual at party1 and at party2 position (f.e. if maybe at the first party point another individual was present but at the second on the same follow not) its still gets one new follownumber.
+SUAQ_waypoints_11all20_loc_party <- SUAQ_waypoints_11all20_loc_party1 %>% bind_rows(SUAQ_waypoints_11all20_loc_party2)
+
+SUAQ_waypoints_11all20_loc_party <- SUAQ_waypoints_11all20_loc_party%>% 
+  group_by(fileN,focal,manualDate,follow) %>% # if .$follow it can be modified later idk why with only "follow" it doesnt work
+  mutate(follow = as.numeric(cur_group_id()+1110000)) ## adding FN above 11
+
+SUAQ_waypoints_11all20_loc <- SUAQ_waypoints_11all20_loc %>% 
+  bind_rows(SUAQ_waypoints_11all20_loc_party)
 
 ##### Weather and FAI #####
 SUAQ_weather <- read_csv("data/Processed_data/SUAQ_weather.csv")
@@ -259,6 +278,11 @@ SUAQ_rangepoints_11all20_loc_females_10 <-
       "tiara"
     )
   )%>% ungroup()
+```
+
+Homerange sizes:
+
+```{r CTMM - HR size online,echo=FALSE, message=FALSE,comment=FALSE, warning=FALSE}
 
 ##### Save Dataset for CTMM online f.e.
 SUAQ_rangepoints_11all20_loc_females12_wgs <- SUAQ_rangepoints_11all20_loc_wgs[order(SUAQ_rangepoints_11all20_loc_wgs$focal,SUAQ_rangepoints_11all20_loc_wgs$manualDatetime , decreasing = TRUE ),] %>% rename(
@@ -288,7 +312,7 @@ write_csv(SUAQ_rangepoints_11all20_loc_females6_wgs, path = paste(
 
 ```
 ### Analysis
-```{r MCP - HR sizes  Loader,echo=FALSE, message=FALSE,comment=FALSE, warning=FALSE}
+```{r MCP - HR sizes ,echo=FALSE, message=FALSE,comment=FALSE, warning=FALSE}
 ### Create MCP with percentage #### 
 SUAQ_rangepoints_11all20_loc_females_more50GPS.sp<- SUAQ_rangepoints_11all20_loc_females_10 %>% 
 dplyr::select(focal,E,N) 
@@ -336,7 +360,7 @@ all_flatten %>% ggplot()+geom_path(aes(x=points,X50.,colour=focal,linetype=Sex))
   geom_path(aes(x=points,X100.,colour=focal,linetype=Sex,alpha=0.5))
 ```
 
-```{r KDE - HR sizes  Loader,echo=FALSE, message=FALSE,comment=FALSE, warning=FALSE}
+```{r KDE - parametrization,echo=FALSE, message=FALSE,comment=FALSE, warning=FALSE}
 ##### Determine the smoothing parameters
 selected_females <- SUAQ_rangepoints_11all20_loc_females_10 %>% group_by(focal) %>% summarise()
 selected_females <- as_vector(selected_females)
@@ -359,6 +383,22 @@ for (i in selected_females){
   iterator <- iterator+1
 }
 rownames(bandwiths) <- c(1:10)
+
+write_csv(bandwiths, path = paste(
+  paste(
+    "/Users/stefgr/Nextcloud/UZH/12_Semester/20200313_Masterthesis/R/data/Processed_data/",
+    format(Sys.Date(), "%Y%m%d"),
+    "_KDE_bandwiths",
+    sep = ""
+  ),
+  "csv",
+  sep = "."
+))
+```
+
+```{r KDE - HR sizes,echo=FALSE, message=FALSE,comment=FALSE, warning=FALSE}
+bandwiths <- read_csv(paste0("data/Processed_data/",str_remove_all(Sys.Date(), "-"),"_KDE_bandwiths.csv"))
+
 
 ### KDE: Calculate UD, HR
 iterator <- 1
@@ -612,3 +652,164 @@ rownames(kde) <- c(1:10)
 kde95_bootstrap_long %>%  ggplot(aes(`subset %`,`HR [km2]`,colour=focal)) + geom_point(size=0.3)+geom_jitter(size=0.3)
 rownames(kde) <- c(1:10)
 ```
+
+```{r KDE - per-researchperiods - HR sizes,echo=FALSE, message=FALSE,comment=FALSE, warning=FALSE}
+# Split the data into 4 sampling periods. Calculate the respective HR.
+
+mt_list = split(SUAQ_rangepoints_11all20_loc_females_10, f = SUAQ_rangepoints_11all20_loc_females_10$cyl)
+
+for (samplinginterval in c(1:4)){}
+##### Determine the smoothing parameters
+selected_females <- SUAQ_rangepoints_11all20_loc_females_10 %>% group_by(focal) %>% summarise()
+selected_females <- as_vector(selected_females)
+
+bandwiths <-  data.frame(focal=as_vector(selected_females),
+                 hpi=vector(mode="numeric", length=10),hbcv=vector(mode="numeric", length=10),hscv=vector(mode="numeric", length=10),
+                 stringsAsFactors=FALSE)
+iterator <- 1
+for (i in selected_females){
+  xy_selected <- SUAQ_rangepoints_11all20_loc_females_10 %>% filter(focal%in%c(i)) %>% dplyr::select(E,N)
+  colnames(xy_selected) <- c("x","y") #adjust column names
+  hpi <- sqrt(prod(sqrt(diag(Hpi.diag(xy_selected[,1:2], nstage=2))))) # using diagonal bandwith not full bandwith? why?
+  hbcv <- sqrt(prod(sqrt(diag(Hbcv.diag(xy_selected[,1:2], whichbcv=1)))))
+  hscv <- sqrt(prod(sqrt(diag(Hscv.diag(xy_selected[,1:2], nstage=2)))))
+  bandwiths[iterator,"focal"] <- i
+  bandwiths[iterator,"hpi"] <- as.numeric(hpi)
+  bandwiths[iterator,"hbcv"] <- as.numeric(hbcv)
+  bandwiths[iterator,"hscv"] <- as.numeric(hscv)
+
+  iterator <- iterator+1
+}
+rownames(bandwiths) <- c(1:10)
+
+### KDE: Calculate UD, HR
+iterator <- 1
+for (i in selected_females){ # compute KDE home range for every individual
+  xy_selected <- SUAQ_rangepoints_11all20_loc_females_10 %>% filter(focal%in%c(i)) %>% dplyr::select(E,N)
+  colnames(xy_selected) <- c("x","y") #adjust column names
+  resultList <- list()
+  methListTitle <- list("REF", "PI", "BCV", "SCV")
+  methList <- list("HREF", "HPI", "HBCV", "HSCV")
+  
+  xy_selected <- SpatialPoints(xy_selected,proj4string = CRS( "+proj=utm +zone=47 +datum=WGS84 +units=m +no_defs" )) # Converts SpatialPointDataFrame to SpatialPoint (only x & y)
+  
+  extVal <- 0.3 #0.3 How much bigger the UD should be calculated than the research are (minimum bounding box). The higher the more Computation
+  gridVal <- 800 #700 How much cells or pixels should be considered for UD calculation. The higher the more Computation
+  
+  for (j in seq(1, length(methList))) { # compute one home range for each bandwidth method and individual
+    if (j == 1) {
+      UD <- (kernelUD(xy_selected, grid=gridVal, extent=extVal, h="href"))
+    }
+    else if (j == 2) {
+      UD <- (kernelUD(xy_selected, grid=gridVal, extent=extVal, h=bandwiths[iterator,"hpi"]))
+    }
+    else if (j == 3) {
+      UD <- (kernelUD(xy_selected, grid=gridVal, extent=extVal, h=bandwiths[iterator,"hbcv"]))
+    }
+    else if (j == 4) {
+      UD <- (kernelUD(xy_selected, grid=gridVal, extent=extVal, h=bandwiths[iterator,"hscv"])) 
+    }
+    else {
+      print("Error")
+    }
+    
+    hr95 <- getverticeshr(UD, percent=95,unin = c("m"),unout = c("km2"))
+    hr50 <- getverticeshr(UD, percent=50,unin = c("m"),unout = c("km2"))
+    
+    ########## plot results ##########
+    imdir <- paste("output/Homeranges/KDE", "/", sep="")
+    imdirUD <- paste("output/Homeranges/KDE/plots/UD", "/", sep="")
+    
+    png(paste(imdirUD, selected_females[[iterator]], "_KDE_UD_", methList[[j]], ".png", sep=""), width=900, height=700, res=120, units="px")
+    image(UD, xlab="x [m]")
+    par(mar=c(5.1,1,4.1,1))
+    step <- 500
+    xmin <- min(UD@coords[,1]); xmax <- max(UD@coords[,1])
+    ymin <- min(UD@coords[,2]); ymax <- max(UD@coords[,2])
+    yaxpos <- step*round(xmin/step)-step/5
+    plot(hr50, lty=4, lwd=1, border="azure4", add=T,axes=F)
+    plot(hr95, lty=1, lwd=0.6, border="cadetblue2", add=T, axes=F)
+    axis(1, at=c(step*(ceiling(xmin/step)):(round(xmax/step))))
+    axis(2, at=c(step*(round(ymin/step)):(round(ymax/step))), pos=xmin-10)
+    text(xmin-10, ymin+(ymax-ymin)/2, "y [m]", adj=c(NA,-4), srt=90)
+    title(paste(selected_females[[iterator]], ": KDE ", "(", methListTitle[[j]], ")", sep=""), line=-0.3)
+    legend("topright", c("HR 50%", "HR 95%"), col=c("black", "blue"), lwd=c(1,0.6), lty=c(4,1), inset=c(0.14,0.06))
+    dev.off()
+
+    png(paste(imdir, selected_females[[iterator]], "_KDE_VUD_", methList[[j]], ".png", sep=""), width=900, height=700, res=120, units="px")
+    image(getvolumeUD(UD), xlab="x [m]")
+    par(mar=c(5.1,1,4.1,1))
+    step <- 500
+    xmin <- min(UD@coords[,1]); xmax <- max(UD@coords[,1])
+    ymin <- min(UD@coords[,2]); ymax <- max(UD@coords[,2])
+    yaxpos <- step*round(xmin/step)-step/5
+    plot(hr50, lty=4, lwd=1, border="azure4", add=T,axes=F)
+    plot(hr95, lty=1, lwd=0.6, border="cadetblue2", add=T, axes=F)
+    axis(1, at=c(step*(ceiling(xmin/step)):(round(xmax/step))))
+    axis(2, at=c(step*(round(ymin/step)):(round(ymax/step))), pos=xmin-10)
+    text(xmin-10, ymin+(ymax-ymin)/2, "y [m]", adj=c(NA,-4), srt=90)
+    title(paste(selected_females[[iterator]], ": KDE ", "(", methListTitle[[j]], ")", sep=""), line=-0.3)
+    legend("topright", c("HR 50%", "HR 95%"), col=c("azure4", "cadetblue2"), lwd=c(1,0.6), lty=c(4,1), inset=c(0.14,0.06))
+    dev.off()
+    
+    ########## export results #########
+    resultList <- list(hr50=hr50, hr95=hr95, UD=UD)
+    assign(methList[[j]], resultList) #resultList is renamed according to the ith element of methList
+  }
+  animRes <- list(HREF=HREF, HPI=HPI, HBCV=HBCV, HSCV=HSCV)
+  assign(selected_females[[iterator]], animRes) # is renamed according to the ith element of animList
+  print(paste(selected_females[[iterator]], ": Calculation finished", sep=""))
+  
+  iterator <- iterator+1
+}
+kde <- data.frame(focal=as_vector(selected_females),
+                 HREF_hr50area=vector(mode="numeric", length=10),
+                 HREF_hr95area=vector(mode="numeric", length=10),
+                 HPI_hr50area=vector(mode="numeric", length=10),
+                 HPI_hr95area=vector(mode="numeric", length=10),
+                 HBCV_hr50area=vector(mode="numeric", length=10),
+                 HBCV_hr95area=vector(mode="numeric", length=10),
+                 HSCV_hr50area=vector(mode="numeric", length=10),
+                 HSCV_hr95area=vector(mode="numeric", length=10),
+                 stringsAsFactors=FALSE)
+kde_list <- list(lisa=lisa,
+      friska=friska,
+      ellie=ellie,
+      cissy=cissy,
+      lilly=lilly,
+      yulia=yulia,
+      raffi=raffi,
+      sarabi=sarabi,
+      trident=trident,
+      tiara=tiara)
+iterator <- 1
+for(i in as_vector(selected_females)){
+  kde[iterator,"HREF_hr50area"] <-  kde_list[[i]]$HREF$hr50$area
+  kde[iterator,"HREF_hr95area"] <- kde_list[[i]]$HREF$hr95$area
+  kde[iterator,"HPI_hr50area"] <-kde_list[[i]]$HPI$hr50$area
+  kde[iterator,"HPI_hr95area"] <- kde_list[[i]]$HPI$hr95$area
+  kde[iterator,"HBCV_hr50area"] <-  kde_list[[i]]$HBCV$hr50$area
+  kde[iterator,"HBCV_hr95area"] <-  kde_list[[i]]$HBCV$hr95$area
+  kde[iterator,"HSCV_hr50area"] <-  kde_list[[i]]$HSCV$hr50$area
+  kde[iterator,"HSCV_hr95area"] <-  kde_list[[i]]$HSCV$hr95$area
+  iterator <- iterator+1
+}
+rownames(kde) <- c(1:10)
+
+
+```
+
+```{r LoCoH - HR sizes,echo=FALSE, message=FALSE,comment=FALSE, warning=FALSE}
+
+```
+
+
+```{r dBBMM - HR sizes,echo=FALSE, message=FALSE,comment=FALSE, warning=FALSE}
+
+```
+
+```{r dBBMM - HR sizes,echo=FALSE, message=FALSE,comment=FALSE, warning=FALSE}
+
+```
+
+Homerange Overlap:

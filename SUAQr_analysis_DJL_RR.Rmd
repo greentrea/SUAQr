@@ -29,7 +29,8 @@ packages_checker <- function(packages_list){
   }
 }
 packages_checker(
-  c('ctmm',
+  c('viridis', # function pal
+    'ctmm',
     'tmaptools',# read_gpx function
     'plotKML',# read GPX to dataframe
     'lubridate',
@@ -214,7 +215,7 @@ setwd("/Users/stefgr/Nextcloud/UZH/12_Semester/20200313_Masterthesis/R/")
 
 ### Load Project variables ### 
 ##### waypoints ##### "data/Processed_data/SUAQ_waypoints_11all20.csv"
-SUAQ_waypoints_11all20_loc <- read_csv(paste0("data/Processed_data/",str_remove_all(Sys.Date()-1, "-"),"_SUAQ_waypoints_11all20.csv"))
+SUAQ_waypoints_11all20_loc <- read_csv(paste0("data/Processed_data/",str_remove_all(Sys.Date(), "-"),"_SUAQ_waypoints_11all20.csv"),guess_max = min(10000, 30000))
 SUAQ_waypoints_11all20_loc <- SUAQ_waypoints_11all20_loc %>% mutate(monthYearDate=format(as.Date(manualDate), "%Y-%m"))
 SUAQ_waypoints_11all20_loc <- SUAQ_waypoints_11all20_loc %>% mutate(automaticDatetime=with_tz(automaticDatetime,tz = "Asia/Pontianak"))
 SUAQ_waypoints_11all20_loc <- SUAQ_waypoints_11all20_loc %>% mutate(manualDatetime=with_tz(manualDatetime,tz = "Asia/Pontianak"))
@@ -232,9 +233,15 @@ SUAQ_weather_monthly<-SUAQ_weather %>%
   summarise_all(funs(mean))
 SUAQ_weather_monthly<- SUAQ_weather_monthly%>% dplyr::select(-SUAQ_weather.weather_id,-SUAQ_weather.day,-SUAQ_weather.daymonthyear)
 
+##### path network ##### 
+SUAQ_pathnetwork<- as.data.frame(read_GPX(file="data/SUAQ_Peta_WithLines.GPX",layers = c("routes")))
+colnames(SUAQ_pathnetwork)[15]<- "geometry"
+SUAQ_pathnetwork_sf_wgs<- st_as_sf(SUAQ_pathnetwork,crs=4326)
+
 ##### location network ##### 
-SUAQ_locationnetwork_sf <- st_read("data/20201201_StudyBalimbingStudyArea_points.GPX")
-SUAQ_locationnetwork_sf_loc <- st_transform(SUAQ_locationnetwork_sf,crs = 32647)
+SUAQ_locationnetwork_sf_wgs <- st_read("data/20201201_StudyBalimbingStudyArea_points.GPX")
+SUAQ_locationnetwork_sf_loc <- st_transform(SUAQ_locationnetwork_sf_wgs,crs = 32647)
+
 ##### for locale coordinate system
 coordinates_tmp <- st_coordinates(SUAQ_locationnetwork_sf_loc)
 colnames(coordinates_tmp) <- c("E","N")
@@ -269,17 +276,17 @@ SUAQ_rangepoints_11all20_loc<- SUAQ_rangepoints_11all20_loc %>%
 SUAQ_rangepoints_11all20_loc_sf <-  st_as_sf(SUAQ_rangepoints_11all20_loc, 
                           coords = c("E","N"), 
                           crs = 32647) # can also do that in the new sricpts
-SUAQ_rangepoints_11all20_loc_wgs <- st_transform(SUAQ_rangepoints_11all20_loc_sf,4326)
-coordinates_tmp <- st_coordinates(SUAQ_rangepoints_11all20_loc_wgs)
+SUAQ_rangepoints_11all20_loc_sf_wgs <- st_transform(SUAQ_rangepoints_11all20_loc_sf,4326)
+coordinates_tmp <- st_coordinates(SUAQ_rangepoints_11all20_loc_sf_wgs)
 colnames(coordinates_tmp) <- c("long","lat")
-SUAQ_rangepoints_11all20_loc_wgs <- cbind(SUAQ_rangepoints_11all20_loc_wgs,coordinates_tmp)
+SUAQ_rangepoints_11all20_loc_wgs <- cbind(SUAQ_rangepoints_11all20_loc_sf_wgs,coordinates_tmp)
 SUAQ_rangepoints_11all20_loc_wgs<- st_drop_geometry(SUAQ_rangepoints_11all20_loc_wgs)
 
 
 ##### Selection only females / most tracked females ##### 
 SUAQ_rangepoints_11all20_loc_females <-
   SUAQ_rangepoints_11all20_loc %>%   filter(!(SUAQ_orangutans.Sex == "male"))
-SUAQ_rangepoints_11all20_loc_females_10 <-
+SUAQ_rangepoints_11all20_loc_females_12 <-
   SUAQ_rangepoints_11all20_loc %>%   filter(!(SUAQ_orangutans.Sex == "male")) %>% filter(
     focal %in% c(
       "lisa",
@@ -435,7 +442,7 @@ DJL_follows <- DJL_follows %>%
 
 ```{r visuals of DJL and explanatory variables ,echo=FALSE, message=FALSE,comment=FALSE, warning=FALSE}
 ##### Plot female DJL
-DJL_follows_females_10<- SUAQ_rangepoints_11all20_loc_females_10 %>% 
+DJL_follows_females_10<- SUAQ_rangepoints_11all20_loc_females_12 %>% 
   filter(followtype=="NN") %>% 
   group_by(follow,focal,SUAQ_followlog.ClassFocal) %>% 
   summarise(DJL=sum(as.numeric(manual_distTolast), na.rm = TRUE),count=n()) %>% 
@@ -585,8 +592,33 @@ ggsave(filename = paste(
 
 ##### Plot all
 
-plot_Allscatter <- DJL_follows %>% ungroup() %>% dplyr::select(follow, ageFromDOB, turningAngleSum, ClassFocal, rain_eve, watlevel_mo, walevel_eve, rain_mo, avg_temp_tot, max_temp_average, min_temp_average, temp_max_mo,temp_min_mo, fai, ageOfCurrentOffspring, DJL, RR)
-plot_Allscatter<- plot_Allscatter%>% GGally::ggpairs(echo=FALSE, message=FALSE)
+plot_Allscatter <-
+  DJL_follows %>% ungroup() %>% dplyr::select(
+    follow,
+    ageFromDOB,
+    turningAngleSum,
+    ClassFocal,
+    watlevel_mo,
+    walevel_eve,
+    rain_mo,
+    rain_eve,
+    avg_temp_tot,
+    max_temp_average,
+    min_temp_average,
+    temp_max_mo,
+    temp_min_mo,
+    temp_max_eve,
+    temp_min_eve,
+    fai,
+    ageOfCurrentOffspring,
+    DJL,
+    TDD,
+    RR,
+    fruittreecount,
+    tree_DJL,
+    tree_RR)
+
+plot_Allscatter<- plot_Allscatter%>% GGally::ggpairs(echo=FALSE, message=FALSE, cardinality_threshold = 62)
 
 ggsave(filename = paste(
   paste(
@@ -621,6 +653,7 @@ ggsave(filename = paste(
 ```
 
 ```{r tree food sources analysis: }
+#### On ggplot
 plotly_treeAll <- SUAQ_rangepoints_11all20_loc[order(SUAQ_rangepoints_11all20_loc$manualDatetime , decreasing = TRUE ),] %>%
   filter(PtType=="tree") %>% 
   ggplot()+
@@ -628,6 +661,25 @@ plotly_treeAll <- SUAQ_rangepoints_11all20_loc[order(SUAQ_rangepoints_11all20_lo
   #geom_point(data = temp_duplicates,aes(E,N,fill=as.factor(follow)),size=2)+
   #geom_path(aes(E,N,color=as.factor(follow)), alpha = 0.7,size=0.5)
 ggplotly(plotly_treeAll)
+
+#### On a leaflet
+
+SUAQ_rangepoints_11all20_loc_sf_wgs_treesonly<- SUAQ_rangepoints_11all20_loc_sf_wgs[order(SUAQ_rangepoints_11all20_loc_sf_wgs$manualDatetime , decreasing = TRUE ),] %>% filter(PtType=="tree") 
+pal_pttype <- colorFactor(get_palette(palette = "default", 7), domain = SUAQ_rangepoints_11all20_loc_sf_wgs$PtType)
+pal_focal <- colorFactor(get_palette(palette = "default", 109), domain = SUAQ_rangepoints_11all20_loc_sf_wgs_treesonly$focal)
+
+leaflet_SUAQ_all_tree<- leaflet(data = st_transform(SUAQ_rangepoints_11all20_loc_sf_wgs_treesonly, crs = 4326)) %>% 
+  addProviderTiles(providers$Esri.WorldImagery) %>% 
+  addCircleMarkers(color = ~pal_focal(SUAQ_rangepoints_11all20_loc_sf_wgs_treesonly$focal),
+                   fillOpacity = 1,
+                   radius = 0.6,
+                   opacity = 1) %>%
+  addPolylines(weight = 1,
+  opacity = 0.5,
+    data = SUAQ_pathnetwork_sf_wgs
+  ) 
+
+leaflet_SUAQ_all_tree
 
 
 ```
@@ -677,11 +729,20 @@ coefs$p.z <- 2 * (1 - pnorm(abs(coefs$t.value)))
 coefs
 
 ### Full model mit NA's
-glm_full <-lmer(DJL ~ rain_eve + walevel_eve + rain_mo + temp_min_eve + temp_min_mo + avg_temp_tot  + fai +ClassFocal+ ageOfCurrentOffspring + (1 | monthYearDate)
+DJL_follows_naomit_full<- DJL_follows %>% dplyr::select(ageFromDOB,DJL,rain_eve, walevel_eve, rain_mo, temp_min_eve, temp_min_mo, avg_temp_tot, ClassFocal, fai, monthYearDate,focal,meanTimelag,numOfPoints,fruittreecount) %>% na.omit()
+glm_full <-lmer(DJL ~ rain_eve + walevel_eve + rain_mo + temp_min_eve + temp_min_mo + avg_temp_tot  + fai + ClassFocal + ageFromDOB+  (1 | monthYearDate)
                     + (1 | meanTimelag), # random effects to correct for
-  data = DJL_follows
+  data = DJL_follows_naomit_full
   )
-anova(glm_full)
+glm_full_plusfruittreecount <-lmer(DJL ~ rain_eve + walevel_eve + rain_mo + temp_min_eve + temp_min_mo + avg_temp_tot  + fai +ClassFocal + ageFromDOB+ fruittreecount + (1 | monthYearDate)
+                    + (1 | meanTimelag), # random effects to correct for
+  data = DJL_follows_naomit_full
+  )
+glm_full_randomeffects <-lmer(DJL ~ (1 | monthYearDate)
+                    + (1 | meanTimelag), # random effects to correct for
+  data = DJL_follows_naomit_full
+  )
+anova(glm_full,glm_full_randomeffects)
 drop1(glm_full)
 vif.mer(glm_full)
 
@@ -709,11 +770,11 @@ anova(glm_only_age,glm_randomEffects)
 
 
 ### Stepwise selection
-data<-na.omit(DJL_follows)
+DJL_follows_naomit_step <- DJL_follows %>% dplyr::select(ageFromDOB,DJL,rain_eve, walevel_eve,watlevel_mo,max_temp_average,min_temp_average,temp_max_mo, rain_mo, temp_min_eve, temp_min_mo, avg_temp_tot, ClassFocal, fai, monthYearDate,focal,meanTimelag,numOfPoints,fruittreecount) %>% na.omit()
 glm_step <-lmer(DJL ~ rain_eve + rain_mo + watlevel_mo + walevel_eve + max_temp_average + min_temp_average 
-                    +temp_max_mo+temp_min_mo+avg_temp_tot + ClassFocal + fai +ageOfCurrentOffspring + (1 | monthYearDate)
+                    +temp_max_mo+temp_min_mo+avg_temp_tot + ClassFocal + fai  +fruittreecount+ (1 | monthYearDate)
                     + (1 | focal) + (1 | meanTimelag), # random effects to correct for
-  data = data
+  data = DJL_follows_naomit_step
   )
 
 ranova(glm_step)
@@ -871,18 +932,80 @@ vif.mer(glm_full)
 
 
 ### Analysing explanation of how many fruit trees are visited and RR of only fruit tree route
-### FRUITTREECOUNT: Full model mit NA's
-DJL_follows_naomit_trees <- DJL_follows %>% dplyr::select(ageFromDOB,tree_RR,tree_DJL,rain_eve, walevel_eve, rain_mo, temp_min_eve, temp_min_mo, avg_temp_tot, ClassFocal, fai, ageOfCurrentOffspring, monthYearDate,focal,meanTimelag,numOfPoints,fruittreecount) %>% na.omit()
+#### FRUITTREECOUNT: Female model ohne NA's in CurrentOffspring
+DJL_follows_females_trees <- DJL_follows %>% dplyr::select(ageFromDOB,tree_RR,tree_DJL,rain_eve, walevel_eve, rain_mo, temp_min_eve, temp_min_mo, avg_temp_tot, ClassFocal, fai, ageOfCurrentOffspring, monthYearDate,focal,meanTimelag,numOfPoints,fruittreecount) %>% na.omit()
 
-glm_full_fruittrees <-lmer(fruittreecount ~ rain_eve + walevel_eve + rain_mo + temp_min_eve + temp_min_mo + avg_temp_tot  + fai + ageFromDOB+ageOfCurrentOffspring  + (1 | monthYearDate)
+glm_full_fruittrees_females <-lmer(fruittreecount ~ rain_eve + walevel_eve + rain_mo + temp_min_eve + temp_min_mo + avg_temp_tot  + fai + ageFromDOB+ageOfCurrentOffspring  + (1 | monthYearDate)
                     + (1 | meanTimelag), # random effects to correct for
-  data = DJL_follows_naomit_trees
+  data = DJL_follows_females_trees
+  )
+glm_significant_fruittrees_females <-lmer(fruittreecount ~ avg_temp_tot + ageFromDOB  + (1 | monthYearDate)
+                    + (1 | meanTimelag), # random effects to correct for
+  data = DJL_follows_females_trees
+  )
+glm_randomeffects_fruittrees_females <- lmer(fruittreecount~(1 | monthYearDate)+ (1 | meanTimelag),data=DJL_follows_females_trees)
+
+anova(glm_full_fruittrees_females,glm_significant_fruittrees_females,glm_randomeffects_fruittrees_females)
+drop1(glm_full_fruittrees_females)
+vif.mer(glm_full_fruittrees_females)
+
+##### Create P values for lm
+coefs <- data.frame(coef(summary(glm_full_fruittrees_females)))
+# use normal distribution to approximate p-value
+coefs$p.z <- 2 * (1 - pnorm(abs(coefs$t.value)))
+coefs
+
+### TREE - DJL: Analysing explanation of how many fruit trees are visited and RR of only fruit tree route
+### Female model ohne NA's in CurrentOffspring
+
+glm_full_DJLtree_females <-lmer(tree_DJL ~ rain_eve + walevel_eve + rain_mo + temp_min_eve + temp_min_mo + avg_temp_tot  + fai + ageFromDOB+ageOfCurrentOffspring  + (1 | monthYearDate)
+                    + (1 | meanTimelag), # random effects to correct for
+  data = DJL_follows_females_trees
+  )
+glm_randomeffects_DJLtree_females <- lmer(tree_DJL~(1 | monthYearDate)+ (1 | meanTimelag),data=DJL_follows_females_trees)
+
+anova(glm_full_DJLtree_females,glm_randomeffects_DJLtree_females)
+drop1(glm_full_DJLtree_females)
+vif.mer(glm_full_DJLtree_females)
+
+##### Create P values for lm
+coefs <- data.frame(coef(summary(glm_full_DJLtree_females)))
+# use normal distribution to approximate p-value
+coefs$p.z <- 2 * (1 - pnorm(abs(coefs$t.value)))
+coefs
+
+### TREE - RR: Analysing explanation of how many fruit trees are visited and RR of only fruit tree route
+### Female model ohne NA's in CurrentOffspring
+
+glm_full_RRtree_females <-lmer(tree_RR ~ rain_eve + walevel_eve + rain_mo + temp_min_eve + temp_min_mo + avg_temp_tot  + fai + ageFromDOB+ageOfCurrentOffspring  + (1 | monthYearDate)
+                    + (1 | meanTimelag), # random effects to correct for
+  data = DJL_follows_females_trees
+  )
+glm_randomeffects_RRtree_females <- lmer(tree_RR~(1 | monthYearDate)+ (1 | meanTimelag),data=DJL_follows_females_trees)
+
+anova(glm_full_RRtree_females,glm_randomeffects_RRtree_females)
+drop1(glm_full_RRtree_females)
+vif.mer(glm_full_RRtree_females)
+
+##### Create P values for lm
+coefs <- data.frame(coef(summary(glm_full_RRtree_females)))
+# use normal distribution to approximate p-value
+coefs$p.z <- 2 * (1 - pnorm(abs(coefs$t.value)))
+coefs
+
+
+#### FRUITTREECOUNT: Full model without currentOffspring
+DJL_follows_trees <- DJL_follows %>% dplyr::select(ageFromDOB,tree_RR,tree_DJL,rain_eve, walevel_eve, rain_mo, temp_min_eve, temp_min_mo, avg_temp_tot, ClassFocal, fai, monthYearDate,focal,meanTimelag,numOfPoints,fruittreecount) %>% na.omit()
+
+glm_full_fruittrees <-lmer(fruittreecount ~ rain_eve + walevel_eve + rain_mo + temp_min_eve + temp_min_mo + avg_temp_tot  + fai + ageFromDOB  + (1 | monthYearDate)
+                    + (1 | meanTimelag), # random effects to correct for
+  data = DJL_follows_trees
   )
 glm_significant_fruittrees <-lmer(fruittreecount ~ avg_temp_tot + ageFromDOB  + (1 | monthYearDate)
                     + (1 | meanTimelag), # random effects to correct for
-  data = DJL_follows_naomit_trees
+  data = DJL_follows_trees
   )
-glm_randomeffects_fruittrees <- lmer(fruittreecount~(1 | monthYearDate)+ (1 | meanTimelag),data=DJL_follows_naomit_trees)
+glm_randomeffects_fruittrees <- lmer(fruittreecount~(1 | monthYearDate)+ (1 | meanTimelag),data=DJL_follows_trees)
 
 anova(glm_full_fruittrees,glm_significant_fruittrees,glm_randomeffects_fruittrees)
 drop1(glm_full_fruittrees)
@@ -895,15 +1018,15 @@ coefs$p.z <- 2 * (1 - pnorm(abs(coefs$t.value)))
 coefs
 
 ### TREE - DJL: Analysing explanation of how many fruit trees are visited and RR of only fruit tree route
-### Full model mit NA's
+### Female model ohne NA's in CurrentOffspring
 
-glm_full_DJLtree <-lmer(tree_DJL ~ rain_eve + walevel_eve + rain_mo + temp_min_eve + temp_min_mo + avg_temp_tot  + fai + ageFromDOB+ageOfCurrentOffspring  + (1 | monthYearDate)
+glm_full_DJLtree <-lmer(tree_DJL ~ rain_eve + walevel_eve + rain_mo + temp_min_eve + temp_min_mo + avg_temp_tot  + fai + ageFromDOB  + (1 | monthYearDate)
                     + (1 | meanTimelag), # random effects to correct for
-  data = DJL_follows_naomit_trees
+  data = DJL_follows_trees
   )
-glm_randomeffects_DJLtree <- lmer(tree_DJL~(1 | monthYearDate)+ (1 | meanTimelag),data=DJL_follows_naomit_trees)
+glm_randomeffects_DJLtree <- lmer(tree_DJL~(1 | monthYearDate)+ (1 | meanTimelag),data=DJL_follows_trees)
 
-anova(glm_full_DJLtree,glm_significant_DJLtree,glm_randomeffects_DJLtree)
+anova(glm_full_DJLtree,glm_randomeffects_DJLtree)
 drop1(glm_full_DJLtree)
 vif.mer(glm_full_DJLtree)
 
@@ -914,23 +1037,27 @@ coefs$p.z <- 2 * (1 - pnorm(abs(coefs$t.value)))
 coefs
 
 ### TREE - RR: Analysing explanation of how many fruit trees are visited and RR of only fruit tree route
-### Full model mit NA's
+### Female model ohne NA's in CurrentOffspring
 
-glm_full_RRtree <-lmer(tree_RR ~ rain_eve + walevel_eve + rain_mo + temp_min_eve + temp_min_mo + avg_temp_tot  + fai + ageFromDOB+ageOfCurrentOffspring  + (1 | monthYearDate)
+glm_full_RRtree <-lmer(tree_RR ~ rain_eve + walevel_eve + rain_mo + temp_min_eve + temp_min_mo + avg_temp_tot  + fai + ageFromDOB  + (1 | monthYearDate)
                     + (1 | meanTimelag), # random effects to correct for
-  data = DJL_follows_naomit_trees
+  data = DJL_follows_trees
   )
-glm_randomeffects_RRtree <- lmer(tree_RR~(1 | monthYearDate)+ (1 | meanTimelag),data=DJL_follows_naomit_trees)
-
-anova(glm_full_RRtree,glm_randomeffects_RRtree)
-drop1(glm_full_RRtree)
-vif.mer(glm_full_RRtree)
+glm_randomeffects_RRtree <- lmer(tree_RR~(1 | monthYearDate)+ (1 | meanTimelag),data=DJL_follows_trees)
+glm_significant_RRtree <-lmer(tree_RR ~ avg_temp_tot + ageFromDOB  + (1 | monthYearDate)
+                    + (1 | meanTimelag), # random effects to correct for
+  data = DJL_follows_trees
+  )
+anova(glm_full_RRtree,glm_significant_RRtree,glm_randomeffects_RRtree)
+drop1(glm_full_RRtree_females)
+vif.mer(glm_full_RRtree_females)
 
 ##### Create P values for lm
 coefs <- data.frame(coef(summary(glm_full_RRtree)))
 # use normal distribution to approximate p-value
 coefs$p.z <- 2 * (1 - pnorm(abs(coefs$t.value)))
 coefs
+
 
 ```
 
