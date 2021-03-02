@@ -173,7 +173,7 @@ setwd("/Users/stefgr/Nextcloud/UZH/12_Semester/20200313_Masterthesis/R/")
 ##### waypoints ##### "data/Processed_data/SUAQ_waypoints_11all20.csv"
 ##### ATTENTION: read_csv guesses a columns type as boolean if first 1200 entries are NA
 SUAQ_waypoints_11all20_loc <-
-  read_csv(paste0("data/Processed_data/",str_remove_all(Sys.Date(), "-"),"_SUAQ_waypoints_11all20.csv"),guess_max = min(10000, 30000))
+  read_csv(paste0("data/Processed_data/",str_remove_all(Sys.Date()-1, "-"),"_SUAQ_waypoints_11all20.csv"),guess_max = min(10000, 30000))
 SUAQ_waypoints_11all20_loc <- SUAQ_waypoints_11all20_loc %>% mutate(monthYearDate=format(as.Date(manualDate), "%Y-%m"))
 SUAQ_waypoints_11all20_loc <- SUAQ_waypoints_11all20_loc %>% mutate(automaticDatetime=with_tz(automaticDatetime,tz = "Asia/Pontianak"))
 SUAQ_waypoints_11all20_loc <- SUAQ_waypoints_11all20_loc %>% mutate(manualDatetime=with_tz(manualDatetime,tz = "Asia/Pontianak"))
@@ -216,6 +216,12 @@ coordinates_tmp <- st_coordinates(SUAQ_locationnetwork_sf_loc)
 colnames(coordinates_tmp) <- c("E","N")
 SUAQ_locationnetwork_sf_loc <- cbind(SUAQ_locationnetwork_sf_loc,coordinates_tmp)
 SUAQ_locationnetwork_loc <- st_drop_geometry(SUAQ_locationnetwork_sf_loc)
+
+SUAQ_pathnetwork<- as.data.frame(read_GPX(file="data/SUAQ_Peta_WithLines.GPX",layers = c("routes")))
+colnames(SUAQ_pathnetwork)[15]<- "geometry"
+SUAQ_pathnetwork_sf<- st_as_sf(SUAQ_pathnetwork,crs=4326)
+SUAQ_pathnetwork_sf_loc <- st_transform(SUAQ_pathnetwork_sf,crs = 32647)
+
 
 ##### Selection only pointtypes which are taken on the orangutan way? is this true for all? ##### 
 SUAQ_rangepoints_11all20_loc <- SUAQ_waypoints_11all20_loc %>% filter(PtType %in% c("daynest","found","lost","mornnest","nightnest","range","tree")) # get rid of lcg lch points and
@@ -311,6 +317,7 @@ write_csv(SUAQ_rangepoints_11all20_loc_females6_wgs, path = paste(
 ))
 
 ```
+
 ### Analysis
 ```{r MCP - HR sizes ,echo=FALSE, message=FALSE,comment=FALSE, warning=FALSE}
 ### Create MCP with percentage #### 
@@ -370,6 +377,7 @@ bandwiths <-  data.frame(focal=as_vector(selected_females),
                  stringsAsFactors=FALSE)
 iterator <- 1
 for (i in selected_females){
+  print(paste("calculating bandwiths for focal: ",i))
   xy_selected <- SUAQ_rangepoints_11all20_loc_females_10 %>% filter(focal%in%c(i)) %>% dplyr::select(E,N)
   colnames(xy_selected) <- c("x","y") #adjust column names
   hpi <- sqrt(prod(sqrt(diag(Hpi.diag(xy_selected[,1:2], nstage=2))))) # using diagonal bandwith not full bandwith? why?
@@ -397,10 +405,21 @@ write_csv(bandwiths, path = paste(
 ```
 
 ```{r KDE - HR sizes,echo=FALSE, message=FALSE,comment=FALSE, warning=FALSE}
-bandwiths <- read_csv(paste0("data/Processed_data/",str_remove_all(Sys.Date(), "-"),"_KDE_bandwiths.csv"))
+#bandwiths <- read_csv(paste0("data/Processed_data/",str_remove_all(Sys.Date(), "-"),"_KDE_bandwiths.csv"))
+
+dir.create(paste(
+    "output/Homeranges/KDE/",
+    format(Sys.Date(), "%Y%m%d"),
+    sep = ""
+  ))
+
 
 
 ### KDE: Calculate UD, HR
+# use always same extent
+xmin <- min(SUAQ_rangepoints_11all20_loc_females_10$E)-1000; xmax <- max(SUAQ_rangepoints_11all20_loc_females_10$E)+1000
+ymin <- min(SUAQ_rangepoints_11all20_loc_females_10$N)-1000; ymax <- max(SUAQ_rangepoints_11all20_loc_females_10$N)+1000
+# iterator
 iterator <- 1
 for (i in selected_females){ # compute KDE home range for every individual
   xy_selected <- SUAQ_rangepoints_11all20_loc_females_10 %>% filter(focal%in%c(i)) %>% dplyr::select(E,N)
@@ -435,39 +454,36 @@ for (i in selected_females){ # compute KDE home range for every individual
     hr50 <- getverticeshr(UD, percent=50,unin = c("m"),unout = c("km2"))
     
     ########## plot results ##########
-    imdir <- paste("output/Homeranges/KDE", "/", sep="")
-    imdirUD <- paste("output/Homeranges/KDE/plots/UD", "/", sep="")
+    imdir <- paste("output/Homeranges/KDE/",format(Sys.Date(), "%Y%m%d"), "/", sep="")
+    imdirUD <- paste("output/Homeranges/KDE/",format(Sys.Date(), "%Y%m%d"),"/", sep="")
+    step <- 200
+    xmin_xmax_round_steps<- c(step*(ceiling(xmin/step)):(round(xmax/step)))
+    xmin_xmax_round_steps <- xmin_xmax_round_steps[2:(length(xmin_xmax_round_steps)-2)] #manual adjustment of tick breaks how many does it need
+    ymin_ymax_round_steps<- c(step*(ceiling(ymin/step)):(round(ymax/step)))
+    ymin_ymax_round_steps <- ymin_ymax_round_steps[2:(length(ymin_ymax_round_steps)-1)] #manual adjustment of tick breaks how many does it need
+
+    par(mar=c(1,1,1,1))
     
     png(paste(imdirUD, selected_females[[iterator]], "_KDE_UD_", methList[[j]], ".png", sep=""), width=900, height=700, res=120, units="px")
-    image(UD, xlab="x [m]")
-    par(mar=c(5.1,1,4.1,1))
-    step <- 500
-    xmin <- min(UD@coords[,1]); xmax <- max(UD@coords[,1])
-    ymin <- min(UD@coords[,2]); ymax <- max(UD@coords[,2])
-    yaxpos <- step*round(xmin/step)-step/5
+    image(UD, xlab="x [m]",xlim=c(xmin_xmax_round_steps[1],tail(xmin_xmax_round_steps,n=1)),ylim=c(ymin_ymax_round_steps[1],tail(ymin_ymax_round_steps,n=1))) 
     plot(hr50, lty=4, lwd=1, border="azure4", add=T,axes=F)
     plot(hr95, lty=1, lwd=0.6, border="cadetblue2", add=T, axes=F)
-    axis(1, at=c(step*(ceiling(xmin/step)):(round(xmax/step))))
-    axis(2, at=c(step*(round(ymin/step)):(round(ymax/step))), pos=xmin-10)
-    text(xmin-10, ymin+(ymax-ymin)/2, "y [m]", adj=c(NA,-4), srt=90)
+    axis(1, at=xmin_xmax_round_steps)
+    axis(2, at=ymin_ymax_round_steps, pos=xmin+100)
+    text(xmin-100, (ymin+ymax)/2, "y [m]", adj=c(NA,-4), srt=90)
     title(paste(selected_females[[iterator]], ": KDE ", "(", methListTitle[[j]], ")", sep=""), line=-0.3)
-    legend("topright", c("HR 50%", "HR 95%"), col=c("black", "blue"), lwd=c(1,0.6), lty=c(4,1), inset=c(0.14,0.06))
+    legend("topright", c("HR 50%", "HR 95%"), col=c("black", "blue"), lwd=c(1,0.6), lty=c(4,1), inset=c(0.17,0.11))
     dev.off()
 
     png(paste(imdir, selected_females[[iterator]], "_KDE_VUD_", methList[[j]], ".png", sep=""), width=900, height=700, res=120, units="px")
-    image(getvolumeUD(UD), xlab="x [m]")
-    par(mar=c(5.1,1,4.1,1))
-    step <- 500
-    xmin <- min(UD@coords[,1]); xmax <- max(UD@coords[,1])
-    ymin <- min(UD@coords[,2]); ymax <- max(UD@coords[,2])
-    yaxpos <- step*round(xmin/step)-step/5
+    image(getvolumeUD(UD), xlab="x [m]",xlim=c(xmin_xmax_round_steps[1],tail(xmin_xmax_round_steps,n=1)),ylim=c(ymin_ymax_round_steps[1],tail(ymin_ymax_round_steps,n=1)))
     plot(hr50, lty=4, lwd=1, border="azure4", add=T,axes=F)
     plot(hr95, lty=1, lwd=0.6, border="cadetblue2", add=T, axes=F)
-    axis(1, at=c(step*(ceiling(xmin/step)):(round(xmax/step))))
-    axis(2, at=c(step*(round(ymin/step)):(round(ymax/step))), pos=xmin-10)
-    text(xmin-10, ymin+(ymax-ymin)/2, "y [m]", adj=c(NA,-4), srt=90)
+    axis(1, at=xmin_xmax_round_steps)
+    axis(2, at=ymin_ymax_round_steps, pos=xmin+100)
+    text(xmin-100, (ymin+ymax)/2, "y [m]", adj=c(NA,-4), srt=90)
     title(paste(selected_females[[iterator]], ": KDE ", "(", methListTitle[[j]], ")", sep=""), line=-0.3)
-    legend("topright", c("HR 50%", "HR 95%"), col=c("azure4", "cadetblue2"), lwd=c(1,0.6), lty=c(4,1), inset=c(0.14,0.06))
+    legend("topright", c("HR 50%", "HR 95%"), col=c("black", "blue"), lwd=c(1,0.6), lty=c(4,1), inset=c(0.17,0.11))
     dev.off()
     
     ########## export results #########
@@ -654,20 +670,37 @@ rownames(kde) <- c(1:10)
 ```
 
 ```{r KDE - per-researchperiods - HR sizes,echo=FALSE, message=FALSE,comment=FALSE, warning=FALSE}
-# Split the data into 4 sampling periods. Calculate the respective HR.
+# make 5 lists for all 4 research periods and one for all data
+mt_list <- split(SUAQ_rangepoints_11all20_loc_females_10, f = SUAQ_rangepoints_11all20_loc_females_10$researchperiod)
 
-mt_list = split(SUAQ_rangepoints_11all20_loc_females_10, f = SUAQ_rangepoints_11all20_loc_females_10$cyl)
+# add all data as the 5th list (period)
+mt_list[["total research period"]] <- SUAQ_rangepoints_11all20_loc_females_10
+kde_allperiods <- data.frame()
 
-for (samplinginterval in c(1:4)){}
+# createa directory for kde periods calculation (named by the current date)
+dir.create(paste(
+    "output/Homeranges/KDE_Periods/researchperiods/",
+    format(Sys.Date(), "%Y%m%d"),
+    sep = ""
+  ))
+
+# use always same extent
+xmin <- min(SUAQ_rangepoints_11all20_loc_females_10$E)-1000; xmax <- max(SUAQ_rangepoints_11all20_loc_females_10$E)+1000
+ymin <- min(SUAQ_rangepoints_11all20_loc_females_10$N)-1000; ymax <- max(SUAQ_rangepoints_11all20_loc_females_10$N)+1000
+
+
+for (samplinginterval in c(1:length(mt_list))){
+print(paste("kdes for period: ",samplinginterval))
 ##### Determine the smoothing parameters
-selected_females <- SUAQ_rangepoints_11all20_loc_females_10 %>% group_by(focal) %>% summarise()
+selected_females <- mt_list[[samplinginterval]] %>% group_by(focal) %>% summarise()
 selected_females <- as_vector(selected_females)
 
 bandwiths <-  data.frame(focal=as_vector(selected_females),
-                 hpi=vector(mode="numeric", length=10),hbcv=vector(mode="numeric", length=10),hscv=vector(mode="numeric", length=10),
+                 hpi=vector(mode="numeric", length=length(selected_females)),hbcv=vector(mode="numeric", length=length(selected_females)),hscv=vector(mode="numeric", length=length(selected_females)),
                  stringsAsFactors=FALSE)
 iterator <- 1
 for (i in selected_females){
+  print(paste("kdes for focal: ",i))
   xy_selected <- SUAQ_rangepoints_11all20_loc_females_10 %>% filter(focal%in%c(i)) %>% dplyr::select(E,N)
   colnames(xy_selected) <- c("x","y") #adjust column names
   hpi <- sqrt(prod(sqrt(diag(Hpi.diag(xy_selected[,1:2], nstage=2))))) # using diagonal bandwith not full bandwith? why?
@@ -680,12 +713,12 @@ for (i in selected_females){
 
   iterator <- iterator+1
 }
-rownames(bandwiths) <- c(1:10)
+rownames(bandwiths) <- c(1:length(selected_females))
 
 ### KDE: Calculate UD, HR
 iterator <- 1
 for (i in selected_females){ # compute KDE home range for every individual
-  xy_selected <- SUAQ_rangepoints_11all20_loc_females_10 %>% filter(focal%in%c(i)) %>% dplyr::select(E,N)
+  xy_selected <- mt_list[[samplinginterval]] %>% filter(focal%in%c(i)) %>% dplyr::select(E,N)
   colnames(xy_selected) <- c("x","y") #adjust column names
   resultList <- list()
   methListTitle <- list("REF", "PI", "BCV", "SCV")
@@ -693,8 +726,188 @@ for (i in selected_females){ # compute KDE home range for every individual
   
   xy_selected <- SpatialPoints(xy_selected,proj4string = CRS( "+proj=utm +zone=47 +datum=WGS84 +units=m +no_defs" )) # Converts SpatialPointDataFrame to SpatialPoint (only x & y)
   
-  extVal <- 0.3 #0.3 How much bigger the UD should be calculated than the research are (minimum bounding box). The higher the more Computation
-  gridVal <- 800 #700 How much cells or pixels should be considered for UD calculation. The higher the more Computation
+  extVal <- 15 #0.3 How much bigger the UD should be calculated than the research are (minimum bounding box). The higher the more Computation
+  gridVal <- 2000 #700 How much cells or pixels should be considered for UD calculation. The higher the more Computation
+
+  for (j in seq(1, length(methList))) { # compute one home range for each bandwidth method and individual
+    if (j == 1) {
+      UD <- (kernelUD(xy_selected, grid=gridVal, extent=extVal, h="href"))
+    }
+    else if (j == 2) {
+      UD <- (kernelUD(xy_selected, grid=gridVal, extent=extVal, h=bandwiths[iterator,"hpi"]))
+    }
+    else if (j == 3) {
+      UD <- (kernelUD(xy_selected, grid=gridVal, extent=extVal, h=bandwiths[iterator,"hbcv"]))
+    }
+    else if (j == 4) {
+      UD <- (kernelUD(xy_selected, grid=gridVal, extent=extVal, h=bandwiths[iterator,"hscv"])) 
+    }
+    else {
+      print("Error")
+    }
+    hr99 <- getverticeshr(UD, percent=99,unin = c("m"),unout = c("km2"))
+    hr95 <- getverticeshr(UD, percent=95,unin = c("m"),unout = c("km2"))
+    hr50 <- getverticeshr(UD, percent=50,unin = c("m"),unout = c("km2"))
+    
+    ########## plot results ##########
+    imdir <- paste("output/Homeranges/KDE_Periods/researchperiods/",format(Sys.Date(), "%Y%m%d"), "/", sep="")
+    imdirUD <- paste("output/Homeranges/KDE_Periods/researchperiods/",format(Sys.Date(), "%Y%m%d"),"/", sep="")
+    step <- 200
+    xmin_xmax_round_steps<- c(step*(ceiling(xmin/step)):(round(xmax/step)))
+    xmin_xmax_round_steps <- xmin_xmax_round_steps[2:(length(xmin_xmax_round_steps)-2)] #manual adjustment of tick breaks how many does it need
+    ymin_ymax_round_steps<- c(step*(ceiling(ymin/step)):(round(ymax/step)))
+    ymin_ymax_round_steps <- ymin_ymax_round_steps[2:(length(ymin_ymax_round_steps)-1)] #manual adjustment of tick breaks how many does it need
+
+    png(paste(imdirUD, selected_females[[iterator]],"_",gsub(" ", "", names(mt_list)[samplinginterval], fixed = TRUE), "_KDE_UD_", methList[[j]], ".png", sep=""), width=1800, height=1400, res=240, units="px")
+    par(0,0,0,0)
+    image(UD, xlab="x [m]",ylab="y [m]",xlim=c(xmin_xmax_round_steps[1],tail(xmin_xmax_round_steps,n=1)),ylim=c(ymin_ymax_round_steps[1],tail(ymin_ymax_round_steps,n=1))) 
+    plot(hr50, lty=3, lwd=1.5, border="darkseagreen3", add=T,axes=F)
+    plot(hr95, lty=1, lwd=1, border="cadetblue2", add=T, axes=F)
+    plot(hr99, lty=4, lwd=1, border="darkturquoise", add=T, axes=F)
+    plot(SUAQ_pathnetwork_sf_loc, lty=1, lwd=0.3, col=alpha("darkolivegreen", 0.7), add=T, axes=F)
+    axis(1, at=xmin_xmax_round_steps,pos=ymin+150) # x axis
+    axis(2, at=ymin_ymax_round_steps, pos=xmin-500)
+    #text(xmin-550, (ymin+ymax)/2, "y [m]", adj=c(NA,-4), srt=90)
+    title(paste(selected_females[[iterator]], ": KDE ", "(", methListTitle[[j]], ")", sep=""), line=-1.5)
+    legend("topright", c("HR 50%", "HR 95%", "HR 100%","Trail"), col=c("darkseagreen3", "cadetblue2", "darkturquoise","darkolivegreen"), lwd=c(1,0.6), lty=c(3,1,4,1), inset=c(0,0))
+    dev.off()
+
+    png(paste(imdir, selected_females[[iterator]],"_",gsub(" ", "", names(mt_list)[samplinginterval], fixed = TRUE), "_KDE_VUD_", methList[[j]], ".png", sep=""), width=1800, height=1400, res=240, units="px")
+    image(getvolumeUD(UD), xlab="x [m]",ylab="y [m]",xlim=c(xmin_xmax_round_steps[1],tail(xmin_xmax_round_steps,n=1)),ylim=c(ymin_ymax_round_steps[1],tail(ymin_ymax_round_steps,n=1)))
+    plot(hr50, lty=3, lwd=1.5, border="azure4", add=T,axes=F)
+    plot(hr95, lty=1, lwd=1, border="cadetblue2", add=T, axes=F)
+    plot(hr99, lty=4, lwd=1, border="darkturquoise", add=T, axes=F)
+    plot(SUAQ_pathnetwork_sf_loc, lty=1, lwd=0.3, col=alpha("darkolivegreen", 0.7), add=T, axes=F)
+    axis(1, at=xmin_xmax_round_steps,pos=ymin+150) # x axis
+    axis(2, at=ymin_ymax_round_steps, pos=xmin-500)
+    #text(xmin-500, (ymin+ymax)/2, "y [m]", adj=c(NA,-4), srt=90)
+    title(paste(selected_females[[iterator]], ": KDE ", "(", methListTitle[[j]], ")", sep=""), line=-1.5)
+    legend("topright", c("HR 50%", "HR 95%", "HR 100%","Trail"), col=c("azure4", "cadetblue2", "darkturquoise","darkolivegreen"), lwd=c(1,0.6), lty=c(3,1,4,1), inset=c(0,0))
+    dev.off()
+    
+    ########## export results #########
+    resultList <- list(hr50=hr50, hr95=hr95, UD=UD)
+    assign(methList[[j]], resultList) #resultList is renamed according to the ith element of methList
+  }
+  animRes <- list(HREF=HREF, HPI=HPI, HBCV=HBCV, HSCV=HSCV)
+  assign(selected_females[[iterator]], animRes) # is renamed according to the ith element of animList
+  print(paste(selected_females[[iterator]], ": Calculation finished", sep=""))
+  iterator <- iterator+1
+}
+kde <- data.frame(focal=as_vector(selected_females),
+                 HREF_hr50area=vector(mode="numeric", length=length(selected_females)),
+                 HREF_hr95area=vector(mode="numeric", length=length(selected_females)),
+                 HPI_hr50area=vector(mode="numeric", length=length(selected_females)),
+                 HPI_hr95area=vector(mode="numeric", length=length(selected_females)),
+                 HBCV_hr50area=vector(mode="numeric", length=length(selected_females)),
+                 HBCV_hr95area=vector(mode="numeric", length=length(selected_females)),
+                 HSCV_hr50area=vector(mode="numeric", length=length(selected_females)),
+                 HSCV_hr95area=vector(mode="numeric", length=length(selected_females)),
+                 stringsAsFactors=FALSE)
+
+empty_bandwiths <- list(HREF=HREF, HPI=HREF, HBCV=HREF, HSCV=HREF)
+kde_list <- list()
+for(i in as_vector(selected_females)){
+  print(i)
+  kde_list[[i]] <- get(i)
+}
+
+
+iterator <- 1
+
+for(i in as_vector(selected_females)){
+  kde[iterator,"HREF_hr50area"] <-  kde_list[[i]]$HREF$hr50$area
+  kde[iterator,"HREF_hr95area"] <- kde_list[[i]]$HREF$hr95$area
+  kde[iterator,"HPI_hr50area"] <-kde_list[[i]]$HPI$hr50$area
+  kde[iterator,"HPI_hr95area"] <- kde_list[[i]]$HPI$hr95$area
+  kde[iterator,"HBCV_hr50area"] <-  kde_list[[i]]$HBCV$hr50$area
+  kde[iterator,"HBCV_hr95area"] <-  kde_list[[i]]$HBCV$hr95$area
+  kde[iterator,"HSCV_hr50area"] <-  kde_list[[i]]$HSCV$hr50$area
+  kde[iterator,"HSCV_hr95area"] <-  kde_list[[i]]$HSCV$hr95$area
+  iterator <- iterator+1
+}
+rownames(kde) <- c(1:length(selected_females))
+kde <- kde %>% mutate(period=names(mt_list)[samplinginterval])
+kde_allperiods <- kde_allperiods %>% bind_rows(kde)
+
+}
+write_csv(kde_allperiods, path = paste(
+  paste(
+    "output/Homeranges/KDE_Periods/researchperiods/",
+    format(Sys.Date(), "%Y%m%d"),"/",
+    "kde_values_allperiods",
+    sep = ""
+  ),
+  "csv",
+  sep = "."
+))
+system("say alle kernel distanzen berechnet für die verschiedenen Untersuchungsperioden")
+
+
+```
+
+```{r KDE - per-year - HR sizes,echo=FALSE, message=FALSE,comment=FALSE, warning=FALSE}
+# Split the data into 4 sampling periods. Calculate the respective HR.
+SUAQ_rangepoints_11all20_loc_females_10 <- SUAQ_rangepoints_11all20_loc_females_10 %>% mutate(year=year(manualDatetime))
+
+# make 5 lists for all 4 research periods and one for all data
+mt_list <- split(SUAQ_rangepoints_11all20_loc_females_10, f = SUAQ_rangepoints_11all20_loc_females_10$year)
+
+# add all data as the 5th list (period)
+mt_list[["total research period"]] <- SUAQ_rangepoints_11all20_loc_females_10
+kde_allperiods <- data.frame()
+
+# createa directory for kde periods calculation (named by the current date)
+dir.create(paste(
+    "output/Homeranges/KDE_Periods/years/",
+    format(Sys.Date(), "%Y%m%d"),
+    sep = ""
+  ))
+
+# use always same extent
+xmin <- min(SUAQ_rangepoints_11all20_loc_females_10$E)-1000; xmax <- max(SUAQ_rangepoints_11all20_loc_females_10$E)+1000
+ymin <- min(SUAQ_rangepoints_11all20_loc_females_10$N)-1000; ymax <- max(SUAQ_rangepoints_11all20_loc_females_10$N)+1000
+
+
+for (samplinginterval in c(1:length(mt_list))){
+print(paste("kdes for period: ",samplinginterval))
+##### Determine the smoothing parameters
+selected_females <- mt_list[[samplinginterval]] %>% group_by(focal) %>% summarise()
+selected_females <- as_vector(selected_females)
+
+bandwiths <-  data.frame(focal=as_vector(selected_females),
+                 hpi=vector(mode="numeric", length=length(selected_females)),hbcv=vector(mode="numeric", length=length(selected_females)),hscv=vector(mode="numeric", length=length(selected_females)),
+                 stringsAsFactors=FALSE)
+iterator <- 1
+for (i in selected_females){
+  print(paste("kdes for focal: ",i))
+  xy_selected <- SUAQ_rangepoints_11all20_loc_females_10 %>% filter(focal%in%c(i)) %>% dplyr::select(E,N)
+  colnames(xy_selected) <- c("x","y") #adjust column names
+  hpi <- sqrt(prod(sqrt(diag(Hpi.diag(xy_selected[,1:2], nstage=2))))) # using diagonal bandwith not full bandwith? why?
+  hbcv <- sqrt(prod(sqrt(diag(Hbcv.diag(xy_selected[,1:2], whichbcv=1)))))
+  hscv <- sqrt(prod(sqrt(diag(Hscv.diag(xy_selected[,1:2], nstage=2)))))
+  bandwiths[iterator,"focal"] <- i
+  bandwiths[iterator,"hpi"] <- as.numeric(hpi)
+  bandwiths[iterator,"hbcv"] <- as.numeric(hbcv)
+  bandwiths[iterator,"hscv"] <- as.numeric(hscv)
+
+  iterator <- iterator+1
+}
+rownames(bandwiths) <- c(1:length(selected_females))
+
+### KDE: Calculate UD, HR
+iterator <- 1
+for (i in selected_females){ # compute KDE home range for every individual
+  xy_selected <- mt_list[[samplinginterval]] %>% filter(focal%in%c(i)) %>% dplyr::select(E,N)
+  colnames(xy_selected) <- c("x","y") #adjust column names
+  resultList <- list()
+  methListTitle <- list("REF", "PI", "BCV", "SCV")
+  methList <- list("HREF", "HPI", "HBCV", "HSCV")
+  
+  xy_selected <- SpatialPoints(xy_selected,proj4string = CRS( "+proj=utm +zone=47 +datum=WGS84 +units=m +no_defs" )) # Converts SpatialPointDataFrame to SpatialPoint (only x & y)
+  
+  extVal <- 15 #0.3 How much bigger the UD should be calculated than the research are (minimum bounding box). The higher the more Computation
+  gridVal <- 2000 #700 How much cells or pixels should be considered for UD calculation. The higher the more Computation
   
   for (j in seq(1, length(methList))) { # compute one home range for each bandwidth method and individual
     if (j == 1) {
@@ -712,46 +925,46 @@ for (i in selected_females){ # compute KDE home range for every individual
     else {
       print("Error")
     }
-    
+    hr99 <- getverticeshr(UD, percent=99,unin = c("m"),unout = c("km2"))
     hr95 <- getverticeshr(UD, percent=95,unin = c("m"),unout = c("km2"))
     hr50 <- getverticeshr(UD, percent=50,unin = c("m"),unout = c("km2"))
     
     ########## plot results ##########
-    imdir <- paste("output/Homeranges/KDE", "/", sep="")
-    imdirUD <- paste("output/Homeranges/KDE/plots/UD", "/", sep="")
-    
-    png(paste(imdirUD, selected_females[[iterator]], "_KDE_UD_", methList[[j]], ".png", sep=""), width=900, height=700, res=120, units="px")
-    image(UD, xlab="x [m]")
-    par(mar=c(5.1,1,4.1,1))
-    step <- 500
-    xmin <- min(UD@coords[,1]); xmax <- max(UD@coords[,1])
-    ymin <- min(UD@coords[,2]); ymax <- max(UD@coords[,2])
-    yaxpos <- step*round(xmin/step)-step/5
-    plot(hr50, lty=4, lwd=1, border="azure4", add=T,axes=F)
-    plot(hr95, lty=1, lwd=0.6, border="cadetblue2", add=T, axes=F)
-    axis(1, at=c(step*(ceiling(xmin/step)):(round(xmax/step))))
-    axis(2, at=c(step*(round(ymin/step)):(round(ymax/step))), pos=xmin-10)
-    text(xmin-10, ymin+(ymax-ymin)/2, "y [m]", adj=c(NA,-4), srt=90)
-    title(paste(selected_females[[iterator]], ": KDE ", "(", methListTitle[[j]], ")", sep=""), line=-0.3)
-    legend("topright", c("HR 50%", "HR 95%"), col=c("black", "blue"), lwd=c(1,0.6), lty=c(4,1), inset=c(0.14,0.06))
+    imdir <- paste("output/Homeranges/KDE_Periods/researchperiods/",format(Sys.Date(), "%Y%m%d"), "/", sep="")
+    imdirUD <- paste("output/Homeranges/KDE_Periods/researchperiods/",format(Sys.Date(), "%Y%m%d"),"/", sep="")
+    step <- 200
+    xmin_xmax_round_steps<- c(step*(ceiling(xmin/step)):(round(xmax/step)))
+    xmin_xmax_round_steps <- xmin_xmax_round_steps[2:(length(xmin_xmax_round_steps)-2)] #manual adjustment of tick breaks how many does it need
+    ymin_ymax_round_steps<- c(step*(ceiling(ymin/step)):(round(ymax/step)))
+    ymin_ymax_round_steps <- ymin_ymax_round_steps[2:(length(ymin_ymax_round_steps)-1)] #manual adjustment of tick breaks how many does it need
+
+    png(paste(imdirUD, selected_females[[iterator]],"_",gsub(" ", "", names(mt_list)[samplinginterval], fixed = TRUE), "_KDE_UD_", methList[[j]], ".png", sep=""), width=1800, height=1400, res=240, units="px")
+    par(0,0,0,0)
+    image(UD, xlab="x [m]",ylab="y [m]",xlim=c(xmin_xmax_round_steps[1],tail(xmin_xmax_round_steps,n=1)),ylim=c(ymin_ymax_round_steps[1],tail(ymin_ymax_round_steps,n=1))) 
+    plot(hr50, lty=3, lwd=1.5, border="darkseagreen3", add=T,axes=F)
+    plot(hr95, lty=1, lwd=1, border="cadetblue2", add=T, axes=F)
+    plot(hr99, lty=4, lwd=1, border="darkturquoise", add=T, axes=F)
+    plot(SUAQ_pathnetwork_sf_loc, lty=1, lwd=0.3, col=alpha("darkolivegreen", 0.7), add=T, axes=F)
+    axis(1, at=xmin_xmax_round_steps,pos=ymin+150) # x axis
+    axis(2, at=ymin_ymax_round_steps, pos=xmin-500)
+    #text(xmin-550, (ymin+ymax)/2, "y [m]", adj=c(NA,-4), srt=90)
+    title(paste(selected_females[[iterator]], ": KDE ", "(", methListTitle[[j]], ")", sep=""), line=-1.5)
+    legend("topright", c("HR 50%", "HR 95%", "HR 100%","Trail"), col=c("darkseagreen3", "cadetblue2", "darkturquoise","darkolivegreen"), lwd=c(1,0.6), lty=c(3,1,4,1), inset=c(0,0))
     dev.off()
 
-    png(paste(imdir, selected_females[[iterator]], "_KDE_VUD_", methList[[j]], ".png", sep=""), width=900, height=700, res=120, units="px")
-    image(getvolumeUD(UD), xlab="x [m]")
-    par(mar=c(5.1,1,4.1,1))
-    step <- 500
-    xmin <- min(UD@coords[,1]); xmax <- max(UD@coords[,1])
-    ymin <- min(UD@coords[,2]); ymax <- max(UD@coords[,2])
-    yaxpos <- step*round(xmin/step)-step/5
-    plot(hr50, lty=4, lwd=1, border="azure4", add=T,axes=F)
-    plot(hr95, lty=1, lwd=0.6, border="cadetblue2", add=T, axes=F)
-    axis(1, at=c(step*(ceiling(xmin/step)):(round(xmax/step))))
-    axis(2, at=c(step*(round(ymin/step)):(round(ymax/step))), pos=xmin-10)
-    text(xmin-10, ymin+(ymax-ymin)/2, "y [m]", adj=c(NA,-4), srt=90)
-    title(paste(selected_females[[iterator]], ": KDE ", "(", methListTitle[[j]], ")", sep=""), line=-0.3)
-    legend("topright", c("HR 50%", "HR 95%"), col=c("azure4", "cadetblue2"), lwd=c(1,0.6), lty=c(4,1), inset=c(0.14,0.06))
+    png(paste(imdir, selected_females[[iterator]],"_",gsub(" ", "", names(mt_list)[samplinginterval], fixed = TRUE), "_KDE_VUD_", methList[[j]], ".png", sep=""), width=1800, height=1400, res=240, units="px")
+    image(getvolumeUD(UD), xlab="x [m]",ylab="y [m]",xlim=c(xmin_xmax_round_steps[1],tail(xmin_xmax_round_steps,n=1)),ylim=c(ymin_ymax_round_steps[1],tail(ymin_ymax_round_steps,n=1)))
+    plot(hr50, lty=3, lwd=1.5, border="azure4", add=T,axes=F)
+    plot(hr95, lty=1, lwd=1, border="cadetblue2", add=T, axes=F)
+    plot(hr99, lty=4, lwd=1, border="darkturquoise", add=T, axes=F)
+    plot(SUAQ_pathnetwork_sf_loc, lty=1, lwd=0.3, col=alpha("darkolivegreen", 0.7), add=T, axes=F)
+    axis(1, at=xmin_xmax_round_steps,pos=ymin+150) # x axis
+    axis(2, at=ymin_ymax_round_steps, pos=xmin-500)
+    #text(xmin-500, (ymin+ymax)/2, "y [m]", adj=c(NA,-4), srt=90)
+    title(paste(selected_females[[iterator]], ": KDE ", "(", methListTitle[[j]], ")", sep=""), line=-1.5)
+    legend("topright", c("HR 50%", "HR 95%", "HR 100%","Trail"), col=c("azure4", "cadetblue2", "darkturquoise","darkolivegreen"), lwd=c(1,0.6), lty=c(3,1,4,1), inset=c(0,0))
     dev.off()
-    
+
     ########## export results #########
     resultList <- list(hr50=hr50, hr95=hr95, UD=UD)
     assign(methList[[j]], resultList) #resultList is renamed according to the ith element of methList
@@ -759,30 +972,29 @@ for (i in selected_females){ # compute KDE home range for every individual
   animRes <- list(HREF=HREF, HPI=HPI, HBCV=HBCV, HSCV=HSCV)
   assign(selected_females[[iterator]], animRes) # is renamed according to the ith element of animList
   print(paste(selected_females[[iterator]], ": Calculation finished", sep=""))
-  
   iterator <- iterator+1
 }
 kde <- data.frame(focal=as_vector(selected_females),
-                 HREF_hr50area=vector(mode="numeric", length=10),
-                 HREF_hr95area=vector(mode="numeric", length=10),
-                 HPI_hr50area=vector(mode="numeric", length=10),
-                 HPI_hr95area=vector(mode="numeric", length=10),
-                 HBCV_hr50area=vector(mode="numeric", length=10),
-                 HBCV_hr95area=vector(mode="numeric", length=10),
-                 HSCV_hr50area=vector(mode="numeric", length=10),
-                 HSCV_hr95area=vector(mode="numeric", length=10),
+                 HREF_hr50area=vector(mode="numeric", length=length(selected_females)),
+                 HREF_hr95area=vector(mode="numeric", length=length(selected_females)),
+                 HPI_hr50area=vector(mode="numeric", length=length(selected_females)),
+                 HPI_hr95area=vector(mode="numeric", length=length(selected_females)),
+                 HBCV_hr50area=vector(mode="numeric", length=length(selected_females)),
+                 HBCV_hr95area=vector(mode="numeric", length=length(selected_females)),
+                 HSCV_hr50area=vector(mode="numeric", length=length(selected_females)),
+                 HSCV_hr95area=vector(mode="numeric", length=length(selected_females)),
                  stringsAsFactors=FALSE)
-kde_list <- list(lisa=lisa,
-      friska=friska,
-      ellie=ellie,
-      cissy=cissy,
-      lilly=lilly,
-      yulia=yulia,
-      raffi=raffi,
-      sarabi=sarabi,
-      trident=trident,
-      tiara=tiara)
+
+empty_bandwiths <- list(HREF=HREF, HPI=HREF, HBCV=HREF, HSCV=HREF)
+kde_list <- list()
+for(i in as_vector(selected_females)){
+  print(i)
+  kde_list[[i]] <- get(i)
+}
+
+
 iterator <- 1
+
 for(i in as_vector(selected_females)){
   kde[iterator,"HREF_hr50area"] <-  kde_list[[i]]$HREF$hr50$area
   kde[iterator,"HREF_hr95area"] <- kde_list[[i]]$HREF$hr95$area
@@ -794,7 +1006,22 @@ for(i in as_vector(selected_females)){
   kde[iterator,"HSCV_hr95area"] <-  kde_list[[i]]$HSCV$hr95$area
   iterator <- iterator+1
 }
-rownames(kde) <- c(1:10)
+rownames(kde) <- c(1:length(selected_females))
+kde <- kde %>% mutate(period=names(mt_list)[samplinginterval])
+kde_allperiods <- kde_allperiods %>% bind_rows(kde)
+
+}
+write_csv(kde_allperiods, path = paste(
+  paste(
+    "output/Homeranges/KDE_Periods/years/",
+    format(Sys.Date(), "%Y%m%d"),"/",
+    "kde_values_allperiods",
+    sep = ""
+  ),
+  "csv",
+  sep = "."
+))
+system("say alle kernel distanzen berechnet für die verschiedenen Untersuchungsperioden")
 
 
 ```
@@ -804,8 +1031,137 @@ rownames(kde) <- c(1:10)
 ```
 
 
-```{r dBBMM - HR sizes,echo=FALSE, message=FALSE,comment=FALSE, warning=FALSE}
+```{r BRB - HR sizes,echo=FALSE, message=FALSE,comment=FALSE, warning=FALSE}
+# Split the data into 4 sampling periods. Calculate the respective HR.
+SUAQ_rangepoints_11all20_loc_females_10 <- SUAQ_rangepoints_11all20_loc_females_10 %>% mutate(year=year(manualDatetime))
 
+# make 5 lists for all 4 research periods and one for all data
+mt_list <- split(SUAQ_rangepoints_11all20_loc_females_10, f = SUAQ_rangepoints_11all20_loc_females_10$researchperiod)
+
+# add all data as the 5th list (period)
+mt_list[["total research period"]] <- SUAQ_rangepoints_11all20_loc_females_10
+
+# createa directory for kde periods calculation (named by the current date)
+dir.create(paste(
+    "output/Homeranges/BRB/periods/",
+    format(Sys.Date(), "%Y%m%d"),
+    sep = ""
+  ))
+
+# use always same extent
+xmin <- min(SUAQ_rangepoints_11all20_loc_females_10$E)-1000; xmax <- max(SUAQ_rangepoints_11all20_loc_females_10$E)+1000
+ymin <- min(SUAQ_rangepoints_11all20_loc_females_10$N)-1000; ymax <- max(SUAQ_rangepoints_11all20_loc_females_10$N)+1000
+
+#### retrieve animal vector
+selected_females <- SUAQ_rangepoints_11all20_loc_females_10 %>% group_by(focal) %>% summarise()
+selected_females <- as_vector(selected_females)
+
+#### retrieve sampling intervals
+mainSI <- rep(30,length(selected_females))
+
+brb_list <- data.frame()
+
+for (samplinginterval in c(1:length(mt_list))){
+  print(paste("brb for period: ",samplinginterval))
+  ##### Determine the smoothing parameters
+  selected_females <- mt_list[[samplinginterval]] %>% group_by(focal) %>% summarise()
+  selected_females <- as_vector(selected_females)
+  
+  
+  iterator <- 1
+  for (i in selected_females) { # do the following for every animal in the list
+    print(paste("brb for focal: ",i))
+    xy_selected <- SUAQ_rangepoints_11all20_loc_females_10 %>% filter(focal%in%c(i)) %>% dplyr::select(E,N,timelag_lead,manualDatetime)
+    colnames(xy_selected) <- c("x","y","timelag_lead","timestamp") #adjust column names
+    xy_selected <- xy_selected %>%  mutate(timelag_lead = round(timelag_lead,digits=0))
+  
+    # only select points where timegaps are between 20-40min
+    xy_selected <- xy_selected %>% filter((timelag_lead/60)>20) #select which SI to remove (xy_selected$timelag_lead/60 < (mainSI[[iterator]]-10))
+    xy_selected <- xy_selected%>% filter((timelag_lead/60)<40)
+    xy_selected <- xy_selected[!(is.na(xy_selected$y)),]
+    
+    # samplingI <- vector()
+    # samplingI <- xy_selected$timelag_lead/60
+    # samplingI <- samplingI[2:length(samplingI)] # First value of timelag_lead is NA
+    # plot(table(samplingI), type="h", xlim=c(20,40),col=4, ylab="frequency", xlab="sampling interval [min]")
+    
+    xy_selected <- xy_selected[order(xy_selected$timestamp , decreasing = FALSE ),] 
+    moveObj <- move(x=xy_selected$x, y=xy_selected$y, time=xy_selected$timestamp, proj=CRS("+init=epsg:22236"),animal=i)
+    ##########################################################################################
+    relUn <- 10 # relocation uncertainty [m]
+    ##########################################################################################
+    velocity <- unname(quantile(speed(moveObj), 0.99)) * 60 # unit: [m/min]
+    hmin <- relUn + (0.5 * velocity * 30) # meters, smoothing
+    iterator <- iterator+1
+    
+    
+    
+    traj <- as.ltraj(xy=xy_selected[,c("x", "y")], date=xy_selected$timestamp, id=i)
+  
+    ##########################################################################################
+    tmax <- 70*60 # seconds, maximum time span for a segment
+    lmin <- 20 # meters, minimal distance of a segment in order to count as movement
+    tau <- 3*60 #seconds, approx. duration of one interpolated interval -> defines the number of intervals per step 
+    extVal <- 15
+    gridVal <- 2000
+    hminRef <- hmin # computed through "BRB_leo_hmin computation.R"
+    hminFactor <- c(0.8, 1.0, 1.2, 1.4, 1.6, 1.8, 2.0)
+    ##########################################################################################
+  
+    vv <- BRB.D(traj, Tmax=tmax, Lmin=lmin) #estimate the diffusion coefficient
+    for (l in seq(1:length(hminFactor))) {
+      start_time <- Sys.time()
+      hmin <- hminFactor[[l]]*hminRef
+      UD <- BRB(traj, D=vv, Tmax=tmax, Lmin=lmin, hmin=hmin, b=T, same4all=T, grid=gridVal, extent=extVal, filtershort=T, type="UD")
+      
+      hr95 <- getverticeshr(UD, percent=95, standardize=TRUE)
+      hr50 <- getverticeshr(UD, percent=50, standardize=TRUE)
+      hr99 <- getverticeshr(UD, percent=99, standardize=TRUE)
+      ########## plot results ##########
+      imdir <- paste("output/Homeranges/BRB/periods/",format(Sys.Date(), "%Y%m%d"), "/", sep="")
+      
+      hminTxt <- gsub(".", "_", as.character(hminFactor[[l]]), fixed=T)
+      xmin_xmax_round_steps<- c(step*(ceiling(xmin/step)):(round(xmax/step)))
+      xmin_xmax_round_steps <- xmin_xmax_round_steps[2:(length(xmin_xmax_round_steps)-2)] #manual adjustment of tick breaks how many does it need
+      ymin_ymax_round_steps<- c(step*(ceiling(ymin/step)):(round(ymax/step)))
+      ymin_ymax_round_steps <- ymin_ymax_round_steps[2:(length(ymin_ymax_round_steps)-1)] #manual adjustment of tick breaks how many does it need    
+      par(0,0,0,0)
+      step <- 200
+  
+      
+      png(paste(imdir,i, "_BRB_UD_", hminTxt, ".png", sep=""), width=1800, height=1400, res=240, units="px")
+      image(UD, xlab="x [m]",ylab="y [m]",xlim=c(xmin_xmax_round_steps[1],tail(xmin_xmax_round_steps,n=1)),ylim=c(ymin_ymax_round_steps[1],tail(ymin_ymax_round_steps,n=1))) 
+      plot(hr50, lty=3, lwd=1.5, border="darkseagreen3", add=T,axes=F)
+      plot(hr95, lty=1, lwd=1, border="cadetblue2", add=T, axes=F)
+      plot(hr99, lty=4, lwd=1, border="darkturquoise", add=T, axes=F)
+      plot(SUAQ_pathnetwork_sf_loc, lty=1, lwd=0.3, col=alpha("darkolivegreen", 0.7), add=T, axes=F)
+      axis(1, at=xmin_xmax_round_steps,pos=ymin+150) # x axis
+      axis(2, at=ymin_ymax_round_steps, pos=xmin-500)
+      title(paste(i, ": BRB (", hminFactor[[l]], "*hmin)", sep=""), line=-1.5)
+      legend("topright", c("HR 50%", "HR 95%", "HR 100%","Trail"), col=c("darkseagreen3", "cadetblue2", "darkturquoise","darkolivegreen"), lwd=c(1,0.6), lty=c(3,1,4,1), inset=c(0,0))
+      dev.off()
+      
+      png(paste(imdir,i, "_BRB_VUD_", hminTxt, ".png", sep=""), width=1800, height=1400, res=240, units="px")
+      image(getvolumeUD(UD), xlab="x [m]",ylab="y [m]",xlim=c(xmin_xmax_round_steps[1],tail(xmin_xmax_round_steps,n=1)),ylim=c(ymin_ymax_round_steps[1],tail(ymin_ymax_round_steps,n=1))) 
+      plot(hr50, lty=3, lwd=1.5, border="darkseagreen3", add=T,axes=F)
+      plot(hr95, lty=1, lwd=1, border="cadetblue2", add=T, axes=F)
+      plot(hr99, lty=4, lwd=1, border="darkturquoise", add=T, axes=F)
+      plot(SUAQ_pathnetwork_sf_loc, lty=1, lwd=0.3, col=alpha("darkolivegreen", 0.7), add=T, axes=F)
+      axis(1, at=xmin_xmax_round_steps,pos=ymin+150) # x axis
+      axis(2, at=ymin_ymax_round_steps, pos=xmin-500)
+      title(paste(i, ": BRB (", hminFactor[[l]], "*hmin)", sep=""), line=-1.5)
+      legend("topright", c("HR 50%", "HR 95%", "HR 100%","Trail"), col=c("darkseagreen3", "cadetblue2", "darkturquoise","darkolivegreen"), lwd=c(1,0.6), lty=c(3,1,4,1), inset=c(0,0))
+      dev.off()
+      
+      end_time <- Sys.time()
+      duration <- end_time-start_time
+      ########## export results ############
+      resultList <- data.frame(focal=i,hr50=hr50$area, hr95=hr95$area,Velocity_percentile99=velocity,GPSuncertainty=relUn,hmin=hmin,tmax=tmax,lmin=lmin,tau=tau,hminfac=hminFactor[[l]],hminRef=hminRef,period=names(mt_list)[samplinginterval],processingtime=duration)
+      brb_list <- brb_list %>% bind_rows(resultList)
+      print(paste(hminTxt, ": Calculation finished", sep=""))
+    }
+  }
+}
 ```
 
 ```{r dBBMM - HR sizes,echo=FALSE, message=FALSE,comment=FALSE, warning=FALSE}

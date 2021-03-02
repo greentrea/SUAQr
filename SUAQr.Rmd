@@ -1296,6 +1296,8 @@ SUAQ_waypoints_11all20 <- SUAQ_waypoints_11all20 %>% filter(E>323000 &
                                                             E<328000 & 
                                                             N>330000 & 
                                                             N<360000)
+
+system("say prozessierung eins fertig")
 ```
 
 
@@ -1820,6 +1822,8 @@ write_csv(SUAQ_waypoints_11all20,path="shinyapp/orangapp/data/SUAQ_waypoints_11a
 
 
 Sys.time()-start
+system("say prozessierung zwei fertig")
+
 ```
 
 ```{r R-specific preparation}
