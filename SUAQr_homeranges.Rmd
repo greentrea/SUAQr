@@ -28,7 +28,8 @@ packages_checker <- function(packages_list){
   }
 }
 packages_checker(
-  c('rgdal',
+  c('hrbrthemes', # for colors --> viridis
+    'rgdal',
     'ctmm',
     'lubridate',
     'plyr',
@@ -404,7 +405,7 @@ write_csv(bandwiths, path = paste(
 ))
 ```
 
-```{r KDE - HR sizes,echo=FALSE, message=FALSE,comment=FALSE, warning=FALSE}
+```{r KDE - HR sizes with bootstrap,echo=FALSE, message=FALSE,comment=FALSE, warning=FALSE}
 #bandwiths <- read_csv(paste0("data/Processed_data/",str_remove_all(Sys.Date(), "-"),"_KDE_bandwiths.csv"))
 
 dir.create(paste(
@@ -669,7 +670,7 @@ kde95_bootstrap_long %>%  ggplot(aes(`subset %`,`HR [km2]`,colour=focal)) + geom
 rownames(kde) <- c(1:10)
 ```
 
-```{r KDE - per-researchperiods - HR sizes,echo=FALSE, message=FALSE,comment=FALSE, warning=FALSE}
+```{r KDE - per-researchperiods and all - HR sizes,echo=FALSE, message=FALSE,comment=FALSE, warning=FALSE}
 # make 5 lists for all 4 research periods and one for all data
 mt_list <- split(SUAQ_rangepoints_11all20_loc_females_10, f = SUAQ_rangepoints_11all20_loc_females_10$researchperiod)
 
@@ -750,8 +751,8 @@ for (i in selected_females){ # compute KDE home range for every individual
     hr50 <- getverticeshr(UD, percent=50,unin = c("m"),unout = c("km2"))
     
     ########## plot results ##########
-    imdir <- paste("output/Homeranges/KDE_Periods/researchperiods/",format(Sys.Date(), "%Y%m%d"), "/", sep="")
-    imdirUD <- paste("output/Homeranges/KDE_Periods/researchperiods/",format(Sys.Date(), "%Y%m%d"),"/", sep="")
+    imdir <- paste("output/Homeranges/KDE/periods/",format(Sys.Date(), "%Y%m%d"), "/", sep="")
+    imdirUD <- paste("output/Homeranges/KDE/periods/",format(Sys.Date(), "%Y%m%d"),"/", sep="")
     step <- 200
     xmin_xmax_round_steps<- c(step*(ceiling(xmin/step)):(round(xmax/step)))
     xmin_xmax_round_steps <- xmin_xmax_round_steps[2:(length(xmin_xmax_round_steps)-2)] #manual adjustment of tick breaks how many does it need
@@ -833,7 +834,7 @@ kde_allperiods <- kde_allperiods %>% bind_rows(kde)
 }
 write_csv(kde_allperiods, path = paste(
   paste(
-    "output/Homeranges/KDE_Periods/researchperiods/",
+    "output/Homeranges/KDE/periods/",
     format(Sys.Date(), "%Y%m%d"),"/",
     "kde_values_allperiods",
     sep = ""
@@ -1067,11 +1068,11 @@ for (samplinginterval in c(1:length(mt_list))){
   selected_females <- mt_list[[samplinginterval]] %>% group_by(focal) %>% summarise()
   selected_females <- as_vector(selected_females)
   
-  
   iterator <- 1
   for (i in selected_females) { # do the following for every animal in the list
     print(paste("brb for focal: ",i))
-    xy_selected <- SUAQ_rangepoints_11all20_loc_females_10 %>% filter(focal%in%c(i)) %>% dplyr::select(E,N,timelag_lead,manualDatetime)
+    xy_selected <- mt_list[[samplinginterval]] %>% filter(focal%in%c(i)) %>% dplyr::select(E,N,timelag_lead,manualDatetime)
+    
     colnames(xy_selected) <- c("x","y","timelag_lead","timestamp") #adjust column names
     xy_selected <- xy_selected %>%  mutate(timelag_lead = round(timelag_lead,digits=0))
   
@@ -1079,6 +1080,10 @@ for (samplinginterval in c(1:length(mt_list))){
     xy_selected <- xy_selected %>% filter((timelag_lead/60)>20) #select which SI to remove (xy_selected$timelag_lead/60 < (mainSI[[iterator]]-10))
     xy_selected <- xy_selected%>% filter((timelag_lead/60)<40)
     xy_selected <- xy_selected[!(is.na(xy_selected$y)),]
+    
+    # check if enough gps points are still here otherwise make NA's
+    xy_selected_toolessdata <- TRUE
+    if(nrow(xy_selected)<30){xy_selected_toolessdata <- FALSE}
     
     # samplingI <- vector()
     # samplingI <- xy_selected$timelag_lead/60
@@ -1112,11 +1117,12 @@ for (samplinginterval in c(1:length(mt_list))){
     for (l in seq(1:length(hminFactor))) {
       start_time <- Sys.time()
       hmin <- hminFactor[[l]]*hminRef
+      if(xy_selected_toolessdata){# only execute when enough data
       UD <- BRB(traj, D=vv, Tmax=tmax, Lmin=lmin, hmin=hmin, b=T, same4all=T, grid=gridVal, extent=extVal, filtershort=T, type="UD")
       
-      hr95 <- getverticeshr(UD, percent=95, standardize=TRUE)
-      hr50 <- getverticeshr(UD, percent=50, standardize=TRUE)
-      hr99 <- getverticeshr(UD, percent=99, standardize=TRUE)
+      hr95 <- getverticeshr(UD, percent=95, standardize=TRUE,unin = c("m"),unout = c("km2"))
+      hr50 <- getverticeshr(UD, percent=50, standardize=TRUE,unin = c("m"),unout = c("km2"))
+      hr99 <- getverticeshr(UD, percent=99, standardize=TRUE,unin = c("m"),unout = c("km2"))
       ########## plot results ##########
       imdir <- paste("output/Homeranges/BRB/periods/",format(Sys.Date(), "%Y%m%d"), "/", sep="")
       
@@ -1129,7 +1135,7 @@ for (samplinginterval in c(1:length(mt_list))){
       step <- 200
   
       
-      png(paste(imdir,i, "_BRB_UD_", hminTxt, ".png", sep=""), width=1800, height=1400, res=240, units="px")
+      png(paste(imdir,i, "_BRB_UD_", hminTxt,"_",names(mt_list)[samplinginterval], ".png", sep=""), width=1800, height=1400, res=240, units="px")
       image(UD, xlab="x [m]",ylab="y [m]",xlim=c(xmin_xmax_round_steps[1],tail(xmin_xmax_round_steps,n=1)),ylim=c(ymin_ymax_round_steps[1],tail(ymin_ymax_round_steps,n=1))) 
       plot(hr50, lty=3, lwd=1.5, border="darkseagreen3", add=T,axes=F)
       plot(hr95, lty=1, lwd=1, border="cadetblue2", add=T, axes=F)
@@ -1141,7 +1147,7 @@ for (samplinginterval in c(1:length(mt_list))){
       legend("topright", c("HR 50%", "HR 95%", "HR 100%","Trail"), col=c("darkseagreen3", "cadetblue2", "darkturquoise","darkolivegreen"), lwd=c(1,0.6), lty=c(3,1,4,1), inset=c(0,0))
       dev.off()
       
-      png(paste(imdir,i, "_BRB_VUD_", hminTxt, ".png", sep=""), width=1800, height=1400, res=240, units="px")
+      png(paste(imdir,i, "_BRB_VUD_", hminTxt,"_",names(mt_list)[samplinginterval], ".png", sep=""), width=1800, height=1400, res=240, units="px")
       image(getvolumeUD(UD), xlab="x [m]",ylab="y [m]",xlim=c(xmin_xmax_round_steps[1],tail(xmin_xmax_round_steps,n=1)),ylim=c(ymin_ymax_round_steps[1],tail(ymin_ymax_round_steps,n=1))) 
       plot(hr50, lty=3, lwd=1.5, border="darkseagreen3", add=T,axes=F)
       plot(hr95, lty=1, lwd=1, border="cadetblue2", add=T, axes=F)
@@ -1151,17 +1157,62 @@ for (samplinginterval in c(1:length(mt_list))){
       axis(2, at=ymin_ymax_round_steps, pos=xmin-500)
       title(paste(i, ": BRB (", hminFactor[[l]], "*hmin)", sep=""), line=-1.5)
       legend("topright", c("HR 50%", "HR 95%", "HR 100%","Trail"), col=c("darkseagreen3", "cadetblue2", "darkturquoise","darkolivegreen"), lwd=c(1,0.6), lty=c(3,1,4,1), inset=c(0,0))
-      dev.off()
+      dev.off()}
       
       end_time <- Sys.time()
       duration <- end_time-start_time
       ########## export results ############
-      resultList <- data.frame(focal=i,hr50=hr50$area, hr95=hr95$area,Velocity_percentile99=velocity,GPSuncertainty=relUn,hmin=hmin,tmax=tmax,lmin=lmin,tau=tau,hminfac=hminFactor[[l]],hminRef=hminRef,period=names(mt_list)[samplinginterval],processingtime=duration)
+      if(xy_selected_toolessdata){resultList <- data.frame(focal=i,hr50=hr50$area, hr95=hr95$area,nGPS=nrow(xy_selected),Velocity_percentile99=velocity,GPSuncertainty=relUn,hmin=hmin,tmax=tmax,lmin=lmin,tau=tau,hminfac=hminFactor[[l]],hminRef=hminRef,period=names(mt_list)[samplinginterval],processingtime=duration)}
+      if(!xy_selected_toolessdata){resultList <- data.frame(focal=i,hr50=NA, hr95=NA,nGPS=nrow(xy_selected),Velocity_percentile99=velocity,GPSuncertainty=relUn,hmin=hmin,tmax=tmax,lmin=lmin,tau=tau,hminfac=hminFactor[[l]],hminRef=hminRef,period=names(mt_list)[samplinginterval],processingtime=duration)}
       brb_list <- brb_list %>% bind_rows(resultList)
+      
       print(paste(hminTxt, ": Calculation finished", sep=""))
     }
   }
 }
+
+write_csv(brb_list, path = paste(
+  paste(
+    imdir,
+    "brb_values_allperiods",
+    sep = ""
+  ),
+  "csv",
+  sep = "."
+))
+system("say alle kernel distanzen berechnet für die verschiedenen Untersuchungsperioden")
+
+brb_list %>%filter(hminfac==1) %>%   ggplot(aes(period,hr95,colour=focal)) + geom_point(size=0.3)+geom_path(data=brb_list,aes(fill=period),fill=period)
+
+brb_list_reshape <- brb_list %>% filter(hminfac%in%c(1)) %>%  dplyr::select(focal,hr50,hr95,period) %>% na.omit()
+brb_list_reshape <-  spread(brb_list_reshape,period,hr95) %>% dplyr::select(-hr50)
+brb_list_reshape<- setDT(brb_list_reshape)[, lapply(.SD, function(x) unique(na.omit(x))), by = focal] %>% dplyr::select(focal,`before 2012`,`2012 until 2016`,`2016 until August 2018`,`Since August 2018`,`total research period`) %>% ungroup()
+str(brb_list_reshape)
+colnames(brb_list_reshape) <- c("focal","R1","R2","R3","R4","R5")
+#brb_list_reshape[is.na(brb_list_reshape)] <- 0
+brb_list_reshape <- brb_list_reshape %>% rowwise() %>% mutate(mean=mean(c(R1,R2,R3,R4,R5),na.rm=TRUE))
+brb_list_reshape <- brb_list_reshape %>% mutate(R1=if_else(is.na(R1),mean,R1))
+brb_list_reshape <- brb_list_reshape %>% mutate(R2=if_else(is.na(R2),mean,R2))
+brb_list_reshape <- brb_list_reshape %>% mutate(R3=if_else(is.na(R3),mean,R3))
+brb_list_reshape <- brb_list_reshape %>% mutate(R4=if_else(is.na(R4),mean,R4))
+brb_list_reshape <- brb_list_reshape %>% mutate(R5=if_else(is.na(R5),mean,R5))
+
+
+brb_list_reshape <- brb_list %>% na.omit()
+plot(brb_list$hr95~brb_list$period , type="b" , bty="l" , xlab="value of a" , ylab="value of b" , col=rgb(0.2,0.4,0.1,0.7) , lwd=3 , pch=17 , ylim=c(1,5) )
+
+ggparcoord(brb_list_reshape,
+    columns = 2:6, groupColumn = 1, order = "anyClass",
+    showPoints = TRUE, 
+    title = "Homerange sizes: BRB - periods",
+    alphaLines = 1
+    ) + 
+  scale_color_viridis(discrete=TRUE) +
+  theme_ipsum()+
+  theme(
+    plot.title = element_text(size=10)
+  )
+view(iris)
 ```
 
 ```{r dBBMM - HR sizes,echo=FALSE, message=FALSE,comment=FALSE, warning=FALSE}
