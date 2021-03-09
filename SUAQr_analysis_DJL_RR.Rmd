@@ -215,7 +215,15 @@ setwd("/Users/stefgr/Nextcloud/UZH/12_Semester/20200313_Masterthesis/R/")
 
 ### Load Project variables ### 
 ##### waypoints ##### "data/Processed_data/SUAQ_waypoints_11all20.csv"
-SUAQ_waypoints_11all20_loc <- read_csv(paste0("data/Processed_data/",str_remove_all(Sys.Date(), "-"),"_SUAQ_waypoints_11all20.csv"),guess_max = min(10000, 30000))
+##### find newest written dataset
+mostrecent <- list.files(path = "data/Processed_data/", full.names = FALSE, recursive = FALSE)
+mostrecent <- as.data.frame(mostrecent)
+mostrecent <- mostrecent %>% filter(grepl("SUAQ_waypoints_11all20",mostrecent)) %>% 
+  mutate(date=as.numeric(str_extract(mostrecent,"\\d{8}"))) %>% arrange(desc(date)) %>% top_n(1,date)
+
+##### Load data
+SUAQ_waypoints_11all20_loc <-
+  read_csv(paste0("data/Processed_data/",mostrecent$date[1],"_SUAQ_waypoints_11all20.csv"),guess_max = min(10000, 30000))
 SUAQ_waypoints_11all20_loc <- SUAQ_waypoints_11all20_loc %>% mutate(monthYearDate=format(as.Date(manualDate), "%Y-%m"))
 SUAQ_waypoints_11all20_loc <- SUAQ_waypoints_11all20_loc %>% mutate(automaticDatetime=with_tz(automaticDatetime,tz = "Asia/Pontianak"))
 SUAQ_waypoints_11all20_loc <- SUAQ_waypoints_11all20_loc %>% mutate(manualDatetime=with_tz(manualDatetime,tz = "Asia/Pontianak"))

@@ -28,7 +28,9 @@ packages_checker <- function(packages_list){
   }
 }
 packages_checker(
-  c('hrbrthemes', # for colors --> viridis
+  c('tmap',
+    'tmaptools',# read_gpx function
+    'hrbrthemes', # for colors --> viridis
     'rgdal',
     'ctmm',
     'lubridate',
@@ -173,8 +175,14 @@ setwd("/Users/stefgr/Nextcloud/UZH/12_Semester/20200313_Masterthesis/R/")
 ### Load Project variables ### 
 ##### waypoints ##### "data/Processed_data/SUAQ_waypoints_11all20.csv"
 ##### ATTENTION: read_csv guesses a columns type as boolean if first 1200 entries are NA
+# find most recent file
+mostrecent <- list.files(path = "data/Processed_data/", full.names = FALSE, recursive = FALSE)
+mostrecent <- as.data.frame(mostrecent)
+mostrecent <- mostrecent %>% filter(grepl("SUAQ_waypoints_11all20",mostrecent)) %>% 
+  mutate(date=as.numeric(str_extract(mostrecent,"\\d{8}"))) %>% arrange(desc(date)) %>% top_n(1,date)
+
 SUAQ_waypoints_11all20_loc <-
-  read_csv(paste0("data/Processed_data/",str_remove_all(Sys.Date()-1, "-"),"_SUAQ_waypoints_11all20.csv"),guess_max = min(10000, 30000))
+  read_csv(paste0("data/Processed_data/",mostrecent$date[1],"_SUAQ_waypoints_11all20.csv"),guess_max = min(10000, 30000))
 SUAQ_waypoints_11all20_loc <- SUAQ_waypoints_11all20_loc %>% mutate(monthYearDate=format(as.Date(manualDate), "%Y-%m"))
 SUAQ_waypoints_11all20_loc <- SUAQ_waypoints_11all20_loc %>% mutate(automaticDatetime=with_tz(automaticDatetime,tz = "Asia/Pontianak"))
 SUAQ_waypoints_11all20_loc <- SUAQ_waypoints_11all20_loc %>% mutate(manualDatetime=with_tz(manualDatetime,tz = "Asia/Pontianak"))
@@ -285,6 +293,15 @@ SUAQ_rangepoints_11all20_loc_females_10 <-
       "tiara"
     )
   )%>% ungroup()
+
+#### Read in most recent bandwiths for KDE if not newly calculated
+mostrecent <- list.files("/Users/stefgr/Nextcloud/UZH/12_Semester/20200313_Masterthesis/R/output/Homeranges/KDE/bandwiths/", full.names = FALSE, recursive = FALSE)
+mostrecent <- as.data.frame(mostrecent)
+colnames(mostrecent) <- c("date")
+mostrecent <- mostrecent %>% filter(date!="_archive") %>%  arrange(desc(date)) %>% top_n(1,date)
+imdir <-paste("/Users/stefgr/Nextcloud/UZH/12_Semester/20200313_Masterthesis/R/output/Homeranges/KDE/bandwiths/")
+bandwiths <- read_csv(paste0(imdir,paste(mostrecent$date[1], sep="")))
+
 ```
 
 Homerange sizes:
@@ -395,7 +412,7 @@ rownames(bandwiths) <- c(1:10)
 
 write_csv(bandwiths, path = paste(
   paste(
-    "/Users/stefgr/Nextcloud/UZH/12_Semester/20200313_Masterthesis/R/data/Processed_data/",
+    "/Users/stefgr/Nextcloud/UZH/12_Semester/20200313_Masterthesis/R/output/Homeranges/KDE/bandwiths/",
     format(Sys.Date(), "%Y%m%d"),
     "_KDE_bandwiths",
     sep = ""
@@ -680,7 +697,7 @@ kde_allperiods <- data.frame()
 
 # createa directory for kde periods calculation (named by the current date)
 dir.create(paste(
-    "output/Homeranges/KDE_Periods/researchperiods/",
+    "output/Homeranges/KDE/periods/",
     format(Sys.Date(), "%Y%m%d"),
     sep = ""
   ))
@@ -1032,7 +1049,7 @@ system("say alle kernel distanzen berechnet für die verschiedenen Untersuchungs
 ```
 
 
-```{r BRB - HR sizes,echo=FALSE, message=FALSE,comment=FALSE, warning=FALSE}
+```{r BRB - per-researchperiods and all - HR sizes,echo=FALSE, message=FALSE,comment=FALSE, warning=FALSE}
 # Split the data into 4 sampling periods. Calculate the respective HR.
 SUAQ_rangepoints_11all20_loc_females_10 <- SUAQ_rangepoints_11all20_loc_females_10 %>% mutate(year=year(manualDatetime))
 
@@ -1048,6 +1065,7 @@ dir.create(paste(
     format(Sys.Date(), "%Y%m%d"),
     sep = ""
   ))
+imdir <- paste("output/Homeranges/BRB/periods/",format(Sys.Date(), "%Y%m%d"), "/", sep="")
 
 # use always same extent
 xmin <- min(SUAQ_rangepoints_11all20_loc_females_10$E)-1000; xmax <- max(SUAQ_rangepoints_11all20_loc_females_10$E)+1000
@@ -1076,10 +1094,10 @@ for (samplinginterval in c(1:length(mt_list))){
     colnames(xy_selected) <- c("x","y","timelag_lead","timestamp") #adjust column names
     xy_selected <- xy_selected %>%  mutate(timelag_lead = round(timelag_lead,digits=0))
   
-    # only select points where timegaps are between 20-40min
-    xy_selected <- xy_selected %>% filter((timelag_lead/60)>20) #select which SI to remove (xy_selected$timelag_lead/60 < (mainSI[[iterator]]-10))
-    xy_selected <- xy_selected%>% filter((timelag_lead/60)<40)
-    xy_selected <- xy_selected[!(is.na(xy_selected$y)),]
+    # only select points where timegaps are between 20-40min --> To do pretty bad selection we would need a function which selects points automatically by subsampling if mean timegap is too high or by interpolating if too small. But how much does it really affect the result of HR --> because we mainly compare HR sizes.
+    #xy_selected <- xy_selected %>% filter((timelag_lead/60)>20) #select which SI to remove (xy_selected$timelag_lead/60 < (mainSI[[iterator]]-10))
+    #xy_selected <- xy_selected %>% filter((timelag_lead/60)<40)
+    #xy_selected <- xy_selected[!(is.na(xy_selected$y)),]
     
     # check if enough gps points are still here otherwise make NA's
     xy_selected_toolessdata <- TRUE
@@ -1123,16 +1141,17 @@ for (samplinginterval in c(1:length(mt_list))){
       hr95 <- getverticeshr(UD, percent=95, standardize=TRUE,unin = c("m"),unout = c("km2"))
       hr50 <- getverticeshr(UD, percent=50, standardize=TRUE,unin = c("m"),unout = c("km2"))
       hr99 <- getverticeshr(UD, percent=99, standardize=TRUE,unin = c("m"),unout = c("km2"))
-      ########## plot results ##########
-      imdir <- paste("output/Homeranges/BRB/periods/",format(Sys.Date(), "%Y%m%d"), "/", sep="")
       
+      par(0,0,0,0)
+      step <- 200
+      
+      ########## plot results ##########
       hminTxt <- gsub(".", "_", as.character(hminFactor[[l]]), fixed=T)
       xmin_xmax_round_steps<- c(step*(ceiling(xmin/step)):(round(xmax/step)))
       xmin_xmax_round_steps <- xmin_xmax_round_steps[2:(length(xmin_xmax_round_steps)-2)] #manual adjustment of tick breaks how many does it need
       ymin_ymax_round_steps<- c(step*(ceiling(ymin/step)):(round(ymax/step)))
       ymin_ymax_round_steps <- ymin_ymax_round_steps[2:(length(ymin_ymax_round_steps)-1)] #manual adjustment of tick breaks how many does it need    
-      par(0,0,0,0)
-      step <- 200
+      
   
       
       png(paste(imdir,i, "_BRB_UD_", hminTxt,"_",names(mt_list)[samplinginterval], ".png", sep=""), width=1800, height=1400, res=240, units="px")
@@ -1182,37 +1201,224 @@ write_csv(brb_list, path = paste(
 ))
 system("say alle kernel distanzen berechnet für die verschiedenen Untersuchungsperioden")
 
-brb_list %>%filter(hminfac==1) %>%   ggplot(aes(period,hr95,colour=focal)) + geom_point(size=0.3)+geom_path(data=brb_list,aes(fill=period),fill=period)
 
-brb_list_reshape <- brb_list %>% filter(hminfac%in%c(1)) %>%  dplyr::select(focal,hr50,hr95,period) %>% na.omit()
-brb_list_reshape <-  spread(brb_list_reshape,period,hr95) %>% dplyr::select(-hr50)
-brb_list_reshape<- setDT(brb_list_reshape)[, lapply(.SD, function(x) unique(na.omit(x))), by = focal] %>% dplyr::select(focal,`before 2012`,`2012 until 2016`,`2016 until August 2018`,`Since August 2018`,`total research period`) %>% ungroup()
-str(brb_list_reshape)
-colnames(brb_list_reshape) <- c("focal","R1","R2","R3","R4","R5")
-#brb_list_reshape[is.na(brb_list_reshape)] <- 0
-brb_list_reshape <- brb_list_reshape %>% rowwise() %>% mutate(mean=mean(c(R1,R2,R3,R4,R5),na.rm=TRUE))
-brb_list_reshape <- brb_list_reshape %>% mutate(R1=if_else(is.na(R1),mean,R1))
-brb_list_reshape <- brb_list_reshape %>% mutate(R2=if_else(is.na(R2),mean,R2))
-brb_list_reshape <- brb_list_reshape %>% mutate(R3=if_else(is.na(R3),mean,R3))
-brb_list_reshape <- brb_list_reshape %>% mutate(R4=if_else(is.na(R4),mean,R4))
-brb_list_reshape <- brb_list_reshape %>% mutate(R5=if_else(is.na(R5),mean,R5))
+```
+
+```{r BRB - per-year and all - HR sizes,echo=FALSE, message=FALSE,comment=FALSE, warning=FALSE}
+# Split the data into 4 sampling periods. Calculate the respective HR.
+SUAQ_rangepoints_11all20_loc_females_10 <- SUAQ_rangepoints_11all20_loc_females_10 %>% mutate(year=year(manualDatetime))
+
+# make 5 lists for all 4 research periods and one for all data
+mt_list <- split(SUAQ_rangepoints_11all20_loc_females_10, f = SUAQ_rangepoints_11all20_loc_females_10$year)
+
+# add all data as the 5th list (period)
+mt_list[["total research period"]] <- SUAQ_rangepoints_11all20_loc_females_10
+
+# createa directory for kde periods calculation (named by the current date)
+dir.create(paste(
+    "output/Homeranges/BRB/periods/",
+    format(Sys.Date(), "%Y%m%d"),
+    sep = ""
+  ))
+imdir <- paste("output/Homeranges/BRB/periods/",format(Sys.Date(), "%Y%m%d"), "/", sep="")
+
+# use always same extent
+xmin <- min(SUAQ_rangepoints_11all20_loc_females_10$E)-1000; xmax <- max(SUAQ_rangepoints_11all20_loc_females_10$E)+1000
+ymin <- min(SUAQ_rangepoints_11all20_loc_females_10$N)-1000; ymax <- max(SUAQ_rangepoints_11all20_loc_females_10$N)+1000
+
+#### retrieve animal vector
+selected_females <- SUAQ_rangepoints_11all20_loc_females_10 %>% group_by(focal) %>% summarise()
+selected_females <- as_vector(selected_females)
+
+#### retrieve sampling intervals
+mainSI <- rep(30,length(selected_females))
+
+brb_list <- data.frame()
+
+for (samplinginterval in c(1:length(mt_list))){
+  print(paste("brb for period: ",samplinginterval))
+  ##### Determine the smoothing parameters
+  selected_females <- mt_list[[samplinginterval]] %>% group_by(focal) %>% summarise()
+  selected_females <- as_vector(selected_females)
+  
+  iterator <- 1
+  for (i in selected_females) { # do the following for every animal in the list
+    print(paste("brb for focal: ",i))
+    xy_selected <- mt_list[[samplinginterval]] %>% filter(focal%in%c(i)) %>% dplyr::select(E,N,timelag_lead,manualDatetime)
+    
+    colnames(xy_selected) <- c("x","y","timelag_lead","timestamp") #adjust column names
+    xy_selected <- xy_selected %>%  mutate(timelag_lead = round(timelag_lead,digits=0))
+  
+    # only select points where timegaps are between 20-40min --> To do pretty bad selection we would need a function which selects points automatically by subsampling if mean timegap is too high or by interpolating if too small. But how much does it really affect the result of HR --> because we mainly compare HR sizes.
+    #xy_selected <- xy_selected %>% filter((timelag_lead/60)>20) #select which SI to remove (xy_selected$timelag_lead/60 < (mainSI[[iterator]]-10))
+    #xy_selected <- xy_selected %>% filter((timelag_lead/60)<40)
+    #xy_selected <- xy_selected[!(is.na(xy_selected$y)),]
+    
+    # check if enough gps points are still here otherwise make NA's
+    xy_selected_toolessdata <- TRUE
+    if(nrow(xy_selected)<30){xy_selected_toolessdata <- FALSE}
+    
+    # samplingI <- vector()
+    # samplingI <- xy_selected$timelag_lead/60
+    # samplingI <- samplingI[2:length(samplingI)] # First value of timelag_lead is NA
+    # plot(table(samplingI), type="h", xlim=c(20,40),col=4, ylab="frequency", xlab="sampling interval [min]")
+    
+    xy_selected <- xy_selected[order(xy_selected$timestamp , decreasing = FALSE ),] 
+    moveObj <- move(x=xy_selected$x, y=xy_selected$y, time=xy_selected$timestamp, proj=CRS("+init=epsg:22236"),animal=i)
+    ##########################################################################################
+    relUn <- 10 # relocation uncertainty [m]
+    ##########################################################################################
+    velocity <- unname(quantile(speed(moveObj), 0.99)) * 60 # unit: [m/min]
+    hmin <- relUn + (0.5 * velocity * 30) # meters, smoothing
+    iterator <- iterator+1
+    
+    
+    
+    traj <- as.ltraj(xy=xy_selected[,c("x", "y")], date=xy_selected$timestamp, id=i)
+  
+    ##########################################################################################
+    tmax <- 70*60 # seconds, maximum time span for a segment
+    lmin <- 20 # meters, minimal distance of a segment in order to count as movement
+    tau <- 3*60 #seconds, approx. duration of one interpolated interval -> defines the number of intervals per step 
+    extVal <- 15
+    gridVal <- 2000
+    hminRef <- hmin # computed through "BRB_leo_hmin computation.R"
+    hminFactor <- c(0.8, 1.0, 1.2, 1.4, 1.6, 1.8, 2.0)
+    ##########################################################################################
+  
+    vv <- BRB.D(traj, Tmax=tmax, Lmin=lmin) #estimate the diffusion coefficient
+    for (l in seq(1:length(hminFactor))) {
+      start_time <- Sys.time()
+      hmin <- hminFactor[[l]]*hminRef
+      if(xy_selected_toolessdata){# only execute when enough data
+      UD <- BRB(traj, D=vv, Tmax=tmax, Lmin=lmin, hmin=hmin, b=T, same4all=T, grid=gridVal, extent=extVal, filtershort=T, type="UD")
+      
+      hr95 <- getverticeshr(UD, percent=95, standardize=TRUE,unin = c("m"),unout = c("km2"))
+      hr50 <- getverticeshr(UD, percent=50, standardize=TRUE,unin = c("m"),unout = c("km2"))
+      hr99 <- getverticeshr(UD, percent=99, standardize=TRUE,unin = c("m"),unout = c("km2"))
+      
+      par(0,0,0,0)
+      step <- 200
+      
+      ########## plot results ##########
+      hminTxt <- gsub(".", "_", as.character(hminFactor[[l]]), fixed=T)
+      xmin_xmax_round_steps<- c(step*(ceiling(xmin/step)):(round(xmax/step)))
+      xmin_xmax_round_steps <- xmin_xmax_round_steps[2:(length(xmin_xmax_round_steps)-2)] #manual adjustment of tick breaks how many does it need
+      ymin_ymax_round_steps<- c(step*(ceiling(ymin/step)):(round(ymax/step)))
+      ymin_ymax_round_steps <- ymin_ymax_round_steps[2:(length(ymin_ymax_round_steps)-1)] #manual adjustment of tick breaks how many does it need    
+      
+  
+      
+      png(paste(imdir,i, "_BRB_UD_", hminTxt,"_",names(mt_list)[samplinginterval], ".png", sep=""), width=1800, height=1400, res=240, units="px")
+      image(UD, xlab="x [m]",ylab="y [m]",xlim=c(xmin_xmax_round_steps[1],tail(xmin_xmax_round_steps,n=1)),ylim=c(ymin_ymax_round_steps[1],tail(ymin_ymax_round_steps,n=1))) 
+      plot(hr50, lty=3, lwd=1.5, border="darkseagreen3", add=T,axes=F)
+      plot(hr95, lty=1, lwd=1, border="cadetblue2", add=T, axes=F)
+      plot(hr99, lty=4, lwd=1, border="darkturquoise", add=T, axes=F)
+      plot(SUAQ_pathnetwork_sf_loc, lty=1, lwd=0.3, col=alpha("darkolivegreen", 0.7), add=T, axes=F)
+      axis(1, at=xmin_xmax_round_steps,pos=ymin+150) # x axis
+      axis(2, at=ymin_ymax_round_steps, pos=xmin-500)
+      title(paste(i, ": BRB (", hminFactor[[l]], "*hmin)", sep=""), line=-1.5)
+      legend("topright", c("HR 50%", "HR 95%", "HR 100%","Trail"), col=c("darkseagreen3", "cadetblue2", "darkturquoise","darkolivegreen"), lwd=c(1,0.6), lty=c(3,1,4,1), inset=c(0,0))
+      dev.off()
+      
+      png(paste(imdir,i, "_BRB_VUD_", hminTxt,"_",names(mt_list)[samplinginterval], ".png", sep=""), width=1800, height=1400, res=240, units="px")
+      image(getvolumeUD(UD), xlab="x [m]",ylab="y [m]",xlim=c(xmin_xmax_round_steps[1],tail(xmin_xmax_round_steps,n=1)),ylim=c(ymin_ymax_round_steps[1],tail(ymin_ymax_round_steps,n=1))) 
+      plot(hr50, lty=3, lwd=1.5, border="darkseagreen3", add=T,axes=F)
+      plot(hr95, lty=1, lwd=1, border="cadetblue2", add=T, axes=F)
+      plot(hr99, lty=4, lwd=1, border="darkturquoise", add=T, axes=F)
+      plot(SUAQ_pathnetwork_sf_loc, lty=1, lwd=0.3, col=alpha("darkolivegreen", 0.7), add=T, axes=F)
+      axis(1, at=xmin_xmax_round_steps,pos=ymin+150) # x axis
+      axis(2, at=ymin_ymax_round_steps, pos=xmin-500)
+      title(paste(i, ": BRB (", hminFactor[[l]], "*hmin)", sep=""), line=-1.5)
+      legend("topright", c("HR 50%", "HR 95%", "HR 100%","Trail"), col=c("darkseagreen3", "cadetblue2", "darkturquoise","darkolivegreen"), lwd=c(1,0.6), lty=c(3,1,4,1), inset=c(0,0))
+      dev.off()}
+      
+      end_time <- Sys.time()
+      duration <- end_time-start_time
+      ########## export results ############
+      if(xy_selected_toolessdata){resultList <- data.frame(focal=i,hr50=hr50$area, hr95=hr95$area,nGPS=nrow(xy_selected),Velocity_percentile99=velocity,GPSuncertainty=relUn,hmin=hmin,tmax=tmax,lmin=lmin,tau=tau,hminfac=hminFactor[[l]],hminRef=hminRef,period=names(mt_list)[samplinginterval],processingtime=duration)}
+      if(!xy_selected_toolessdata){resultList <- data.frame(focal=i,hr50=NA, hr95=NA,nGPS=nrow(xy_selected),Velocity_percentile99=velocity,GPSuncertainty=relUn,hmin=hmin,tmax=tmax,lmin=lmin,tau=tau,hminfac=hminFactor[[l]],hminRef=hminRef,period=names(mt_list)[samplinginterval],processingtime=duration)}
+      brb_list <- brb_list %>% bind_rows(resultList)
+      
+      print(paste(hminTxt, ": Calculation finished", sep=""))
+    }
+  }
+}
+
+write_csv(brb_list, path = paste(
+  paste(
+    imdir,
+    "brb_values_years",
+    sep = ""
+  ),
+  "csv",
+  sep = "."
+))
+system("say alle kernel distanzen berechnet für die verschiedenen Untersuchungsperioden")
 
 
-brb_list_reshape <- brb_list %>% na.omit()
-plot(brb_list$hr95~brb_list$period , type="b" , bty="l" , xlab="value of a" , ylab="value of b" , col=rgb(0.2,0.4,0.1,0.7) , lwd=3 , pch=17 , ylim=c(1,5) )
+```
 
-ggparcoord(brb_list_reshape,
-    columns = 2:6, groupColumn = 1, order = "anyClass",
-    showPoints = TRUE, 
-    title = "Homerange sizes: BRB - periods",
-    alphaLines = 1
-    ) + 
-  scale_color_viridis(discrete=TRUE) +
-  theme_ipsum()+
-  theme(
-    plot.title = element_text(size=10)
-  )
-view(iris)
+```{r Homerange - VISUALS - HR sizes,echo=FALSE, message=FALSE,comment=FALSE, warning=FALSE}
+#### BRB: Find most recent folder
+mostrecent <- list.dirs(path = "output/Homeranges/KDE/periods/", full.names = FALSE, recursive = FALSE)
+mostrecent <- as.data.frame(mostrecent)
+colnames(mostrecent) <- c("date")
+mostrecent <- mostrecent %>% filter(date!="_archive") %>%  arrange(desc(date)) %>% top_n(1,date)
+imdir <-paste("output/Homeranges/KDE/periods/",mostrecent$date[1], "/", sep="")
+kde_values_allperiods <- read_csv(paste0(imdir,"kde_values_allperiods.csv"))
+
+#### BRB: Find most recent folder
+mostrecent <- list.dirs(path = "output/Homeranges/BRB/periods/", full.names = FALSE, recursive = FALSE)
+mostrecent <- as.data.frame(mostrecent)
+colnames(mostrecent) <- c("date")
+mostrecent <- mostrecent %>% filter(date!="_archive") %>%  arrange(desc(date)) %>% top_n(1,date)
+imdir <-paste("output/Homeranges/BRB/periods/",mostrecent$date[1], "/", sep="")
+
+#### Load homerange results
+brb_list <- read_csv(paste0(imdir,"brb_values_allperiods.csv"))
+
+test<- SUAQ_rangepoints_11all20_loc %>% filter(focal%in%c("friska")) %>% filter(year(manualDate)<2012)
+year(SUAQ_waypoints_11all20_loc$manualDate[1])
+
+brb_selected_periods<- brb_list %>% 
+  #filter(focal %in%c("ellie","lisa","friska","cissy"))%>% 
+  mutate(period=fct_relevel(period, 
+            "before 2012" ,"2012 until 2016","2016 until August 2018","Since August 2018","total research period"))
+  #filter(hminfac==1)
+
+brb_list_selected_err<-  brb_selected_periods %>% 
+  mutate(hminfac=as.numeric(hminfac)) %>%  
+  filter(hminfac %in% c(0.8,1.2))  %>% 
+  spread(hminfac,hr95) %>%
+  group_by(focal,nGPS,period) %>%
+  summarise_each(funs(first(.[!is.na(.)]))) %>% 
+  rename(hminfac_0_8=`0.8`,hminfac_1_2=`1.2`)
+
+
+
+png(file=paste(
+  paste(
+    "/Users/stefgr/Dropbox/Apps/Overleaf/Msc_Thesis/figures/",
+    format(Sys.Date(), "%Y%m%d"),"_",
+    "brb_selected_periods",
+    sep = ""
+  ),
+  "png",
+  sep = "."
+),width=900, height=700, res=120, units="px") # or other device
+brb_selected_periods %>% filter(hminfac==1) %>% ggplot() + 
+  geom_errorbar(data=brb_list_selected_err,aes(x=period,ymin=hminfac_0_8, ymax=hminfac_1_2,color=focal),width=0.2)+
+  geom_point(aes(period,hr95,group=interaction(focal),color=focal),size=3)+
+  geom_line(aes(period,hr95,group=interaction(focal),color=focal),size=0.5)+
+  scale_color_brewer(palette="Set1") +
+  theme_minimal()+
+  geom_text(aes(x=period,y=hr95,label=nGPS),check_overlap = TRUE,hjust=1.5)+
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))+
+  theme(axis.title.x=element_blank())+
+  labs(y=expression("Homerange 95% [km"^2*"]"))
+dev.off()
+
 ```
 
 ```{r dBBMM - HR sizes,echo=FALSE, message=FALSE,comment=FALSE, warning=FALSE}
