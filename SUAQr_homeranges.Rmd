@@ -27,8 +27,10 @@ packages_checker <- function(packages_list){
     library(package, character.only = T)
   }
 }
+
 packages_checker(
-  c('tmap',
+  c('tlocoh',
+    'tmap',
     'tmaptools',# read_gpx function
     'hrbrthemes', # for colors --> viridis
     'rgdal',
@@ -57,6 +59,9 @@ packages_checker(
     'sp',
     'ks' # used in KDE functions
     ))
+#install.packages("tlocoh", dependencies=TRUE, repos=c("http://R-Forge.R-project.org", "http://cran.cnr.berkeley.edu"), type="source")
+#require(tlocoh)
+
 rm(list = ls())
 getwd()
 
@@ -218,7 +223,7 @@ SUAQ_weather_monthly<- SUAQ_weather_monthly%>% dplyr::select(-SUAQ_weather.weath
 
 ##### location network ##### 
 SUAQ_locationnetwork_sf <- st_read("data/20201201_StudyBalimbingStudyArea_points.GPX")
-SUAQ_locationnetwork_sf_loc <- st_transform(SUAQ_locationnetwork_sf,crs = 32647)
+SUAQ_locationnetwork_sf_loc <- st_transform(SUAQ_locationnetwork_sf,crs = 23847)
 ##### for locale coordinate system
 coordinates_tmp <- st_coordinates(SUAQ_locationnetwork_sf_loc)
 colnames(coordinates_tmp) <- c("E","N")
@@ -228,8 +233,20 @@ SUAQ_locationnetwork_loc <- st_drop_geometry(SUAQ_locationnetwork_sf_loc)
 SUAQ_pathnetwork<- as.data.frame(read_GPX(file="data/SUAQ_Peta_WithLines.GPX",layers = c("routes")))
 colnames(SUAQ_pathnetwork)[15]<- "geometry"
 SUAQ_pathnetwork_sf<- st_as_sf(SUAQ_pathnetwork,crs=4326)
-SUAQ_pathnetwork_sf_loc <- st_transform(SUAQ_pathnetwork_sf,crs = 32647)
+SUAQ_pathnetwork_sf_loc <- st_transform(SUAQ_pathnetwork_sf,crs = 23847)
 
+##### physical features for plots
+SUAQ_river_sf_wgs<- st_read(dsn="data/external/GeodataIndonesia/Wasser/fluss_50k_perimetergross.shp")
+SUAQ_river_sf_loc <- st_transform(SUAQ_river_sf_wgs,crs = 23847)
+
+SUAQ_smallriver_sf_wgs<- st_read(dsn="data/external/GeodataIndonesia/Wasser/kleinflüsse_50k_perimetergross.shp")
+SUAQ_smallriver_sf_loc <- st_transform(SUAQ_smallriver_sf_wgs,crs = 23847)
+
+SUAQ_contour_sf_wgs<- st_read(dsn="data/external/GeodataIndonesia/Hoehenllinien/hohenlinien_50k_perimetergross.shp")
+SUAQ_contour_sf_loc <- st_transform(SUAQ_contour_sf_wgs,crs = 23847)
+
+SUAQ_station_sf_wgs<- st_read(dsn="data/external/researchstation.shp")
+SUAQ_station_sf_loc <- st_transform(SUAQ_station_sf_wgs,crs = 23847)
 
 ##### Selection only pointtypes which are taken on the orangutan way? is this true for all? ##### 
 SUAQ_rangepoints_11all20_loc <- SUAQ_waypoints_11all20_loc %>% filter(PtType %in% c("daynest","found","lost","mornnest","nightnest","range","tree")) # get rid of lcg lch points and
@@ -258,7 +275,7 @@ SUAQ_rangepoints_11all20_loc<- SUAQ_rangepoints_11all20_loc %>%
 ##### WGS84 file
 SUAQ_rangepoints_11all20_loc_sf <-  st_as_sf(SUAQ_rangepoints_11all20_loc, 
                           coords = c("E","N"), 
-                          crs = 32647) # can also do that in the new sricpts
+                          crs = 23847) # can also do that in the new sricpts
 SUAQ_rangepoints_11all20_loc_wgs <- st_transform(SUAQ_rangepoints_11all20_loc_sf,4326)
 coordinates_tmp <- st_coordinates(SUAQ_rangepoints_11all20_loc_wgs)
 colnames(coordinates_tmp) <- c("long","lat")
@@ -301,6 +318,38 @@ mostrecent <- mostrecent %>% filter(date!="_archive") %>%  arrange(desc(date)) %
 imdir <-paste("/Users/stefgr/Nextcloud/UZH/12_Semester/20200313_Masterthesis/R/output/Homeranges/KDE/bandwiths/")
 bandwiths <- read_csv(paste0(imdir,paste(mostrecent$date[1], sep="")))
 
+#### Homerange calculations parameter
+### Extent
+# use always same extent
+extentmargin <- 500
+axisshifty <- 125 # shift of axis in plots y axis
+axisshiftx <- -280 # shift of axis in plots x axis
+legendoffsetx <- 0
+legendoffsety <- 0
+xmin <- min(SUAQ_rangepoints_11all20_loc_females_10$E)-extentmargin; xmax <- max(SUAQ_rangepoints_11all20_loc_females_10$E)+extentmargin
+ymin <- min(SUAQ_rangepoints_11all20_loc_females_10$N)-extentmargin; ymax <- max(SUAQ_rangepoints_11all20_loc_females_10$N)+extentmargin
+step <- 200
+xmin_xmax_round_steps<- c(step*(ceiling(xmin/step)):(round(xmax/step)))
+xmin_xmax_round_steps <- xmin_xmax_round_steps[2:(length(xmin_xmax_round_steps)-2)] #manual adjustment of tick breaks how many does it need
+ymin_ymax_round_steps<- c(step*(ceiling(ymin/step)):(round(ymax/step)))
+ymin_ymax_round_steps <- ymin_ymax_round_steps[2:(length(ymin_ymax_round_steps)-1)] #manual adjustment of tick breaks how many does it need
+
+#### research periods data as list
+# Split the data into 4 sampling periods. Calculate the respective HR.
+SUAQ_rangepoints_11all20_loc_females_10 <- SUAQ_rangepoints_11all20_loc_females_10 %>% mutate(year=year(manualDatetime))
+
+# make 5 lists for all 4 research periods and one for all data
+mt_list <- split(SUAQ_rangepoints_11all20_loc_females_10, f = SUAQ_rangepoints_11all20_loc_females_10$researchperiod)
+
+# add all data as the 5th list (period)
+mt_list[["total research period"]] <- SUAQ_rangepoints_11all20_loc_females_10
+mt_list <- mt_list[c("total research period","before 2012","2012 until 2016","2016 until August 2018","Since August 2018")]
+
+#### Selected animals as list/vector
+selected_females <- SUAQ_rangepoints_11all20_loc_females_10 %>% group_by(focal) %>% summarise()
+selected_females <- as_vector(selected_females)
+
+
 ```
 
 Homerange sizes:
@@ -333,30 +382,6 @@ write_csv(SUAQ_rangepoints_11all20_loc_females6_wgs, path = paste(
   sep = "."
 ))
 
-#### Homerange calculations parameter
-### Extent
-# use always same extent
-xmin <- min(SUAQ_rangepoints_11all20_loc_females_10$E)-500; xmax <- max(SUAQ_rangepoints_11all20_loc_females_10$E)+500
-ymin <- min(SUAQ_rangepoints_11all20_loc_females_10$N)-500; ymax <- max(SUAQ_rangepoints_11all20_loc_females_10$N)+500
-step <- 200
-xmin_xmax_round_steps<- c(step*(ceiling(xmin/step)):(round(xmax/step)))
-xmin_xmax_round_steps <- xmin_xmax_round_steps[2:(length(xmin_xmax_round_steps)-2)] #manual adjustment of tick breaks how many does it need
-ymin_ymax_round_steps<- c(step*(ceiling(ymin/step)):(round(ymax/step)))
-ymin_ymax_round_steps <- ymin_ymax_round_steps[2:(length(ymin_ymax_round_steps)-1)] #manual adjustment of tick breaks how many does it need
-
-#### research periods data as list
-# Split the data into 4 sampling periods. Calculate the respective HR.
-SUAQ_rangepoints_11all20_loc_females_10 <- SUAQ_rangepoints_11all20_loc_females_10 %>% mutate(year=year(manualDatetime))
-
-# make 5 lists for all 4 research periods and one for all data
-mt_list <- split(SUAQ_rangepoints_11all20_loc_females_10, f = SUAQ_rangepoints_11all20_loc_females_10$researchperiod)
-
-# add all data as the 5th list (period)
-mt_list[["total research period"]] <- SUAQ_rangepoints_11all20_loc_females_10
-
-#### Selected animals as list/vector
-selected_females <- SUAQ_rangepoints_11all20_loc_females_10 %>% group_by(focal) %>% summarise()
-selected_females <- as_vector(selected_females)
 
 
 ```
@@ -391,7 +416,7 @@ for (samplinginterval in c(1:length(mt_list))){
     n_gps <- xy_selected %>% nrow() # just as a variable for later results dataframe --> number of GPS points
     
     coordinates(xy_selected) <- c("E","N")
-    proj4string(xy_selected) <- CRS( "+proj=utm +zone=47 +datum=WGS84 +units=m +no_defs" )
+    proj4string(xy_selected) <- CRS( "+proj=utm +zone=47 +a=6378160 +b=6356774.50408554 +towgs84=-24,-15,5,0,0,0,0 +units=m +no_defs" )
     
     # check if enough gps points are still here otherwise make NA's
     xy_selected_toolessdata <- TRUE
@@ -417,12 +442,16 @@ for (samplinginterval in c(1:length(mt_list))){
       plot(xy_selected,pch = 16,cex=0.3,fill="darkolivegreen", xlab="x [m]",ylab="y [m]",xlim=c(xmin_xmax_round_steps[1],tail(xmin_xmax_round_steps,n=1)),ylim=c(ymin_ymax_round_steps[1],tail(ymin_ymax_round_steps,n=1)))
       plot(hr50, lty=3, lwd=2.5, border="coral1", add=T,axes=F)
       plot(hr95, lty=1, lwd=2, border="cadetblue2", add=T, axes=F)
-      plot(hr99, lty=4, lwd=2, border="darkturquoise", add=T, axes=F)
-      plot(SUAQ_pathnetwork_sf_loc, lty=1, lwd=0.3, col=alpha("darkolivegreen", 0.7), add=T, axes=F)
-      axis(1, at=xmin_xmax_round_steps,pos=ymin+150) # x axis
-      axis(2, at=ymin_ymax_round_steps, pos=xmin-500)
-      title(paste(i, ": MCP", sep=""), line=-1.5)
-      legend("topright", c("HR 50%", "HR 95%", "HR 100%","Trail"), col=c("coral1", "cadetblue2", "darkturquoise","darkolivegreen"), lwd=c(2.5,2,2,0.3), lty=c(3,1,4,1), inset=c(0,0))
+      plot(hr99, lty=4, lwd=0.8, border="darkturquoise", add=T, axes=F)
+      plot(SUAQ_contour_sf_loc,lty=3, lwd=0.2, col=alpha("black", 1), add=T, axes=F)
+      plot(SUAQ_station_sf_loc,pch = 21,cex=1.5, col=alpha("black", 0.7), add=T, axes=F)
+      plot(SUAQ_station_sf_loc,pch = 16,cex=1, col=alpha("darkred", 0.7),lwd=0.3, bg="darkred", add=T, axes=F)
+      plot(SUAQ_river_sf_loc,lty=1, lwd=0.3, col=alpha("cornflowerblue", 0.7), add=T, axes=F)
+      plot(SUAQ_pathnetwork_sf_loc, lty=1, lwd=0.3, col=alpha("darkred", 0.7), add=T, axes=F)
+      axis(1, at=xmin_xmax_round_steps,pos=ymin+axisshifty) # x axis
+      axis(2, at=ymin_ymax_round_steps, pos=xmin+axisshiftx)
+      title(paste(i, " : ",names(mt_list)[samplinginterval], sep=""), line=-1.5)
+      legend("topright", c("HR 50%", "HR 95%", "HR 100%","Trail","River"), col=c("coral1", "cadetblue2", "darkturquoise","darkred",alpha("cornflowerblue", 0.7)), lwd=c(2.5,2,2,0.3,4), lty=c(3,1,4,1,1), inset=c(legendoffsety,legendoffsety))
       dev.off()
       }
       
@@ -526,7 +555,7 @@ st_write(mcp_list, dsn = paste(
   "shp",
   sep = "."
 ))
-system("say alle minimum konvex Polygone berechnet für die verschiedenen Untersuchungsperioden")
+#system("say alle minimum konvex Polygone berechnet für die verschiedenen Untersuchungsperioden")
 
 
 ```
@@ -560,7 +589,7 @@ for (samplinginterval in c(1:length(mt_list))){
     n_gps <- xy_selected %>% nrow() # just as a variable for later results dataframe --> number of GPS points
     
     coordinates(xy_selected) <- c("E","N")
-    proj4string(xy_selected) <- CRS( "+proj=utm +zone=47 +datum=WGS84 +units=m +no_defs" )
+    proj4string(xy_selected) <- CRS( "+proj=utm +zone=47 +a=6378160 +b=6356774.50408554 +towgs84=-24,-15,5,0,0,0,0 +units=m +no_defs" )
     
     # check if enough gps points are still here otherwise make NA's
     xy_selected_toolessdata <- TRUE
@@ -570,7 +599,7 @@ for (samplinginterval in c(1:length(mt_list))){
     
       if(xy_selected_toolessdata){# only execute when enough data
       hr100<- mcp(xy_selected,percent = 100)
-      hr99 <- mcp(xy_selected,percent = 99)
+      hr99 <- mcp(xy_selected,percent = 99) 
       hr95 <- mcp(xy_selected,percent = 95)
       hr50 <- mcp(xy_selected,percent = 50)
       hr100_area <- mcp.area(xy_selected, percent = 100)
@@ -584,11 +613,15 @@ for (samplinginterval in c(1:length(mt_list))){
       plot(hr50, lty=3, lwd=2.5, border="coral1", add=T,axes=F)
       plot(hr95, lty=1, lwd=2, border="cadetblue2", add=T, axes=F)
       plot(hr99, lty=4, lwd=2, border="darkturquoise", add=T, axes=F)
+      plot(SUAQ_contour_sf_loc,lty=3, lwd=0.2, col=alpha("black", 1), add=T, axes=F)
+      plot(SUAQ_station_sf_loc,pch = 21,cex=1.5, col=alpha("black", 0.7), add=T, axes=F)
+      plot(SUAQ_station_sf_loc,pch = 16,cex=1, col=alpha("darkred", 0.7),lwd=0.3, bg="darkred", add=T, axes=F)
+      plot(SUAQ_river_sf_loc,lty=1, lwd=0.3, col=alpha("cornflowerblue", 0.7), add=T, axes=F)
       plot(SUAQ_pathnetwork_sf_loc, lty=1, lwd=0.3, col=alpha("darkolivegreen", 0.7), add=T, axes=F)
-      axis(1, at=xmin_xmax_round_steps,pos=ymin+150) # x axis
-      axis(2, at=ymin_ymax_round_steps, pos=xmin-500)
-      title(paste(i, ": MCP", sep=""), line=-1.5)
-      legend("topright", c("HR 50%", "HR 95%", "HR 100%","Trail"), col=c("coral1", "cadetblue2", "darkturquoise","darkolivegreen"), lwd=c(2.5,2,2,0.3), lty=c(3,1,4,1), inset=c(0,0))
+      axis(1, at=xmin_xmax_round_steps,pos=ymin+axisshifty) # x axis
+      axis(2, at=ymin_ymax_round_steps, pos=xmin+axisshiftx)
+      title(paste(i, " : ",names(mt_list)[samplinginterval], sep=""), line=-1.5)
+      legend("topright", c("HR 50%", "HR 95%", "HR 100%","Trail","River"), col=c("coral1", "cadetblue2", "darkturquoise","darkred",alpha("cornflowerblue", 0.7)), lwd=c(2.5,2,2,0.3,4), lty=c(3,1,4,1,1), inset=c(legendoffsety,legendoffsety))
       dev.off()
       }
       
@@ -692,7 +725,7 @@ st_write(mcp_list, dsn = paste(
   "shp",
   sep = "."
 ))
-system("say alle minimum konvex Polygone berechnet für die verschiedenen Untersuchungsperioden")
+system("say alle minimum konvex Polygone berechnet für jedes Jahr")
 
 
 ```
@@ -709,7 +742,7 @@ SUAQ_move_selected <- SUAQ_rangepoints_11all20_loc_females_above50GPS[order(SUAQ
 
 SUAQ_move_selected <- move(x=SUAQ_move_selected$E, y=SUAQ_move_selected$N, 
               time=as.POSIXct(SUAQ_move_selected$manualDatetime, format="%Y-%m-%d %H:%M:%OS", tz="Asia/Pontianak"),
-              proj=CRS("+proj=utm +zone=47 +datum=WGS84 +units=m +no_defs"), 
+              proj=CRS("+proj=utm +zone=47 +a=6378160 +b=6356774.50408554 +towgs84=-24,-15,5,0,0,0,0 +units=m +no_defs"), 
               data=SUAQ_move_selected, animal=SUAQ_move_selected$focal, sensor="gps")
 hrBootstrap(x=SUAQ_move_selected, rep=25,level=100,
             levelMax=100, unin="m",unout='km2')
@@ -719,7 +752,7 @@ SUAQ_move_selected <- SUAQ_rangepoints_11all20_loc_above50GPS[order(SUAQ_rangepo
 
 SUAQ_move_selected <- move(x=SUAQ_move_selected$E, y=SUAQ_move_selected$N, 
               time=as.POSIXct(SUAQ_move_selected$manualDatetime, format="%Y-%m-%d %H:%M:%OS", tz="Asia/Pontianak"),
-              proj=CRS("+proj=utm +zone=47 +datum=WGS84 +units=m +no_defs"), 
+              proj=CRS("+proj=utm +zone=47 +a=6378160 +b=6356774.50408554 +towgs84=-24,-15,5,0,0,0,0 +units=m +no_defs"), 
               data=SUAQ_move_selected, animal=SUAQ_move_selected$focal, sensor="gps")
 all<- hrBootstrap(x=SUAQ_move_selected, rep=25,level=100,plot=FALSE,
             levelMax=100, unin="m",unout='km2')
@@ -786,7 +819,7 @@ for (i in selected_females){ # compute KDE home range for every individual
   methListTitle <- list("REF", "PI", "BCV", "SCV")
   methList <- list("HREF", "HPI", "HBCV", "HSCV")
   
-  xy_selected <- SpatialPoints(xy_selected,proj4string = CRS( "+proj=utm +zone=47 +datum=WGS84 +units=m +no_defs" )) # Converts SpatialPointDataFrame to SpatialPoint (only x & y)
+  xy_selected <- SpatialPoints(xy_selected,proj4string = CRS( "+proj=utm +zone=47 +a=6378160 +b=6356774.50408554 +towgs84=-24,-15,5,0,0,0,0 +units=m +no_defs" )) # Converts SpatialPointDataFrame to SpatialPoint (only x & y)
   
   extVal <- 0.3 #0.3 How much bigger the UD should be calculated than the research are (minimum bounding box). The higher the more Computation
   gridVal <- 800 #700 How much cells or pixels should be considered for UD calculation. The higher the more Computation
@@ -826,8 +859,8 @@ for (i in selected_females){ # compute KDE home range for every individual
     image(UD, xlab="x [m]",xlim=c(xmin_xmax_round_steps[1],tail(xmin_xmax_round_steps,n=1)),ylim=c(ymin_ymax_round_steps[1],tail(ymin_ymax_round_steps,n=1))) 
     plot(hr50, lty=4, lwd=1, border="azure4", add=T,axes=F)
     plot(hr95, lty=1, lwd=0.6, border="cadetblue2", add=T, axes=F)
-    axis(1, at=xmin_xmax_round_steps)
-    axis(2, at=ymin_ymax_round_steps, pos=xmin+100)
+    axis(1, at=xmin_xmax_round_steps,pos =ymin+axisshifty )
+    axis(2, at=ymin_ymax_round_steps, pos=xmin+axisshiftx)
     text(xmin-100, (ymin+ymax)/2, "y [m]", adj=c(NA,-4), srt=90)
     title(paste(selected_females[[iterator]], ": KDE ", "(", methListTitle[[j]], ")", sep=""), line=-0.3)
     legend("topright", c("HR 50%", "HR 95%"), col=c("black", "blue"), lwd=c(1,0.6), lty=c(4,1), inset=c(0.17,0.11))
@@ -837,8 +870,8 @@ for (i in selected_females){ # compute KDE home range for every individual
     image(getvolumeUD(UD), xlab="x [m]",xlim=c(xmin_xmax_round_steps[1],tail(xmin_xmax_round_steps,n=1)),ylim=c(ymin_ymax_round_steps[1],tail(ymin_ymax_round_steps,n=1)))
     plot(hr50, lty=4, lwd=1, border="azure4", add=T,axes=F)
     plot(hr95, lty=1, lwd=0.6, border="cadetblue2", add=T, axes=F)
-    axis(1, at=xmin_xmax_round_steps)
-    axis(2, at=ymin_ymax_round_steps, pos=xmin+100)
+    axis(1, at=xmin_xmax_round_steps,pos =ymin+axisshifty )
+    axis(2, at=ymin_ymax_round_steps, pos=xmin+axisshiftx)
     text(xmin-100, (ymin+ymax)/2, "y [m]", adj=c(NA,-4), srt=90)
     title(paste(selected_females[[iterator]], ": KDE ", "(", methListTitle[[j]], ")", sep=""), line=-0.3)
     legend("topright", c("HR 50%", "HR 95%"), col=c("black", "blue"), lwd=c(1,0.6), lty=c(4,1), inset=c(0.17,0.11))
@@ -944,7 +977,7 @@ for (i in selected_females){ # compute KDE home range for every individual
   xy_selected<- sample_n(xy_selected, round(nrow(xy_selected)*per))
 
   colnames(xy_selected) <- c("x","y") #adjust column names
-  xy_selected <- SpatialPoints(xy_selected,proj4string = CRS( "+proj=utm +zone=47 +datum=WGS84 +units=m +no_defs" )) # Converts SpatialPointDataFrame to SpatialPoint (only x & y)
+  xy_selected <- SpatialPoints(xy_selected,proj4string = CRS( "+proj=utm +zone=47 +a=6378160 +b=6356774.50408554 +towgs84=-24,-15,5,0,0,0,0 +units=m +no_defs" )) # Converts SpatialPointDataFrame to SpatialPoint (only x & y)
 
   
   resultList <- list()
@@ -1076,7 +1109,7 @@ for (i in selected_females){ # compute KDE home range for every individual
   methListTitle <- list("REF", "PI", "BCV", "SCV")
   methList <- list("HREF", "HPI", "HBCV", "HSCV")
   
-  xy_selected <- SpatialPoints(xy_selected,proj4string = CRS( "+proj=utm +zone=47 +datum=WGS84 +units=m +no_defs" )) # Converts SpatialPointDataFrame to SpatialPoint (only x & y)
+  xy_selected <- SpatialPoints(xy_selected,proj4string = CRS( "+proj=utm +zone=47 +a=6378160 +b=6356774.50408554 +towgs84=-24,-15,5,0,0,0,0 +units=m +no_defs" )) # Converts SpatialPointDataFrame to SpatialPoint (only x & y)
   
   extVal <- 15 #0.3 How much bigger the UD should be calculated than the research are (minimum bounding box). The higher the more Computation
   gridVal <- 2000 #700 How much cells or pixels should be considered for UD calculation. The higher the more Computation
@@ -1106,24 +1139,22 @@ for (i in selected_females){ # compute KDE home range for every individual
     hr50_sf <- st_as_sf(hr50)
     
     ########## plot results ##########
-    step <- 200
-    xmin_xmax_round_steps<- c(step*(ceiling(xmin/step)):(round(xmax/step)))
-    xmin_xmax_round_steps <- xmin_xmax_round_steps[2:(length(xmin_xmax_round_steps)-2)] #manual adjustment of tick breaks how many does it need
-    ymin_ymax_round_steps<- c(step*(ceiling(ymin/step)):(round(ymax/step)))
-    ymin_ymax_round_steps <- ymin_ymax_round_steps[2:(length(ymin_ymax_round_steps)-1)] #manual adjustment of tick breaks how many does it need
-
     png(paste(imdir, selected_females[[iterator]],"_",gsub(" ", "", names(mt_list)[samplinginterval], fixed = TRUE), "_KDE_UD_", methList[[j]], ".png", sep=""), width=1800, height=1400, res=240, units="px")
     par(0,0,0,0)
     image(UD, xlab="x [m]",ylab="y [m]",xlim=c(xmin_xmax_round_steps[1],tail(xmin_xmax_round_steps,n=1)),ylim=c(ymin_ymax_round_steps[1],tail(ymin_ymax_round_steps,n=1))) 
     plot(hr50, lty=3, lwd=1.5, border="darkseagreen3", add=T,axes=F)
     plot(hr95, lty=1, lwd=1, border="cadetblue2", add=T, axes=F)
     plot(hr99, lty=4, lwd=1, border="darkturquoise", add=T, axes=F)
+    plot(SUAQ_contour_sf_loc,lty=3, lwd=0.2, col=alpha("black", 1), add=T, axes=F)
+    plot(SUAQ_station_sf_loc,pch = 21,cex=1.5, col=alpha("black", 0.7), add=T, axes=F)
+    plot(SUAQ_station_sf_loc,pch = 16,cex=1, col=alpha("darkred", 0.7),lwd=0.3, bg="darkred", add=T, axes=F)
+    plot(SUAQ_river_sf_loc,lty=1, lwd=0.3, col=alpha("cornflowerblue", 0.7), add=T, axes=F)
     plot(SUAQ_pathnetwork_sf_loc, lty=1, lwd=0.3, col=alpha("darkolivegreen", 0.7), add=T, axes=F)
-    axis(1, at=xmin_xmax_round_steps,pos=ymin+150) # x axis
-    axis(2, at=ymin_ymax_round_steps, pos=xmin-500)
+    axis(1, at=xmin_xmax_round_steps,pos=ymin+axisshifty) # x axis
+    axis(2, at=ymin_ymax_round_steps, pos=xmin+axisshiftx)
     #text(xmin-550, (ymin+ymax)/2, "y [m]", adj=c(NA,-4), srt=90)
     title(paste(selected_females[[iterator]], ": KDE ", "(", methListTitle[[j]], ")", sep=""), line=-1.5)
-    legend("topright", c("HR 50%", "HR 95%", "HR 99%","Trail"), col=c("darkseagreen3", "cadetblue2", "darkturquoise","darkolivegreen"), lwd=c(1.5,1,1,0.3), lty=c(3,1,4,1), inset=c(0,0))
+    legend("topright", c("HR 50%", "HR 95%", "HR 100%","Trail","River"), col=c("coral1", "cadetblue2", "darkturquoise","darkred",alpha("cornflowerblue", 0.7)), lwd=c(2.5,2,2,0.3,4), lty=c(3,1,4,1,1), inset=c(legendoffsety,legendoffsety))
     dev.off()
 
     png(paste(imdir, selected_females[[iterator]],"_",gsub(" ", "", names(mt_list)[samplinginterval], fixed = TRUE), "_KDE_VUD_", methList[[j]], ".png", sep=""), width=1800, height=1400, res=240, units="px")
@@ -1131,12 +1162,16 @@ for (i in selected_females){ # compute KDE home range for every individual
     plot(hr50, lty=3, lwd=1.5, border="azure4", add=T,axes=F)
     plot(hr95, lty=1, lwd=1, border="cadetblue2", add=T, axes=F)
     plot(hr99, lty=4, lwd=1, border="darkturquoise", add=T, axes=F)
+    plot(SUAQ_contour_sf_loc,lty=3, lwd=0.2, col=alpha("black", 1), add=T, axes=F)
+    plot(SUAQ_station_sf_loc,pch = 21,cex=1.5, col=alpha("black", 0.7), add=T, axes=F)
+    plot(SUAQ_station_sf_loc,pch = 16,cex=1, col=alpha("darkred", 0.7),lwd=0.3, bg="darkred", add=T, axes=F)
+    plot(SUAQ_river_sf_loc,lty=1, lwd=0.3, col=alpha("cornflowerblue", 0.7), add=T, axes=F)
     plot(SUAQ_pathnetwork_sf_loc, lty=1, lwd=0.3, col=alpha("darkolivegreen", 0.7), add=T, axes=F)
-    axis(1, at=xmin_xmax_round_steps,pos=ymin+150) # x axis
-    axis(2, at=ymin_ymax_round_steps, pos=xmin-500)
+    axis(1, at=xmin_xmax_round_steps,pos=ymin+axisshifty) # x axis
+    axis(2, at=ymin_ymax_round_steps, pos=xmin+axisshiftx)
     #text(xmin-500, (ymin+ymax)/2, "y [m]", adj=c(NA,-4), srt=90)
     title(paste(selected_females[[iterator]], ": KDE ", "(", methListTitle[[j]], ")", sep=""), line=-1.5)
-    legend("topright", c("HR 50%", "HR 95%", "HR 99%","Trail"), col=c("azure4", "cadetblue2", "darkturquoise","darkolivegreen"), lwd=c(1.5,1,1,0.3), lty=c(3,1,4,1), inset=c(0,0))
+    legend("topright", c("HR 50%", "HR 95%", "HR 100%","Trail","River"), col=c("coral1", "cadetblue2", "darkturquoise","darkred",alpha("cornflowerblue", 0.7)), lwd=c(2.5,2,2,0.3,4), lty=c(3,1,4,1,1), inset=c(legendoffsety,legendoffsety))
     dev.off()
     
     results_selectedmethod <- data.frame(bandwithmethod=c(methList[[j]],methList[[j]],methList[[j]]),
@@ -1222,7 +1257,7 @@ for (i in selected_females){ # compute KDE home range for every individual
   methListTitle <- list("REF", "PI", "BCV", "SCV")
   methList <- list("HREF", "HPI", "HBCV", "HSCV")
   
-  xy_selected <- SpatialPoints(xy_selected,proj4string = CRS( "+proj=utm +zone=47 +datum=WGS84 +units=m +no_defs" )) # Converts SpatialPointDataFrame to SpatialPoint (only x & y)
+  xy_selected <- SpatialPoints(xy_selected,proj4string = CRS( "+proj=utm +zone=47 +a=6378160 +b=6356774.50408554 +towgs84=-24,-15,5,0,0,0,0 +units=m +no_defs" )) # Converts SpatialPointDataFrame to SpatialPoint (only x & y)
   
   extVal <- 15 #0.3 How much bigger the UD should be calculated than the research are (minimum bounding box). The higher the more Computation
   gridVal <- 2000 #700 How much cells or pixels should be considered for UD calculation. The higher the more Computation
@@ -1266,12 +1301,16 @@ for (i in selected_females){ # compute KDE home range for every individual
     plot(hr50, lty=3, lwd=1.5, border="darkseagreen3", add=T,axes=F)
     plot(hr95, lty=1, lwd=1, border="cadetblue2", add=T, axes=F)
     plot(hr99, lty=4, lwd=1, border="darkturquoise", add=T, axes=F)
+    plot(SUAQ_contour_sf_loc,lty=3, lwd=0.2, col=alpha("black", 1), add=T, axes=F)
+    plot(SUAQ_station_sf_loc,pch = 21,cex=1.5, col=alpha("black", 0.7), add=T, axes=F)
+    plot(SUAQ_station_sf_loc,pch = 16,cex=1, col=alpha("darkred", 0.7),lwd=0.3, bg="darkred", add=T, axes=F)
+    plot(SUAQ_river_sf_loc,lty=1, lwd=0.3, col=alpha("cornflowerblue", 0.7), add=T, axes=F)
     plot(SUAQ_pathnetwork_sf_loc, lty=1, lwd=0.3, col=alpha("darkolivegreen", 0.7), add=T, axes=F)
-    axis(1, at=xmin_xmax_round_steps,pos=ymin+150) # x axis
-    axis(2, at=ymin_ymax_round_steps, pos=xmin-500)
+    axis(1, at=xmin_xmax_round_steps,pos=ymin+axisshifty) # x axis
+    axis(2, at=ymin_ymax_round_steps, pos=xmin+axisshiftx)
     #text(xmin-550, (ymin+ymax)/2, "y [m]", adj=c(NA,-4), srt=90)
     title(paste(selected_females[[iterator]], ": KDE ", "(", methListTitle[[j]], ")", sep=""), line=-1.5)
-    legend("topright", c("HR 50%", "HR 95%", "HR 99%","Trail"), col=c("darkseagreen3", "cadetblue2", "darkturquoise","darkolivegreen"), lwd=c(1.5,1,1,0.3), lty=c(3,1,4,1), inset=c(0,0))
+    legend("topright", c("HR 50%", "HR 95%", "HR 100%","Trail","River"), col=c("coral1", "cadetblue2", "darkturquoise","darkred",alpha("cornflowerblue", 0.7)), lwd=c(2.5,2,2,0.3,4), lty=c(3,1,4,1,1), inset=c(legendoffsety,legendoffsety))
     dev.off()
 
     png(paste(imdir, selected_females[[iterator]],"_",gsub(" ", "", names(mt_list)[samplinginterval], fixed = TRUE), "_KDE_VUD_", methList[[j]], ".png", sep=""), width=1800, height=1400, res=240, units="px")
@@ -1279,12 +1318,16 @@ for (i in selected_females){ # compute KDE home range for every individual
     plot(hr50, lty=3, lwd=1.5, border="azure4", add=T,axes=F)
     plot(hr95, lty=1, lwd=1, border="cadetblue2", add=T, axes=F)
     plot(hr99, lty=4, lwd=1, border="darkturquoise", add=T, axes=F)
+    plot(SUAQ_contour_sf_loc,lty=3, lwd=0.2, col=alpha("black", 1), add=T, axes=F)
+    plot(SUAQ_station_sf_loc,pch = 21,cex=1.5, col=alpha("black", 0.7), add=T, axes=F)
+    plot(SUAQ_station_sf_loc,pch = 16,cex=1, col=alpha("darkred", 0.7),lwd=0.3, bg="darkred", add=T, axes=F)
+    plot(SUAQ_river_sf_loc,lty=1, lwd=0.3, col=alpha("cornflowerblue", 0.7), add=T, axes=F)
     plot(SUAQ_pathnetwork_sf_loc, lty=1, lwd=0.3, col=alpha("darkolivegreen", 0.7), add=T, axes=F)
     axis(1, at=xmin_xmax_round_steps,pos=ymin+150) # x axis
     axis(2, at=ymin_ymax_round_steps, pos=xmin-500)
     #text(xmin-500, (ymin+ymax)/2, "y [m]", adj=c(NA,-4), srt=90)
     title(paste(selected_females[[iterator]], ": KDE ", "(", methListTitle[[j]], ")", sep=""), line=-1.5)
-    legend("topright", c("HR 50%", "HR 95%", "HR 99%","Trail"), col=c("azure4", "cadetblue2", "darkturquoise","darkolivegreen"), lwd=c(1.5,1,1,0.3), lty=c(3,1,4,1), inset=c(0,0))
+    legend("topright", c("HR 50%", "HR 95%", "HR 100%","Trail","River"), col=c("coral1", "cadetblue2", "darkturquoise","darkred",alpha("cornflowerblue", 0.7)), lwd=c(2.5,2,2,0.3,4), lty=c(3,1,4,1,1), inset=c(legendoffsety,legendoffsety))
     dev.off()
     
     results_selectedmethod <- data.frame(bandwithmethod=c(methList[[j]],methList[[j]],methList[[j]]),
@@ -1309,7 +1352,7 @@ kde_results_perperyear <- kde_results_perperyear %>% rbind(results_focal)
 
 
 }
-st_write(kde_results_peryear, dsn = paste(
+st_write(kde_results_perperyear, dsn = paste(
   paste(
     "output/Homeranges/KDE/years/",
     format(Sys.Date(), "%Y%m%d"),"/",
@@ -1319,16 +1362,304 @@ st_write(kde_results_peryear, dsn = paste(
   "shp",
   sep = "."
 ))
-system("say alle kernel distanzen berechnet für die verschiedenen Untersuchungsperioden")
+system("say alle kernel distanzen berechnet für jedes Jahr")
 
 
 ```
 
 
-```{r LoCoH - HR sizes,echo=FALSE, message=FALSE,comment=FALSE, warning=FALSE}
+```{r LOCOH - HR per-researchperiods and all - HR sizes,echo=FALSE, message=FALSE,comment=FALSE, warning=FALSE}
+# createa directory for kde periods calculation (named by the current date)
+dir.create(paste(
+    "output/Homeranges/LOCOH/periods/",
+    format(Sys.Date(), "%Y%m%d"),
+    sep = ""
+  ))
+imdir <- paste("output/Homeranges/LOCOH/periods/",format(Sys.Date(), "%Y%m%d"), "/", sep="")
+
+locoh_list <- data.frame() # results
+for (samplinginterval in c(1:length(mt_list))){
+  print(paste("LOCOH for period: ",samplinginterval))
+  ##### Determine the smoothing parameters
+  selected_females <- mt_list[[samplinginterval]] %>% group_by(focal) %>% summarise()
+  selected_females <- as_vector(selected_females)
+  
+  iterator <- 1
+  for (i in selected_females) { # do the following for every animal in the list
+    print(paste("LOCOH for focal: ",i))
+    n_follows <- mt_list[[samplinginterval]] %>% filter(focal%in%c(i)) %>%
+        group_by(follow) %>% summarise() %>% nrow()
+
+    xy_selected <- mt_list[[samplinginterval]] %>% filter(focal%in%c(i)) %>%
+      dplyr::select(E,N,manualDatetime,infantname,followtype,Activity,SUAQ_followlog.Observer1,SUAQ_orangutans.dominancecat,SUAQ_orangutans.matriline,SUAQ_weather.rainfall_ml_evening,SUAQ_fai.fai,ageFromDOB)
+    xy_selected <- xy_selected[order(xy_selected$manualDatetime , decreasing = FALSE ),] 
+    n_gps <- xy_selected %>% nrow()
+
+    xy_only <- xy_selected %>%
+      dplyr::select(E,N) %>% mutate(x=as.double(E),y=as.double(N)) %>% as.data.frame() %>% dplyr::select(-E,-N) # dataframe was a tibble --> caused troubles in the locoh package
+
+    df.lxy <- xyt.lxy(xy=xy_only, dt=xy_selected$manualDatetime,anv=xy_selected[,4:12], id=i, proj4string=CRS("+init=epsg:23847")) # create xy-object. Duplicates are autom. removed
+    # plot(df.lxy)
+    hist(df.lxy) #distribution of locations by date, step length and SI -> some gaps, several SI
+    # lxy.plot.freq(df.lxy, deltat.by.date=T) #sampling frequency over time -> several SI
+    # lxy.plot.freq(df.lxy, cp=T) #find bursts of points that need to be thinned out, 2 sections because of two main SI
+    
+    # find bursts
+    df.lxy <- lxy.thin.bursts(df.lxy, thresh=0.98) ## adjust threshold
+    df.lxy <- lxy.ptsh.add(df.lxy)# find appropriate time parameter s. with rule from manual. Depending on RQ --> f.e. researching daily movement we want high s because we want two points near each other not as nearest neighbour because its seperated by a day.
+    
+    # # find s    
+    # lxy.plot.pt2ctr(df.lxy) # proposes a s-value around 0.4
+    # lxy.plot.sfinder(df.lxy, delta.t=3600*c(12,24,36,48,96,192)) # proposes a s-value around 0.15 # see how the time gaps are distributed compared to s selection. How much of timegap should be included in nearest neighbour
+    # lxy.plot.mtdr(df.lxy, k=10)
+    # lxy.plot.tspan(df.lxy, k=10) 
+    
+    ########################
+    svalue <- 0.01      ###### s-VALUE SELECTION
+    kselected <- 12    ## kmax-SELECTION
+    aval <- 7000
+    ########################
+    
+    df.lxy <- lxy.nn.add(df.lxy, s=svalue, k=kselected)
+    df.lhs_12k <- lxy.lhs(df.lxy, k=kselected, s=svalue)
+    df.lhs_12k <- lhs.iso.add(df.lhs_12k, iso.levels = c(0.25, 0.5, 0.65, 0.75, 0.85, 0.95)) # creates isopleths for each k-hullset, sorted by density
+    
+
+    
+    # a method
+    df.lxy <- lxy.nn.add(df.lxy, s=svalue, a=auto.a(nnn=12, ptp=0.98))
+    df.lxy <- lxy.nn.add(df.lxy, s=svalue, a=12000)
+    lhs_amixed <- lxy.lhs(df.lxy, s=svalue, a=4:12*1000, iso.add=T)
+    
+    for (l in seq(1:length(kmax_vec))) {
+      start_time <- Sys.time()
+      kmax <- kmax_vec[[l]]
+      df.lxy <- lxy.nn.add(df.lxy, s=0.02, k=kmax)
+      
+      
+      # revisits
+      df.lhs_12k_revisits <- lhs.visit.add(df.lhs_12k, ivg=3600*18)
+      summary(df.lhs_12k_revisits)
+      plot(df.lhs_12k_revisits, hpp=T, hpp.classify="nsv", ivg=3600*18, col.ramp="rainbow") # number of visits
+      plot(df.lhs_12k_revisits, hpp=T, hpp.classify="mnlv", col.ramp="rainbow") # duration of visit
+      hsp <- lhs.plot.scatter(df.lhs_12k_revisits, x="nsv", y="mnlv", col="spiral", bg="black")
+      plot(df.lhs_12k_revisits, hpp=T, hsp=hsp, hpp.classify="hsp")
+      
+      # Directional movement
+      df.lhs_12k_directional <- lhs.ellipses.add(df.lhs_12k)
+      df.lhs_12k_directional <- lhs.iso.add(df.lhs_12k_directional, sort.metric="ecc")
+      plot(df.lhs_12k_directional, iso=T, iso.sort.metric="ecc")
+      #lhs.save(df.lhs, dir=paste("~/_MyData/Masterarbeit Movement Analysis/Resultate/thesis/calculations/LCH/", animal, sep="")
+      # plot(df.lhs, iso=T, record=T, ufipt=F) #Show results of the different k-/a-/r-values [pg up / pg dn]]
+      # lhs.plot.isoarea(df.lhs, legend=0)
+      # lhs.plot.isoear(df.lhs, legend=0)
+      plot(df.lhs_12k_directional, iso=T, k=12, allpts=T, cex.allpts=0.3, col.allpts="gray30", ufipt=F)
+      
+      
+      
+      
+      
+      
+      
+      if(TRUE){# only execute when enough data xy_selected_toolessdata
+      UD <- BRB(traj, D=vv, Tmax=tmax, Lmin=lmin, hmin=hmin, b=T, same4all=T, grid=gridVal, extent=extVal, filtershort=T, type="UD")
+      
+      hr95 <- getverticeshr(UD, percent=95, standardize=TRUE,unin = c("m"),unout = c("km2"))
+      hr50 <- getverticeshr(UD, percent=50, standardize=TRUE,unin = c("m"),unout = c("km2"))
+      hr99 <- getverticeshr(UD, percent=99, standardize=TRUE,unin = c("m"),unout = c("km2"))
+      hr95_sf <- st_as_sf(hr95)
+      hr50_sf <- st_as_sf(hr50)
+      hr99_sf <- st_as_sf(hr99)
+      
+      par(0,0,0,0)
+      step <- 200
+      
+      ########## plot results ##########
+      hminTxt <- gsub(".", "_", as.character(hminFactor[[l]]), fixed=T)
+      xmin_xmax_round_steps<- c(step*(ceiling(xmin/step)):(round(xmax/step)))
+      xmin_xmax_round_steps <- xmin_xmax_round_steps[2:(length(xmin_xmax_round_steps)-2)] #manual adjustment of tick breaks how many does it need
+      ymin_ymax_round_steps<- c(step*(ceiling(ymin/step)):(round(ymax/step)))
+      ymin_ymax_round_steps <- ymin_ymax_round_steps[2:(length(ymin_ymax_round_steps)-1)] #manual adjustment of tick breaks how many does it need    
+      
+  
+      
+      png(paste(imdir,i, "_BRB_UD_", hminTxt,"_",names(mt_list)[samplinginterval], ".png", sep=""), width=1800, height=1400, res=240, units="px")
+      image(UD, xlab="x [m]",ylab="y [m]",xlim=c(xmin_xmax_round_steps[1],tail(xmin_xmax_round_steps,n=1)),ylim=c(ymin_ymax_round_steps[1],tail(ymin_ymax_round_steps,n=1))) 
+      plot(hr50, lty=3, lwd=1.5, border="darkseagreen3", add=T,axes=F)
+      plot(hr95, lty=1, lwd=1, border="cadetblue2", add=T, axes=F)
+      plot(hr99, lty=4, lwd=1, border="darkturquoise", add=T, axes=F)
+      plot(SUAQ_contour_sf_loc,lty=3, lwd=0.2, col=alpha("black", 1), add=T, axes=F)
+      plot(SUAQ_station_sf_loc,pch = 21,cex=1.5, col=alpha("black", 0.7), add=T, axes=F)
+      plot(SUAQ_station_sf_loc,pch = 16,cex=1, col=alpha("darkred", 0.7),lwd=0.3, bg="darkred", add=T, axes=F)
+      plot(SUAQ_river_sf_loc,lty=1, lwd=0.3, col=alpha("cornflowerblue", 0.7), add=T, axes=F)
+      plot(SUAQ_pathnetwork_sf_loc, lty=1, lwd=0.3, col=alpha("darkolivegreen", 0.7), add=T, axes=F)
+      axis(1, at=xmin_xmax_round_steps,pos=ymin+axisshifty) # x axis
+      axis(2, at=ymin_ymax_round_steps, pos=xmin+axisshiftx)
+      title(paste(i, ": BRB (", hminFactor[[l]], "*hmin)", sep=""), line=-1.5)
+      legend("topright", c("HR 50%", "HR 95%", "HR 100%","Trail","River"), col=c("coral1", "cadetblue2", "darkturquoise","darkred",alpha("cornflowerblue", 0.7)), lwd=c(2.5,2,2,0.3,4), lty=c(3,1,4,1,1), inset=c(legendoffsety,legendoffsety))
+      dev.off()
+      
+      png(paste(imdir,i, "_BRB_VUD_", hminTxt,"_",names(mt_list)[samplinginterval], ".png", sep=""), width=1800, height=1400, res=240, units="px")
+      image(getvolumeUD(UD), xlab="x [m]",ylab="y [m]",xlim=c(xmin_xmax_round_steps[1],tail(xmin_xmax_round_steps,n=1)),ylim=c(ymin_ymax_round_steps[1],tail(ymin_ymax_round_steps,n=1))) 
+      plot(hr50, lty=3, lwd=1.5, border="darkseagreen3", add=T,axes=F)
+      plot(hr95, lty=1, lwd=1, border="cadetblue2", add=T, axes=F)
+      plot(hr99, lty=4, lwd=1, border="darkturquoise", add=T, axes=F)
+      plot(SUAQ_contour_sf_loc,lty=3, lwd=0.2, col=alpha("black", 1), add=T, axes=F)
+      plot(SUAQ_station_sf_loc,pch = 21,cex=1.5, col=alpha("black", 0.7), add=T, axes=F)
+      plot(SUAQ_station_sf_loc,pch = 16,cex=1, col=alpha("darkred", 0.7),lwd=0.3, bg="darkred", add=T, axes=F)
+      plot(SUAQ_river_sf_loc,lty=1, lwd=0.3, col=alpha("cornflowerblue", 0.7), add=T, axes=F)
+      plot(SUAQ_pathnetwork_sf_loc, lty=1, lwd=0.3, col=alpha("darkolivegreen", 0.7), add=T, axes=F)
+      axis(1, at=xmin_xmax_round_steps,pos=ymin+axisshifty) # x axis
+      axis(2, at=ymin_ymax_round_steps, pos=xmin+axisshiftx)
+      title(paste(i, ": BRB (", hminFactor[[l]], "*hmin)", sep=""), line=-1.5)
+      legend("topright", c("HR 50%", "HR 95%", "HR 100%","Trail","River"), col=c("coral1", "cadetblue2", "darkturquoise","darkred",alpha("cornflowerblue", 0.7)), lwd=c(2.5,2,2,0.3,4), lty=c(3,1,4,1,1), inset=c(legendoffsety,legendoffsety))
+      dev.off()}
+      
+      end_time <- Sys.time()
+      duration <- end_time-start_time
+      
+      ########## export results ############
+      if(xy_selected_toolessdata) {
+        resultList_50 <-
+          data.frame(
+            focal = i,
+            homerange = hr50$area,
+            hrpercentage ="50%",
+            n_gps = n_gps,
+            n_follows = n_follows,
+            Velocity_percentile99 = velocity,
+            GPSuncertainty = relUn,
+            hmin = hmin,
+            tmax = tmax,
+            lmin = lmin,
+            tau = tau,
+            hminfac = hminFactor[[l]],
+            hminRef = hminRef,
+            period = names(mt_list)[samplinginterval],
+            processingtime = duration,
+            geometry=hr50_sf$geometry
+          )
+        resultList_95 <-
+          data.frame(
+            focal = i,
+            homerange = hr95$area,
+            hrpercentage ="95%",
+            n_gps = n_gps,
+            n_follows = n_follows,
+            Velocity_percentile99 = velocity,
+            GPSuncertainty = relUn,
+            hmin = hmin,
+            tmax = tmax,
+            lmin = lmin,
+            tau = tau,
+            hminfac = hminFactor[[l]],
+            hminRef = hminRef,
+            period = names(mt_list)[samplinginterval],
+            processingtime = duration,
+            geometry=hr95_sf$geometry
+          )
+        resultList_99 <-
+          data.frame(
+            focal = i,
+            homerange = hr99$area,
+            hrpercentage ="99%",
+            n_gps = n_gps,
+            n_follows = n_follows,
+            Velocity_percentile99 = velocity,
+            GPSuncertainty = relUn,
+            hmin = hmin,
+            tmax = tmax,
+            lmin = lmin,
+            tau = tau,
+            hminfac = hminFactor[[l]],
+            hminRef = hminRef,
+            period = names(mt_list)[samplinginterval],
+            processingtime = duration,
+            geometry=hr99_sf$geometry
+          )
+      }
+      if (!xy_selected_toolessdata) {
+                resultList_50 <-
+          data.frame(
+            focal = i,
+            homerange = NA,
+            hrpercentage ="50%",
+            n_gps = n_gps,
+            n_follows = n_follows,
+            Velocity_percentile99 = velocity,
+            GPSuncertainty = relUn,
+            hmin = hmin,
+            tmax = tmax,
+            lmin = lmin,
+            tau = tau,
+            hminfac = hminFactor[[l]],
+            hminRef = hminRef,
+            period = names(mt_list)[samplinginterval],
+            processingtime = duration,
+            geometry=NA
+          )
+        resultList_95 <-
+          data.frame(
+            focal = i,
+            homerange = NA,
+            hrpercentage ="95%",
+            n_gps = n_gps,
+            n_follows = n_follows,
+            Velocity_percentile99 = velocity,
+            GPSuncertainty = relUn,
+            hmin = hmin,
+            tmax = tmax,
+            lmin = lmin,
+            tau = tau,
+            hminfac = hminFactor[[l]],
+            hminRef = hminRef,
+            period = names(mt_list)[samplinginterval],
+            processingtime = duration,
+            geometry=NA
+          )
+        resultList_99 <-
+          data.frame(
+            focal = i,
+            homerange = NA,
+            hrpercentage ="99%",
+            n_gps = n_gps,
+            n_follows = n_follows,
+            Velocity_percentile99 = velocity,
+            GPSuncertainty = relUn,
+            hmin = hmin,
+            tmax = tmax,
+            lmin = lmin,
+            tau = tau,
+            hminfac = hminFactor[[l]],
+            hminRef = hminRef,
+            period = names(mt_list)[samplinginterval],
+            processingtime = duration,
+            geometry=NA
+          )
+      }
+      locoh_list <- locoh_list %>% rbind(resultList_50,resultList_95,resultList_99)
+      
+      print(paste(hminTxt, ": Calculation finished", sep=""))
+    }
+  }
+}
+
+st_write(locoh_list, dsn = paste(
+  paste(
+    imdir,
+    "locoh_values_allperiods",
+    sep = ""
+  ),
+  "shp",
+  sep = "."
+))
+system("say alle locoh verteilungen berechnet für die verschiedenen Untersuchungsperioden")
+
+lhs.plot.isoarea(cissy.lhs.amixed)
+lhs.plot.isoear(cissy.lhs.amixed)
+toni.lhs.k15 <- lhs.visit.add(toni.lhs.k15, ivg=3600*12)
 
 ```
-
 
 ```{r BRB - HR per-researchperiods and all - HR sizes,echo=FALSE, message=FALSE,comment=FALSE, warning=FALSE}
 # createa directory for kde periods calculation (named by the current date)
@@ -1377,9 +1708,9 @@ for (samplinginterval in c(1:length(mt_list))){
     # plot(table(samplingI), type="h", xlim=c(20,40),col=4, ylab="frequency", xlab="sampling interval [min]")
     
     xy_selected <- xy_selected[order(xy_selected$timestamp , decreasing = FALSE ),] 
-    moveObj <- move(x=xy_selected$x, y=xy_selected$y, time=xy_selected$timestamp, proj=CRS("+init=epsg:22236"),animal=i)
+    moveObj <- move(x=xy_selected$x, y=xy_selected$y, time=xy_selected$timestamp, proj=CRS( "+proj=utm +zone=47 +a=6378160 +b=6356774.50408554 +towgs84=-24,-15,5,0,0,0,0 +units=m +no_defs" ),animal=i)
     ##########################################################################################
-    relUn <- 10 # relocation uncertainty [m]
+    relUn <- 12 # relocation uncertainty [m]
     ##########################################################################################
     velocity <- unname(quantile(speed(moveObj), 0.99)) * 60 # unit: [m/min]
     hmin <- relUn + (0.5 * velocity * 30) # meters, smoothing
@@ -1391,12 +1722,12 @@ for (samplinginterval in c(1:length(mt_list))){
   
     ##########################################################################################
     tmax <- 70*60 # seconds, maximum time span for a segment
-    lmin <- 20 # meters, minimal distance of a segment in order to count as movement
-    tau <- 3*60 #seconds, approx. duration of one interpolated interval -> defines the number of intervals per step 
+    lmin <- 12 # meters, minimal distance of a segment in order to count as movement
+    tau <- 1*60 #seconds, approx. duration of one interpolated interval -> defines the number of intervals per step 
     extVal <- 15
     gridVal <- 2000
     hminRef <- hmin # computed through "BRB_leo_hmin computation.R"
-    hminFactor <- c(0.8, 1.0, 1.2, 1.4, 1.6, 1.8, 2.0)
+    hminFactor <- c(0.6, 0.8, 1,1.2,1.4,  1.6, 1.8)
     ##########################################################################################
   
     vv <- BRB.D(traj, Tmax=tmax, Lmin=lmin) #estimate the diffusion coefficient
@@ -1430,11 +1761,15 @@ for (samplinginterval in c(1:length(mt_list))){
       plot(hr50, lty=3, lwd=1.5, border="darkseagreen3", add=T,axes=F)
       plot(hr95, lty=1, lwd=1, border="cadetblue2", add=T, axes=F)
       plot(hr99, lty=4, lwd=1, border="darkturquoise", add=T, axes=F)
+      plot(SUAQ_contour_sf_loc,lty=3, lwd=0.2, col=alpha("black", 1), add=T, axes=F)
+      plot(SUAQ_station_sf_loc,pch = 21,cex=1.5, col=alpha("black", 0.7), add=T, axes=F)
+      plot(SUAQ_station_sf_loc,pch = 16,cex=1, col=alpha("darkred", 0.7),lwd=0.3, bg="darkred", add=T, axes=F)
+      plot(SUAQ_river_sf_loc,lty=1, lwd=0.3, col=alpha("cornflowerblue", 0.7), add=T, axes=F)
       plot(SUAQ_pathnetwork_sf_loc, lty=1, lwd=0.3, col=alpha("darkolivegreen", 0.7), add=T, axes=F)
-      axis(1, at=xmin_xmax_round_steps,pos=ymin+150) # x axis
-      axis(2, at=ymin_ymax_round_steps, pos=xmin-500)
+      axis(1, at=xmin_xmax_round_steps,pos=ymin+axisshifty) # x axis
+      axis(2, at=ymin_ymax_round_steps, pos=xmin+axisshiftx)
       title(paste(i, ": BRB (", hminFactor[[l]], "*hmin)", sep=""), line=-1.5)
-      legend("topright", c("HR 50%", "HR 95%", "HR 99%","Trail"), col=c("darkseagreen3", "cadetblue2", "darkturquoise","darkolivegreen"), lwd=c(1.5,1,1,0.3), lty=c(3,1,4,1), inset=c(0,0))
+      legend("topright", c("HR 50%", "HR 95%", "HR 100%","Trail","River"), col=c("coral1", "cadetblue2", "darkturquoise","darkred",alpha("cornflowerblue", 0.7)), lwd=c(2.5,2,2,0.3,4), lty=c(3,1,4,1,1), inset=c(legendoffsety,legendoffsety))
       dev.off()
       
       png(paste(imdir,i, "_BRB_VUD_", hminTxt,"_",names(mt_list)[samplinginterval], ".png", sep=""), width=1800, height=1400, res=240, units="px")
@@ -1442,11 +1777,15 @@ for (samplinginterval in c(1:length(mt_list))){
       plot(hr50, lty=3, lwd=1.5, border="darkseagreen3", add=T,axes=F)
       plot(hr95, lty=1, lwd=1, border="cadetblue2", add=T, axes=F)
       plot(hr99, lty=4, lwd=1, border="darkturquoise", add=T, axes=F)
+      plot(SUAQ_contour_sf_loc,lty=3, lwd=0.2, col=alpha("black", 1), add=T, axes=F)
+      plot(SUAQ_station_sf_loc,pch = 21,cex=1.5, col=alpha("black", 0.7), add=T, axes=F)
+      plot(SUAQ_station_sf_loc,pch = 16,cex=1, col=alpha("darkred", 0.7),lwd=0.3, bg="darkred", add=T, axes=F)
+      plot(SUAQ_river_sf_loc,lty=1, lwd=0.3, col=alpha("cornflowerblue", 0.7), add=T, axes=F)
       plot(SUAQ_pathnetwork_sf_loc, lty=1, lwd=0.3, col=alpha("darkolivegreen", 0.7), add=T, axes=F)
-      axis(1, at=xmin_xmax_round_steps,pos=ymin+150) # x axis
-      axis(2, at=ymin_ymax_round_steps, pos=xmin-500)
+      axis(1, at=xmin_xmax_round_steps,pos=ymin+axisshifty) # x axis
+      axis(2, at=ymin_ymax_round_steps, pos=xmin+axisshiftx)
       title(paste(i, ": BRB (", hminFactor[[l]], "*hmin)", sep=""), line=-1.5)
-      legend("topright", c("HR 50%", "HR 95%", "HR 99%","Trail"), col=c("darkseagreen3", "cadetblue2", "darkturquoise","darkolivegreen"), lwd=c(1.5,1,1,0.3), lty=c(3,1,4,1), inset=c(0,0))
+      legend("topright", c("HR 50%", "HR 95%", "HR 100%","Trail","River"), col=c("coral1", "cadetblue2", "darkturquoise","darkred",alpha("cornflowerblue", 0.7)), lwd=c(2.5,2,2,0.3,4), lty=c(3,1,4,1,1), inset=c(legendoffsety,legendoffsety))
       dev.off()}
       
       end_time <- Sys.time()
@@ -1457,7 +1796,8 @@ for (samplinginterval in c(1:length(mt_list))){
         resultList_50 <-
           data.frame(
             focal = i,
-            hr50 = hr50$area,
+            homerange = hr50$area,
+            hrpercentage ="50%",
             n_gps = n_gps,
             n_follows = n_follows,
             Velocity_percentile99 = velocity,
@@ -1475,7 +1815,8 @@ for (samplinginterval in c(1:length(mt_list))){
         resultList_95 <-
           data.frame(
             focal = i,
-            hr95 = hr95$area,
+            homerange = hr95$area,
+            hrpercentage ="95%",
             n_gps = n_gps,
             n_follows = n_follows,
             Velocity_percentile99 = velocity,
@@ -1493,7 +1834,8 @@ for (samplinginterval in c(1:length(mt_list))){
         resultList_99 <-
           data.frame(
             focal = i,
-            hr99 = hr99$area,
+            homerange = hr99$area,
+            hrpercentage ="99%",
             n_gps = n_gps,
             n_follows = n_follows,
             Velocity_percentile99 = velocity,
@@ -1513,7 +1855,8 @@ for (samplinginterval in c(1:length(mt_list))){
                 resultList_50 <-
           data.frame(
             focal = i,
-            hr50 = NA,
+            homerange = NA,
+            hrpercentage ="50%",
             n_gps = n_gps,
             n_follows = n_follows,
             Velocity_percentile99 = velocity,
@@ -1531,7 +1874,8 @@ for (samplinginterval in c(1:length(mt_list))){
         resultList_95 <-
           data.frame(
             focal = i,
-            hr95 = NA,
+            homerange = NA,
+            hrpercentage ="95%",
             n_gps = n_gps,
             n_follows = n_follows,
             Velocity_percentile99 = velocity,
@@ -1549,7 +1893,8 @@ for (samplinginterval in c(1:length(mt_list))){
         resultList_99 <-
           data.frame(
             focal = i,
-            hr99 = NA,
+            homerange = NA,
+            hrpercentage ="99%",
             n_gps = n_gps,
             n_follows = n_follows,
             Velocity_percentile99 = velocity,
@@ -1628,9 +1973,9 @@ for (samplinginterval in c(1:length(mt_list))){
     # plot(table(samplingI), type="h", xlim=c(20,40),col=4, ylab="frequency", xlab="sampling interval [min]")
     
     xy_selected <- xy_selected[order(xy_selected$timestamp , decreasing = FALSE ),] 
-    moveObj <- move(x=xy_selected$x, y=xy_selected$y, time=xy_selected$timestamp, proj=CRS("+init=epsg:22236"),animal=i)
+    moveObj <- move(x=xy_selected$x, y=xy_selected$y, time=xy_selected$timestamp, proj=CRS( "+proj=utm +zone=47 +a=6378160 +b=6356774.50408554 +towgs84=-24,-15,5,0,0,0,0 +units=m +no_defs" ),animal=i)
     ##########################################################################################
-    relUn <- 10 # relocation uncertainty [m]
+    relUn <- 12 # relocation uncertainty [m]
     ##########################################################################################
     velocity <- unname(quantile(speed(moveObj), 0.99)) * 60 # unit: [m/min]
     hmin <- relUn + (0.5 * velocity * 30) # meters, smoothing
@@ -1642,12 +1987,12 @@ for (samplinginterval in c(1:length(mt_list))){
   
     ##########################################################################################
     tmax <- 70*60 # seconds, maximum time span for a segment
-    lmin <- 20 # meters, minimal distance of a segment in order to count as movement
-    tau <- 3*60 #seconds, approx. duration of one interpolated interval -> defines the number of intervals per step 
+    lmin <- 12 # meters, minimal distance of a segment in order to count as movement
+    tau <- 1*60 #seconds, approx. duration of one interpolated interval -> defines the number of intervals per step 
     extVal <- 15
     gridVal <- 2000
     hminRef <- hmin # computed through "BRB_leo_hmin computation.R"
-    hminFactor <- c(0.8, 1.0, 1.2, 1.4, 1.6, 1.8, 2.0)
+    hminFactor <- c(0.6, 0.8, 1,1.2,1.4,  1.6, 1.8)
     ##########################################################################################
   
     vv <- BRB.D(traj, Tmax=tmax, Lmin=lmin) #estimate the diffusion coefficient
@@ -1678,11 +2023,15 @@ for (samplinginterval in c(1:length(mt_list))){
       plot(hr50, lty=3, lwd=1.5, border="darkseagreen3", add=T,axes=F)
       plot(hr95, lty=1, lwd=1, border="cadetblue2", add=T, axes=F)
       plot(hr99, lty=4, lwd=1, border="darkturquoise", add=T, axes=F)
+      plot(SUAQ_contour_sf_loc,lty=3, lwd=0.2, col=alpha("black", 1), add=T, axes=F)
+      plot(SUAQ_station_sf_loc,pch = 21,cex=1.5, col=alpha("black", 0.7), add=T, axes=F)
+      plot(SUAQ_station_sf_loc,pch = 16,cex=1, col=alpha("darkred", 0.7),lwd=0.3, bg="darkred", add=T, axes=F)
+      plot(SUAQ_river_sf_loc,lty=1, lwd=0.3, col=alpha("cornflowerblue", 0.7), add=T, axes=F)
       plot(SUAQ_pathnetwork_sf_loc, lty=1, lwd=0.3, col=alpha("darkolivegreen", 0.7), add=T, axes=F)
-      axis(1, at=xmin_xmax_round_steps,pos=ymin+150) # x axis
-      axis(2, at=ymin_ymax_round_steps, pos=xmin-500)
+      axis(1, at=xmin_xmax_round_steps,pos=ymin+axisshifty) # x axis
+      axis(2, at=ymin_ymax_round_steps, pos=xmin+axisshiftx)
       title(paste(i, ": BRB (", hminFactor[[l]], "*hmin)", sep=""), line=-1.5)
-      legend("topright", c("HR 50%", "HR 95%", "HR 99%","Trail"), col=c("darkseagreen3", "cadetblue2", "darkturquoise","darkolivegreen"), lwd=c(1.5,1,1,0.3), lty=c(3,1,4,1), inset=c(0,0))
+      legend("topright", c("HR 50%", "HR 95%", "HR 100%","Trail","River"), col=c("coral1", "cadetblue2", "darkturquoise","darkred",alpha("cornflowerblue", 0.7)), lwd=c(2.5,2,2,0.3,4), lty=c(3,1,4,1,1), inset=c(legendoffsety,legendoffsety))
       dev.off()
       
       png(paste(imdir,i, "_BRB_VUD_", hminTxt,"_",names(mt_list)[samplinginterval], ".png", sep=""), width=1800, height=1400, res=240, units="px")
@@ -1690,11 +2039,15 @@ for (samplinginterval in c(1:length(mt_list))){
       plot(hr50, lty=3, lwd=1.5, border="darkseagreen3", add=T,axes=F)
       plot(hr95, lty=1, lwd=1, border="cadetblue2", add=T, axes=F)
       plot(hr99, lty=4, lwd=1, border="darkturquoise", add=T, axes=F)
+      plot(SUAQ_contour_sf_loc,lty=3, lwd=0.2, col=alpha("black", 1), add=T, axes=F)
+      plot(SUAQ_station_sf_loc,pch = 21,cex=1.5, col=alpha("black", 0.7), add=T, axes=F)
+      plot(SUAQ_station_sf_loc,pch = 16,cex=1, col=alpha("darkred", 0.7),lwd=0.3, bg="darkred", add=T, axes=F)
+      plot(SUAQ_river_sf_loc,lty=1, lwd=0.3, col=alpha("cornflowerblue", 0.7), add=T, axes=F)
       plot(SUAQ_pathnetwork_sf_loc, lty=1, lwd=0.3, col=alpha("darkolivegreen", 0.7), add=T, axes=F)
-      axis(1, at=xmin_xmax_round_steps,pos=ymin+150) # x axis
-      axis(2, at=ymin_ymax_round_steps, pos=xmin-500)
+      axis(1, at=xmin_xmax_round_steps,pos=ymin+axisshifty) # x axis
+      axis(2, at=ymin_ymax_round_steps, pos=xmin+axisshiftx)
       title(paste(i, ": BRB (", hminFactor[[l]], "*hmin)", sep=""), line=-1.5)
-      legend("topright", c("HR 50%", "HR 95%", "HR 99%","Trail"), col=c("darkseagreen3", "cadetblue2", "darkturquoise","darkolivegreen"), lwd=c(1.5,1,1,0.3), lty=c(3,1,4,1), inset=c(0,0))
+      legend("topright", c("HR 50%", "HR 95%", "HR 100%","Trail","River"), col=c("coral1", "cadetblue2", "darkturquoise","darkred",alpha("cornflowerblue", 0.7)), lwd=c(2.5,2,2,0.3,4), lty=c(3,1,4,1,1), inset=c(legendoffsety,legendoffsety))
       dev.off()}
       
       end_time <- Sys.time()
@@ -1829,7 +2182,7 @@ st_write(brb_list, dsn = paste(
   "shp",
   sep = "."
 ))
-system("say alle kernel distanzen berechnet für die verschiedenen Untersuchungsperioden")
+system("say alle kernel distanzen berechnet für jedes Jahr")
 
 
 ```
@@ -1839,6 +2192,51 @@ system("say alle kernel distanzen berechnet für die verschiedenen Untersuchungs
 ```
 
 ```{r Homerange - VISUALS - HR sizes,echo=FALSE, message=FALSE,comment=FALSE, warning=FALSE}
+#### Analyze ??: distribution of weather?
+plot_anypoints <- SUAQ_waypoints_11all20_loc[order(SUAQ_waypoints_11all20_loc$manualDatetime , decreasing = FALSE ),] %>%
+  filter(PtType=="nightnest") %>% 
+  filter(SUAQ_weather.temperature_min_evening>0) %>% 
+  group_by(follow) %>%
+  ggplot()+
+  geom_point(aes(E,N,color=log10(SUAQ_weather.temperature_min_evening)),size=2.5)+
+  #geom_path(aes(E,N), alpha = 0.7,size=0.5)+
+  geom_sf(data = SUAQ_pathnetwork_sf_loc,
+                                               aes(colour = "black", alpha = 1),
+                                               fill = NA,colour = "black")
+  
+ggplotly(plot_anypoints)
+
+#### Analyze edges: Missing Homeranges?
+SUAQ_waypoints_11all20_loc_lost <- SUAQ_waypoints_11all20_loc %>% filter(PtType%in%c("lost"))
+SUAQ_waypoints_11all20_loc_lost
+
+plot_lostpoints<-SUAQ_waypoints_11all20_loc_lost[order(SUAQ_waypoints_11all20_loc_lost$manualDatetime , decreasing = FALSE ),] %>%
+  group_by(follow) %>%
+  ggplot()+
+  geom_point(data=SUAQ_waypoints_11all20_loc[order(SUAQ_waypoints_11all20_loc$manualDatetime , decreasing = FALSE ),], aes(E,N),size=0.2,fill="azure4",color="azure4",alpha=0.3)+
+  geom_point(aes(E,N,color=focal),size=0.8)+
+  geom_text(aes(E,N+40,label=focal,color=focal),size=3.5)+
+  #geom_path(aes(E,N), alpha = 0.7,size=0.5)+
+  geom_sf(data = SUAQ_pathnetwork_sf_loc,
+                                               aes(colour = "black", alpha = 1),
+                                               fill = NA,colour = "black")
+  
+ggplotly(plot_lostpoints)
+
+#### Analyze weather: distribution of weather?
+plot_weatherpoints<-SUAQ_waypoints_11all20_loc[order(SUAQ_waypoints_11all20_loc$manualDatetime , decreasing = FALSE ),] %>%
+  filter(SUAQ_weather.rainfall_ml_evening!=0) %>% 
+  #filter(PtType=="mornnest") %>% 
+  group_by(follow) %>%
+  ggplot()+
+  geom_point(aes(E,N,color=log10(SUAQ_weather.rainfall_ml_evening)),size=1)+
+  #geom_path(aes(E,N), alpha = 0.7,size=0.5)+
+  geom_sf(data = SUAQ_pathnetwork_sf_loc,
+                                               aes(colour = "black", alpha = 1),
+                                               fill = NA,colour = "black")
+  
+ggplotly(plot_weatherpoints)
+
 #### BRB: Find most recent folder
 mostrecent <- list.dirs(path = "output/Homeranges/KDE/periods/", full.names = FALSE, recursive = FALSE)
 mostrecent <- as.data.frame(mostrecent)

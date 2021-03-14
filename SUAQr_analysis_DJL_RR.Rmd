@@ -248,7 +248,7 @@ SUAQ_pathnetwork_sf_wgs<- st_as_sf(SUAQ_pathnetwork,crs=4326)
 
 ##### location network ##### 
 SUAQ_locationnetwork_sf_wgs <- st_read("data/20201201_StudyBalimbingStudyArea_points.GPX")
-SUAQ_locationnetwork_sf_loc <- st_transform(SUAQ_locationnetwork_sf_wgs,crs = 32647)
+SUAQ_locationnetwork_sf_loc <- st_transform(SUAQ_locationnetwork_sf_wgs,crs = 23847)
 
 ##### for locale coordinate system
 coordinates_tmp <- st_coordinates(SUAQ_locationnetwork_sf_loc)
@@ -283,7 +283,7 @@ SUAQ_rangepoints_11all20_loc<- SUAQ_rangepoints_11all20_loc %>%
 ##### WGS84 file
 SUAQ_rangepoints_11all20_loc_sf <-  st_as_sf(SUAQ_rangepoints_11all20_loc, 
                           coords = c("E","N"), 
-                          crs = 32647) # can also do that in the new sricpts
+                          crs = 23847) # can also do that in the new sricpts
 SUAQ_rangepoints_11all20_loc_sf_wgs <- st_transform(SUAQ_rangepoints_11all20_loc_sf,4326)
 coordinates_tmp <- st_coordinates(SUAQ_rangepoints_11all20_loc_sf_wgs)
 colnames(coordinates_tmp) <- c("long","lat")
@@ -1253,7 +1253,7 @@ SUAQ_move_stack <-
       format = "%Y-%m-%d %H:%M:%OS",
       tz = "Asia/Pontianak"
     ),
-    proj = CRS("+proj=longlat +datum=WGS84 +no_defs"),
+    proj = CRS("+proj=utm +zone=47 +a=6378160 +b=6356774.50408554 +towgs84=-24,-15,5,0,0,0,0 +units=m +no_defs"),
     data = SUAQ_rangepoints_11all20_loc_wgs,
     animal = SUAQ_rangepoints_11all20_loc_wgs$`Animal ID`,
     sensor = "gps"
@@ -1304,7 +1304,7 @@ title("5 Buffalo")
 SUAQ_move_ellie <- SUAQ_rangepoints_11all20_loc_wgs[order(SUAQ_rangepoints_11all20_loc_wgs$focal,SUAQ_rangepoints_11all20_loc_wgs$manualDatetime , decreasing = FALSE ),] %>% filter(focal=="saruman") %>% ungroup()
 SUAQ_move_ellie <- move(x=SUAQ_move_ellie$E, y=SUAQ_move_ellie$N, 
               time=as.POSIXct(SUAQ_move_ellie$manualDatetime, format="%Y-%m-%d %H:%M:%OS", tz="Asia/Pontianak"),
-              proj=CRS("+proj=utm +zone=47 +datum=WGS84 +units=m +no_defs"), 
+              proj=CRS("+proj=utm +zone=47 +a=6378160 +b=6356774.50408554 +towgs84=-24,-15,5,0,0,0,0 +units=m +no_defs"), 
               data=SUAQ_move_ellie, animal=SUAQ_move_ellie$focal, sensor="gps")
 
 SUAQ_telemetry<- as.telemetry(SUAQ_move_ellie,drop=FALSE)

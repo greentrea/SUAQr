@@ -279,7 +279,7 @@ mutate_cond <- function(.data, condition, ..., envir = parent.frame()) {
 1. Getting data from excel/csv files
 2. Getting data from gpx files, clean and order it
 3. Merge Files
-```{r GPS Processing, echo= 'F',results='hide'}
+```{r GPS Processing,echo=FALSE, message=FALSE,comment=FALSE, warning=FALSE}
 # ,echo=FALSE, message=FALSE,comment=FALSE, warning=FALSE
 start<- Sys.time()
 
@@ -433,11 +433,11 @@ SUAQ_orangutans<- SUAQ_orangutans %>% drop_na(orangutanname) %>%
 SUAQ_pathnetwork<- as.data.frame(read_GPX(file="data/SUAQ_Peta_WithLines.GPX",layers = c("routes")))
 colnames(SUAQ_pathnetwork)[15]<- "geometry"
 SUAQ_pathnetwork_sf<- st_as_sf(SUAQ_pathnetwork,crs=4326)
-SUAQ_pathnetwork_sf_loc <- st_transform(SUAQ_pathnetwork_sf,crs = 32647)
+SUAQ_pathnetwork_sf_loc <- st_transform(SUAQ_pathnetwork_sf,crs = 23847)
 
 
 SUAQ_locationnetwork_sf <- st_read("data/20201201_StudyBalimbingStudyArea_points.GPX")
-SUAQ_locationnetwork_sf_loc <- st_transform(SUAQ_locationnetwork_sf,crs = 32647)
+SUAQ_locationnetwork_sf_loc <- st_transform(SUAQ_locationnetwork_sf,crs = 23847)
 
 ##### for locale coordinate system
 coordinates_tmp <- st_coordinates(SUAQ_locationnetwork_sf)
@@ -504,11 +504,11 @@ SUAQ_waypoints_17_18 <- SUAQ_waypoints_17_18 %>%
   dplyr::select(-`Actual Time`,-Time,-`Age Sex`)
 
 
-##### CRS Code: EPSG 32647
+##### CRS Code: EPSG 23847
 ##### Create SF Points
 SUAQ_waypoints_17_18_sf <-  st_as_sf(SUAQ_waypoints_17_18, 
                           coords = c("X","Y"), 
-                          crs = 32647)
+                          crs = 23847)
 coordinates_tmp <- st_coordinates(SUAQ_waypoints_17_18_sf)
 colnames(coordinates_tmp) <- c("E","N")
 SUAQ_waypoints_17_18_sf <- cbind(SUAQ_waypoints_17_18_sf,coordinates_tmp)
@@ -801,7 +801,7 @@ SUAQ_waypoints_11_20_male_sf<- st_as_sf(SUAQ_waypoints_11_20_male,
                           coords = c("location.long","location.lat"), 
                           crs = 4326)
 
-SUAQ_waypoints_11_20_male_sf <- st_transform(SUAQ_waypoints_11_20_male_sf,32647)
+SUAQ_waypoints_11_20_male_sf <- st_transform(SUAQ_waypoints_11_20_male_sf,23847)
 coordinates_tmp <- st_coordinates(SUAQ_waypoints_11_20_male_sf)
 colnames(coordinates_tmp) <- c("E","N")
 SUAQ_waypoints_11_20_male_sf <- cbind(SUAQ_waypoints_11_20_male_sf,coordinates_tmp)
@@ -810,10 +810,10 @@ SUAQ_waypoints_11_20_male<- st_drop_geometry(SUAQ_waypoints_11_20_male_sf)
 
 ## 4. Combine Datasets 
 ### 4.1. Merging 2017-2018 data with the rest
-##### CRS Code: EPSG 32647
+##### CRS Code: EPSG 23847
 ##### Create SF Points Dataset Waypoints 2010-2020
 SUAQ_waypoints_11_20<- st_set_crs(SUAQ_waypoints_11_20,4326)
-SUAQ_waypoints_11_20_sf <- st_transform(SUAQ_waypoints_11_20,32647)
+SUAQ_waypoints_11_20_sf <- st_transform(SUAQ_waypoints_11_20,23847)
 coordinates_tmp <- st_coordinates(SUAQ_waypoints_11_20_sf)
 colnames(coordinates_tmp) <- c("E","N")
 SUAQ_waypoints_11_20_sf <- cbind(SUAQ_waypoints_11_20_sf,coordinates_tmp)
@@ -823,7 +823,7 @@ SUAQ_waypoints_11_20<- st_drop_geometry(SUAQ_waypoints_11_20_sf)
 ##### Create SF Points Dataset trackpoints 2010-2020
 SUAQ_followertracks_11_20<- st_as_sf(SUAQ_followertracks_11_20,
                           crs = 4326)
-SUAQ_followertracks_11_20_sf <- st_transform(SUAQ_followertracks_11_20,32647)
+SUAQ_followertracks_11_20_sf <- st_transform(SUAQ_followertracks_11_20,23847)
 coordinates_tmp <- st_coordinates(SUAQ_followertracks_11_20_sf)
 colnames(coordinates_tmp) <- c("E","N")
 SUAQ_followertracks_11_20_sf <- cbind(SUAQ_followertracks_11_20_sf,coordinates_tmp)
@@ -1111,6 +1111,13 @@ SUAQ_waypoints_11all20 <- SUAQ_waypoints_11all20 %>%
 
 
 
+system("say prozessierung eins fertig")
+```
+
+
+
+```{r GPS Processing II, echo=FALSE, message=FALSE,comment=FALSE, warning=FALSE}
+
 ##### Focal names in followlog are correct overwrite the ones in GPS data (->See Excel)
 temp_FN_whereFLogFocalnameIsCorrect<- c("1106","1039","1043","1085","1106","1479","1480","1481","2219","1697","2024","989","990","2192","2193","2167","974","1042","1041","1184","1439","1518","2263","2280","2188","2238","2272","2272","2272","2272","2272","2272","1606","1650","1651","1187","2198","2270","2271","2286","2288","2289")
 SUAQ_waypoints_11all20 <- SUAQ_waypoints_11all20 %>% # replaces the found focal names of the GPS data which are better specified in the followlog.
@@ -1297,12 +1304,8 @@ SUAQ_waypoints_11all20 <- SUAQ_waypoints_11all20 %>% filter(E>323000 &
                                                             N>330000 & 
                                                             N<360000)
 
-system("say prozessierung eins fertig")
-```
 
 
-
-```{r GPS Processing II, echo= 'F',results='hide'}
 
 ## 6. Adding informative attributes, cleaning attributes, and finishing data frame
 ### 6.1. Joining orangutans info
@@ -1615,7 +1618,7 @@ SUAQ_waypoints_11all20 <- SUAQ_waypoints_11all20 %>% filter(!(identification %in
 ##### save all waypoints as sf
 SUAQ_waypoints_11all20_sf <-  st_as_sf(SUAQ_waypoints_11all20, 
                           coords = c("E","N"), 
-                          crs = 32647)
+                          crs = 23847)
 ##### waypoints of female orangutans in SUAQ (attention here the defined gender by the followlog is taken)
 SUAQ_waypoints_fem_sf<- SUAQ_waypoints_11all20_sf %>% filter(SUAQ_orangutans.Sex=="female")
 SUAQ_waypoints_fem <- SUAQ_waypoints_11all20 %>% filter(SUAQ_orangutans.Sex=="female")
@@ -1827,6 +1830,7 @@ system("say prozessierung zwei fertig")
 ```
 
 ```{r R-specific preparation}
+
 ##### Create analysis collumns ######
 ##### Set a GPS Tracking Laufnummer oder Lösung des Zeitproblems ##### 
 # Begründung: In den Tracks kommen teilweise Punkte vor welche zu einer viel späteren Zeit gemacht wurden. Oder wurde Zeit falsch gespeichert (bzw. lief umwandlung in Indonesische Zeitzone falsch)
@@ -1862,7 +1866,7 @@ SUAQ_waypoints_11all20<- SUAQ_waypoints_11all20 %>%
          altitudediff_next=altitude-lead(altitude),
          )
 ##### Delete all points around Research camp if edges are longer than 60m thats in the upper quartile of manual distances of edges
-SUAQ_waypoints_11all20<- SUAQ_waypoints_11all20 %>% mutate(PtType=if_else(((manual_distTolast>40)|(manual_distToNext>40))&((N>336992)&(N<337052))&((E>324023)&(E<324083)),"potentially campside",PtType)) # these follows have a campsite point "1113","1730","1805","1805","1949","1951","2841","2841"
+SUAQ_waypoints_11all20<- SUAQ_waypoints_11all20 %>% mutate(PtType=if_else(((N>336900)&(N<337200))&((E>323950)&(E<324150)),"potentially campside",PtType)) # these follows have a campsite point "1113","1730","1805","1805","1949","1951","2841","2841". Erste Bedingung mit mindestdistanzen entfernt ((manual_distTolast>40)|(manual_distToNext>40))
 
 ### Histogramm for timelags of edges. (Including ALL POINTS)
 tmp_mean<- mean(SUAQ_waypoints_11all20$timelag,na.rm=TRUE)
@@ -2091,12 +2095,15 @@ harmonize_waypoints <- function(flnm){
 ```
 
 ```{r saving project data}
+identification <- rownames(SUAQ_waypoints_11all20)
+SUAQ_waypoints_11all20 <- cbind(identification=as.integer(identification), SUAQ_waypoints_11all20)
+SUAQ_waypoints_11all20 <- SUAQ_waypoints_11all20 %>% group_by(follow) %>% mutate(trackpoint_id = row_number())
 
 ### Make Project variables ### 
 ##### save all waypoints as sf ##### 
 SUAQ_waypoints_11all20_sf <-  st_as_sf(SUAQ_waypoints_11all20, 
                           coords = c("E","N"), 
-                          crs = 32647) # can also do that in the new sricpts
+                          crs = 23847) # can also do that in the new sricpts
 
 SUAQ_waypoints_11all20 <- SUAQ_waypoints_11all20[order(SUAQ_waypoints_11all20$manualDatetime , decreasing = FALSE ),] # order by default with Datetime not as original anymore
 
@@ -2590,7 +2597,7 @@ tmp_SUAQ_waypoints_morethan50gps_11all20<- tmp_SUAQ_waypoints_11all20 %>%
 tmp_SUAQ_waypoints_morethan50gps_11all20.sp<- tmp_SUAQ_waypoints_morethan50gps_11all20 %>% 
   dplyr::select(focal,E,N)
 coordinates(tmp_SUAQ_waypoints_morethan50gps_11all20.sp) <- c("E","N")
-proj4string(tmp_SUAQ_waypoints_morethan50gps_11all20.sp) <- CRS( "+proj=utm +zone=47 +datum=WGS84 +units=m +no_defs" )
+proj4string(tmp_SUAQ_waypoints_morethan50gps_11all20.sp) <- CRS( "+proj=utm +zone=47 +a=6378160 +b=6356774.50408554 +towgs84=-24,-15,5,0,0,0,0 +units=m +no_defs" )
 
 tmp_SUAQ_waypoints_morethan50gps_11all20.mcp<- mcp(tmp_SUAQ_waypoints_morethan50gps_11all20.sp,percent = 95)
 
@@ -2671,7 +2678,7 @@ data2 <- move(
   x = tmp_SUAQ_mosttrackedfemales_test$E,
   y = tmp_SUAQ_mosttrackedfemales_test$N,
   time = tmp_SUAQ_mosttrackedfemales_test$manualDatetime,
-  proj = CRS("+proj=utm +zone=47 +datum=WGS84 +units=m +no_defs"),
+  proj = CRS("+proj=utm +zone=47 +a=6378160 +b=6356774.50408554 +towgs84=-24,-15,5,0,0,0,0 +units=m +no_defs "),
   animal = tmp_SUAQ_mosttrackedfemales_test$focal
 )
 plot(data, type = "b", pch = 20)
