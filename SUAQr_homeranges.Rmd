@@ -1934,11 +1934,11 @@ system("say alle kernel distanzen berechnet für die verschiedenen Untersuchungs
 ```{r BRB - HR per-year and all - HR sizes,echo=FALSE, message=FALSE,comment=FALSE, warning=FALSE}
 # createa directory for kde periods calculation (named by the current date)
 dir.create(paste(
-    "output/Homeranges/BRB/periods/",
+    "output/Homeranges/BRB/years/",
     format(Sys.Date(), "%Y%m%d"),
     sep = ""
   ))
-imdir <- paste("output/Homeranges/BRB/periods/",format(Sys.Date(), "%Y%m%d"), "/", sep="")
+imdir <- paste("output/Homeranges/BRB/years/",format(Sys.Date(), "%Y%m%d"), "/", sep="")
 
 #### retrieve sampling intervals
 mainSI <- rep(30,length(selected_females))

@@ -446,6 +446,80 @@ DJL_follows <- DJL_follows %>%
   left_join(Tree_follows,by=c("follow"="follow")) %>% 
   left_join(Tree_follows_count,by=c("follow"="follow")) %>% 
   mutate(fruittreecount=if_else(is.na(fruittreecount),as.integer(0),fruittreecount))
+
+
+
+```
+
+```{r RR level 3 tree directness,echo=FALSE, message=FALSE,comment=FALSE, warning=FALSE}
+SUAQ_rangepoints_11all20_loc_tree<- SUAQ_rangepoints_11all20_loc[order(SUAQ_rangepoints_11all20_loc$manualDatetime , decreasing = TRUE ),] %>% 
+  filter(PtType=="tree")
+SUAQ_rangepoints_11all20_loc_tree %>% ggplot(aes(manualTime))+geom_histogram()
+
+SUAQ_rangepoints_11all20_loc %>% filter(SUAQ_weather.rainfall_ml_morning>0) %>% ggplot(aes(manualTime))+geom_histogram()
+SUAQ_rangepoints_11all20_loc %>% filter(SUAQ_weather.rainfall_ml_morning==0) %>% ggplot(aes(manualTime))+geom_histogram()
+
+SUAQ_rangepoints_11all20_loc %>% filter(SUAQ_weather.rainfall_ml_evening>0) %>% ggplot(aes(manualTime))+geom_histogram()
+SUAQ_rangepoints_11all20_loc %>% filter(SUAQ_weather.rainfall_ml_evening==0) %>% ggplot(aes(manualTime))+geom_histogram()
+
+SUAQ_rangepoints_11all20_loc_tree %>% ggplot(aes(trackpoint_id))+geom_histogram()
+
+
+#### Movememnt and weather on level 3. Resampling by hourly time
+
+#### Find points every full hour. (Attention timezone is UTC used!! add 5 hours but only works if time is not before. traj uses the locale of the used machine so change if not in CET zone)
+levels(as.factor(SUAQ_rangepoints_11all20_loc$ClassFocal))
+follows <- SUAQ_rangepoints_11all20_loc %>% group_by(follow) %>% summarise()
+SUAQ_hourly_dist <- data.frame()
+timeinterval <- 
+for(j in c("unfl. male","fl. male","mother")){
+  data_split<- SUAQ_rangepoints_11all20_loc %>% mutate(manualDatetime=force_tz(manualDatetime,tzone = Sys.timezone()))
+  if(j=="fl. male"){data_split <- data_split %>% filter(ClassFocal=="flanged male")}
+  if(j=="unfl. male"){data_split <- data_split %>% filter(ClassFocal=="unflanged male")}
+  if(j=="mother"){data_split <- data_split %>% filter(ClassFocal=="mother")}
+  
+  for(i in as_vector(follows)){
+    data<- data_split %>% filter(follow%in%c(i)) 
+    print(i)
+    if(nrow(data)>1){
+      data_follow_simple <- data %>% dplyr::select(x=E,y=N,manualDatetime) %>% 
+      mutate(time=TrajConvertTime(strftime(manualDatetime, format="%H:%M:%S"), sep = ":", factors = c(60 * 60, 60, 1))) %>% 
+      ungroup() %>%  
+      dplyr::select(-follow,-manualDatetime)
+      trj <- TrajFromCoords(data_follow_simple)
+      resampled <- TrajResampleTime(trj, 1)
+      for(hours in c(900*c(1:96))){
+        if((hours %in% resampled$time)&((hours+900) %in% resampled$time)){
+          indexfirst<- match(c(hours),resampled$time)
+          indexsecond<- match(c(hours+900),resampled$time)
+          distance<- TrajDistance(resampled, startIndex = indexfirst, endIndex = indexsecond)
+          SUAQ_hourly_dist <- SUAQ_hourly_dist %>% bind_rows(c(Start_E=resampled$x[indexfirst],Start_N=resampled$y[indexfirst],End_E=resampled$x[indexsecond],End_N=resampled$y[indexsecond],from=hms::as_hms(hours), to=hms::as_hms(hours+900), distance=distance, follow=i,class=j))
+        }
+        
+      }
+    }
+  }
+}
+ref_date <- ymd("2017-01-01", tz = "UTC")
+SUAQ_hourly_dist_mean <- SUAQ_hourly_dist %>%  group_by(from,class) %>% summarise(meandist=mean(as.numeric(distance),na.rm=TRUE), sample_n=n()) %>% mutate(from=format(ref_date + as.numeric(from), "%H:%M")) 
+
+plot_SUAQ_hourlydistmean_class<- SUAQ_hourly_dist_mean %>% ggplot(aes(x=from,y=as.numeric(meandist),colour=class)) + geom_point()+ 
+  theme(axis.text.x = element_text(angle = 60,vjust = 0.5)) +
+  labs(x="daytime", y="average distance [m]")
+
+ggsave(filename = paste(
+  paste(
+    "/Users/stefgr/Dropbox/Apps/Overleaf/Msc_Thesis/figures/",
+    format(Sys.Date(), "%Y%m%d"),"_",
+    "plot_SUAQ_hourlydistmean_class_quarterly",
+    sep = ""
+  ),
+  "pdf",
+  sep = "."
+), plot = plot_SUAQ_hourlydistmean_class)
+
+
+
 ```
 
 ```{r visuals of DJL and explanatory variables ,echo=FALSE, message=FALSE,comment=FALSE, warning=FALSE}
