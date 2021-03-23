@@ -451,7 +451,7 @@ DJL_follows <- DJL_follows %>%
 
 ```
 
-```{r RR level 3 tree directness,echo=FALSE, message=FALSE,comment=FALSE, warning=FALSE}
+```{r RR level 3 distance/movement per day-hour,echo=FALSE, message=FALSE,comment=FALSE, warning=FALSE}
 SUAQ_rangepoints_11all20_loc_tree<- SUAQ_rangepoints_11all20_loc[order(SUAQ_rangepoints_11all20_loc$manualDatetime , decreasing = TRUE ),] %>% 
   filter(PtType=="tree")
 SUAQ_rangepoints_11all20_loc_tree %>% ggplot(aes(manualTime))+geom_histogram()
@@ -506,7 +506,7 @@ SUAQ_hourly_dist_mean <- SUAQ_hourly_dist %>%  group_by(from,class) %>% summaris
 plot_SUAQ_hourlydistmean_class<- SUAQ_hourly_dist_mean %>% ggplot(aes(x=from,y=as.numeric(meandist),colour=class)) + geom_point()+ 
   theme(axis.text.x = element_text(angle = 60,vjust = 0.5)) +
   labs(x="daytime", y="average distance [m]")
-
+plot_SUAQ_hourlydistmean_class
 ggsave(filename = paste(
   paste(
     "/Users/stefgr/Dropbox/Apps/Overleaf/Msc_Thesis/figures/",
@@ -519,6 +519,97 @@ ggsave(filename = paste(
 ), plot = plot_SUAQ_hourlydistmean_class)
 
 
+
+```
+
+```{r RR level 3 tree directness + visuals + stats,echo=FALSE, message=FALSE,comment=FALSE, warning=FALSE}
+##### Adding total number of fruit trees
+SUAQ_treedirectness<- SUAQ_rangepoints_11all20_loc %>%
+  filter(PtType%in%c("tree")) %>% 
+  group_by(follow)%>% 
+  arrange(manualDatetime,.by_group = TRUE) %>% 
+  mutate(
+         tree_DD_last=sqrt((E-lag(E))^2+(N-lag(N))^2),
+         tree_DD_next=sqrt((E-lead(E))^2+(N-lead(N))^2))
+temp_morethanonetree <- SUAQ_treedirectness %>% group_by(follow) %>% summarise(tot=n()) %>% filter(tot>1)
+SUAQ_treedirectness <- SUAQ_treedirectness %>% filter(follow%in%temp_morethanonetree$follow) # filter only follows with multiple trees to calculated inbetween tree directness
+
+### Calculate all the distance travelled between trees.
+##### Progressbar
+pb <-  txtProgressBar(min = 0, max = NROW(temp_morethanonetree), initial = 0) 
+stepi <-0
+follows<- pull(temp_morethanonetree,follow)
+SUAQ_treedirectness$tree_betweentravelled <- NA_real_
+SUAQ_treedirectness$tree_betweennumgps <- NA_integer_
+SUAQ_treedirectness_calc <- data.frame()
+
+for (i in follows){
+  followdf <- SUAQ_treedirectness[SUAQ_treedirectness$follow==i,]
+  for (tree in c(1:(nrow(followdf)-1))){
+    temp_gpsdf<-SUAQ_rangepoints_11all20_loc[((SUAQ_rangepoints_11all20_loc$follow == i)&(SUAQ_rangepoints_11all20_loc$trackpoint_id %in% c(followdf$trackpoint_id[tree]:followdf$trackpoint_id[tree+1]))), "manual_distToNext"]
+    tree_row <- followdf[tree,]
+    tree_row$tree_betweentravelled[1] <- sum(temp_gpsdf)
+    tree_row$tree_betweennumgps[1] <- nrow(temp_gpsdf)
+    tree_row <- tree_row %>% ungroup()
+    SUAQ_treedirectness_calc <-  rbind(SUAQ_treedirectness_calc,tree_row)
+  }
+  setTxtProgressBar(pb,stepi) # change progress bar
+  stepi <-  stepi + 1
+}
+SUAQ_treedirectness <- SUAQ_treedirectness_calc %>% mutate(rr_treedirectness=tree_DD_next/tree_betweentravelled)
+SUAQ_treedirectness_calc <- NA
+
+### renaming and selecting for stats analysis
+SUAQ_treedirectness_stats <- SUAQ_treedirectness %>%
+  dplyr::select(follow,focal,ageFromDOB,ClassFocal,SUAQ_weather.rainfall_ml_evening,SUAQ_weather.river_waterlevel_morning,SUAQ_weather.river_waterlevel_evening,SUAQ_weather.rainfall_ml_morning,SUAQ_weather.avg_temperature_tot,SUAQ_weather.max_temp_average,SUAQ_weather.min_temp_average,SUAQ_weather.temperature_max_morning,SUAQ_weather.temperature_min_morning,SUAQ_weather.temperature_max_evening,SUAQ_weather.temperature_min_evening,SUAQ_fai.fai,ageOfCurrentOffspring,monthYearDate,follow_totNumOfGPSpoints,rr_treedirectness,tree_betweennumgps,manualDate)
+colnames(SUAQ_treedirectness_stats) <-
+  c("follow","focal","ageFromDOB","ClassFocal","rain_eve","watlevel_mo","walevel_eve","rain_mo","avg_temp_tot","max_temp_average","min_temp_average","temp_max_mo","temp_min_mo","temp_max_eve","temp_min_eve","fai","ageOfCurrentOffspring","monthYearDate","tree_numOfPoints","rr_treedirectness","tree_betweennumgps","manualDate")
+
+
+plot_BetweenTreeDirectnessxClassFocal<- SUAQ_treedirectness %>% 
+  ggplot( aes(x=tree_betweennumgps, y=rr_treedirectness)) +
+    geom_boxplot() +
+    scale_fill_viridis(discrete = TRUE, alpha=0.6) +
+    geom_jitter(aes(color=SUAQ_fai.fai), size=2, alpha=1) +
+    theme_ipsum() +
+    theme(
+      #legend.position="none",
+      plot.title = element_text(size=11)
+    ) +
+    ggtitle("Class focal and directness between food tree sources") +
+    ylab("Directness index [DD / travelled distance]")+
+  ylim(0,1)
+plot_BetweenTreeDirectnessxClassFocal
+
+
+
+### Statistics
+#### Filter NA's for different stats
+SUAQ_treedirectness_stats_naomit_minimum <- SUAQ_treedirectness_stats %>% dplyr::select(tree_betweennumgps,ClassFocal,manualDate,rr_treedirectness,fai) %>% na.omit()
+SUAQ_treedirectness_stats_naomit_mother <- SUAQ_treedirectness_stats %>% dplyr::select(tree_betweennumgps,ClassFocal,manualDate,rr_treedirectness,rain_eve,walevel_eve,rain_mo,temp_min_eve,temp_min_mo,avg_temp_tot,fai,ageOfCurrentOffspring,ageFromDOB) %>% na.omit()
+SUAQ_treedirectness_stats_naomit <- SUAQ_treedirectness_stats %>% dplyr::select(tree_betweennumgps,ClassFocal,manualDate,rr_treedirectness,rain_eve,walevel_eve,rain_mo,temp_min_eve,temp_min_mo,avg_temp_tot,fai) %>% na.omit()
+
+#### Random effects day and number of gps between
+glm_minimum <- lmer(rr_treedirectness~fai+ClassFocal +(1 | tree_betweennumgps)+ (1 | manualDate),data=SUAQ_treedirectness_stats_naomit_minimum)
+glm_minimum_empty <- lmer(rr_treedirectness~ (1 | tree_betweennumgps)+ (1 | manualDate),data=SUAQ_treedirectness_stats_naomit_minimum)
+lm_random_effect <- lm(rr_treedirectness~ tree_betweennumgps+ 
+                           manualDate,data=SUAQ_treedirectness_stats_naomit_minimum)
+anova(lm_random_effect)
+anova(glm_minimum,glm_minimum_empty)
+anova(glm_minimum)
+
+#### looking at further explanatory variables
+glm_full <- lmer(rr_treedirectness~ClassFocal+rr_treedirectness+rain_eve+walevel_eve+rain_mo+temp_min_eve+temp_min_mo+avg_temp_tot+fai +(1 | tree_betweennumgps)+ (1 | manualDate),data=SUAQ_treedirectness_stats_naomit)
+glm_empty <- lmer(rr_treedirectness~ (1 | tree_betweennumgps)+ (1 | manualDate),data=SUAQ_treedirectness_stats_naomit)
+anova(glm_full,glm_empty)
+anova(glm_full)
+
+SUAQ_treedirectness_stats_naomit_mother$ageOfCurrentOffspring
+#### looking at females only
+glm_mothers <- lmer(rr_treedirectness~ ageFromDOB+ageOfCurrentOffspring+(1 | tree_betweennumgps)+ (1 | manualDate),data=SUAQ_treedirectness_stats_naomit_mother)
+glm_mothers_empty <- lmer(rr_treedirectness~ (1 | tree_betweennumgps)+ (1 | manualDate),data=SUAQ_treedirectness_stats_naomit_mother)
+anova(glm_mothers,glm_mothers_empty)
+anova(glm_mothers)
 
 ```
 

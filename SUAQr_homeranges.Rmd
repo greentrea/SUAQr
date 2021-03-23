@@ -2814,6 +2814,7 @@ mcp_allperiods_sf<- st_read(dsn="output/Homeranges/MCP/periods/20210316/mcp_valu
   mutate(algorithm="mcp") %>% rename(area=homerng) %>% st_set_crs(23847)
 all_homeranges_sf <- kde_allperiods_sf %>% bind_rows(brb_allperiods_sf) %>% bind_rows(mcp_allperiods_sf)
 all_homeranges_sf$period <- factor(all_homeranges$period, levels = c("before 2012", "2012 until 2016", "left", "2016 until August 2018", "Since August 2018","total research period"))
+all_homeranges <- all_homeranges_sf %>% st_drop_geometry()
 
 ### Feeding trees
 SUAQ_waypoints_11all20_loc_tree <- SUAQ_waypoints_11all20_loc %>% filter(PtType=="tree")
@@ -2847,6 +2848,19 @@ for (i in c(1:NROW(all_homeranges_sf))){
 }
 all_homeranges_sf <- all_homeranges_sf %>% mutate(fruittree_normalized=number_of_trees/researcheffort_ngps) %>% mutate(fruittree_per_sqkm=fruittree_normalized/area)
 
+### Create homeranges dataframe with HR levels in each row
+all_homeranges_dense50 <- all_homeranges %>% filter(hrprcnt=="50%") 
+all_homeranges_dense95 <- all_homeranges %>% filter(hrprcnt=="95%")  %>% dplyr::select(area,hrprcnt,focal,bndwthm,period,hmin)
+all_homeranges_dense99 <- all_homeranges %>% filter(hrprcnt=="99%")  %>% dplyr::select(area,hrprcnt,focal,bndwthm,period,hmin)
+all_homeranges_dense100 <- all_homeranges %>% filter(hrprcnt=="100%")  %>% dplyr::select(area,hrprcnt,focal,bndwthm,period,hmin)
+all_homeranges_dense <- all_homeranges_dense50 %>% 
+  left_join(all_homeranges_dense95,by=c("focal"="focal","bndwthm"="bndwthm","period"="period","hmin"="hmin")) %>% 
+  left_join(all_homeranges_dense99,by=c("focal"="focal","bndwthm"="bndwthm","period"="period","hmin"="hmin")) %>% 
+  left_join(all_homeranges_dense100,by=c("focal"="focal","bndwthm"="bndwthm","period"="period","hmin"="hmin")) %>%   rename(area_50=area.x,hrprcnt_50=hrprcnt.x,area_95=area.y,hrprcnt_95=hrprcnt.y,area_99=area.x.x,hrprcnt_99=hrprcnt.x.x,area_100=area.y.y,hrprcnt_100=hrprcnt.y.y)
+all_homeranges_dense <- all_homeranges_dense %>% mutate(corearea_ratio=area_99/area_50) 
+
+
+all_homeranges_dense %>% filter(hminfac%in%c(1,NA)) %>% filter(bndwthm%in%c("HREF",NA)) %>%  ggplot(aes(corearea_ratio,focal,color=algorithm)) +geom_point()
 
 
 ```
@@ -2855,10 +2869,14 @@ all_homeranges_sf <- all_homeranges_sf %>% mutate(fruittree_normalized=number_of
 ### Finding: In core areas the number of trees increase linear with area in 95% area it increases faster but then flattens
 all_homeranges_sf %>%filter(algorithm=="brb") %>% filter(hminfac==1) %>% filter(hrprcnt=="99%") %>%  ggplot(aes(area,number_of_trees)) +geom_point()+geom_smooth()
 
-
 ### Fruittreeindex
-all_homeranges_sf %>%filter(algorithm=="brb") %>% filter(hminfac==1) %>%  ggplot(aes(focal,fruittree_per_sqkm)) +geom_jitter(aes(color=hrprcnt))+geom_smooth()
-
+all_homeranges_sf %>%filter(algorithm=="brb") %>% 
+  filter(hminfac==1) %>%  
+  ggplot(aes(focal,fruittree_per_sqkm))+
+  geom_jitter(aes(color=hrprcnt))+
+  geom_smooth()+
+  labs(x="focal",y=expression("trees per tot. gps-effort per area [normalized tree/km"^2*"]"),color="HR [%]") +
+  scale_fill_viridis()
 
 ```
 
