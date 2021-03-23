@@ -166,7 +166,55 @@ vif.mer <- function (fit) {
     v
 }
 
+aggregate.sf = function(x, by, FUN, ..., do_union = TRUE, simplify = TRUE,
+		join = st_intersects) {
 
+	if (inherits(by, "sf") || inherits(by, "sfc")) {
+		if (inherits(by, "sfc"))
+			by = st_sf(by)
+		i = join(st_geometry(by), st_geometry(x))
+		st_geometry(x) = NULL
+		# dispatch to stats::aggregate:
+		a = aggregate(x[unlist(i), , drop = FALSE],
+			list(rep(seq_len(nrow(by)), lengths(i))), FUN, ...)
+		nrow_diff = nrow(by) - nrow(a)
+		if(nrow_diff > 0) {
+			a_na = a[rep(NA, nrow(by)),] # 'top-up' missing rows
+			a_na[a$Group.1,] = a
+			a = a_na
+		}
+		a$Group.1 = NULL # remove
+		row.names(a) = row.names(by)
+		st_set_geometry(a, st_geometry(by))
+	} else {
+		crs = st_crs(x)
+		lst = lapply(split(st_geometry(x), by), function(y) do.call(c, y))
+		geom = do.call(st_sfc, lst[!sapply(lst, is.null)])
+
+		if (do_union)
+			geom = st_union(st_set_precision(geom, st_precision(x)), by_feature = TRUE)
+
+		st_geometry(x) = NULL
+		x = aggregate(x, by, FUN, ..., simplify = simplify)
+		st_geometry(x) = geom # coerces to sf
+		st_crs(x) = crs
+
+		# now set agr:
+		geoms = which(vapply(x, function(vr) inherits(vr, "sfc"), TRUE))
+		agr_names = names(x)[-geoms]
+		agr = rep("aggregate", length(agr_names))
+		names(agr) = agr_names
+		# which ones are identity variables?
+		n = if (!is.null(names(by)))
+			names(by)
+		else
+			paste0("Group.", seq_along(by))
+		agr[n] = "identity"
+		st_agr(x) = agr
+
+		x
+	}
+}
 
 
 setwd("/Users/stefgr/Nextcloud/UZH/12_Semester/20200313_Masterthesis/R/")
@@ -326,8 +374,10 @@ axisshifty <- 125 # shift of axis in plots y axis
 axisshiftx <- -280 # shift of axis in plots x axis
 legendoffsetx <- 0
 legendoffsety <- 0
-xmin <- min(SUAQ_rangepoints_11all20_loc_females_10$E)-extentmargin; xmax <- max(SUAQ_rangepoints_11all20_loc_females_10$E)+extentmargin
-ymin <- min(SUAQ_rangepoints_11all20_loc_females_10$N)-extentmargin; ymax <- max(SUAQ_rangepoints_11all20_loc_females_10$N)+extentmargin
+xmin <- min(SUAQ_rangepoints_11all20_loc_females_10$E)-extentmargin 
+xmax <- max(SUAQ_rangepoints_11all20_loc_females_10$E)+extentmargin
+ymin <- min(SUAQ_rangepoints_11all20_loc_females_10$N)-extentmargin 
+ymax <- max(SUAQ_rangepoints_11all20_loc_females_10$N)+extentmargin
 step <- 200
 xmin_xmax_round_steps<- c(step*(ceiling(xmin/step)):(round(xmax/step)))
 xmin_xmax_round_steps <- xmin_xmax_round_steps[2:(length(xmin_xmax_round_steps)-2)] #manual adjustment of tick breaks how many does it need
@@ -339,11 +389,14 @@ ymin_ymax_round_steps <- ymin_ymax_round_steps[2:(length(ymin_ymax_round_steps)-
 SUAQ_rangepoints_11all20_loc_females_10 <- SUAQ_rangepoints_11all20_loc_females_10 %>% mutate(year=year(manualDatetime))
 
 # make 5 lists for all 4 research periods and one for all data
-mt_list <- split(SUAQ_rangepoints_11all20_loc_females_10, f = SUAQ_rangepoints_11all20_loc_females_10$researchperiod)
+period_list <- split(SUAQ_rangepoints_11all20_loc_females_10, f = SUAQ_rangepoints_11all20_loc_females_10$researchperiod)
 
 # add all data as the 5th list (period)
-mt_list[["total research period"]] <- SUAQ_rangepoints_11all20_loc_females_10
-mt_list <- mt_list[c("total research period","before 2012","2012 until 2016","2016 until August 2018","Since August 2018")]
+period_list[["total research period"]] <- SUAQ_rangepoints_11all20_loc_females_10
+period_list <- period_list[c("total research period","before 2012","2012 until 2016","2016 until August 2018","Since August 2018")]
+
+# make lists for every year
+year_list <- split(SUAQ_rangepoints_11all20_loc_females_10, f = SUAQ_rangepoints_11all20_loc_females_10$year)
 
 #### Selected animals as list/vector
 selected_females <- SUAQ_rangepoints_11all20_loc_females_10 %>% group_by(focal) %>% summarise()
@@ -399,19 +452,19 @@ imdir <- paste("output/Homeranges/MCP/periods/",format(Sys.Date(), "%Y%m%d"), "/
 
 mcp_list <- data.frame()
 
-for (samplinginterval in c(1:length(mt_list))){
+for (samplinginterval in c(1:length(period_list))){
   print(paste("mcp for period: ",samplinginterval))
   ##### Determine the smoothing parameters
-  selected_females <- mt_list[[samplinginterval]] %>% group_by(focal) %>% summarise()
+  selected_females <- period_list[[samplinginterval]] %>% group_by(focal) %>% summarise()
   selected_females <- as_vector(selected_females)
   
   iterator <- 1
   for (i in selected_females) { # do the following for every animal in the list
     print(paste("mcp for focal: ",i))
-    n_follows <- mt_list[[samplinginterval]] %>% filter(focal%in%c(i)) %>%
+    n_follows <- period_list[[samplinginterval]] %>% filter(focal%in%c(i)) %>%
         group_by(follow) %>% summarise() %>% nrow() # just as a variable for later results dataframe --> number of follows
 
-    xy_selected <- mt_list[[samplinginterval]] %>% filter(focal%in%c(i)) %>%
+    xy_selected <- period_list[[samplinginterval]] %>% filter(focal%in%c(i)) %>%
       dplyr::select(E,N)
     n_gps <- xy_selected %>% nrow() # just as a variable for later results dataframe --> number of GPS points
     
@@ -438,7 +491,7 @@ for (samplinginterval in c(1:length(mt_list))){
       hr95_sf<- st_as_sf(hr95)
       hr50_sf<- st_as_sf(hr50)
       
-      png(paste(imdir,i, "_MCP_UD_",names(mt_list)[samplinginterval], ".png", sep=""), width=900, height=700, res=120, units="px")
+      png(paste(imdir,i, "_MCP_UD_",names(period_list)[samplinginterval], ".png", sep=""), width=900, height=700, res=120, units="px")
       plot(xy_selected,pch = 16,cex=0.3,fill="darkolivegreen", xlab="x [m]",ylab="y [m]",xlim=c(xmin_xmax_round_steps[1],tail(xmin_xmax_round_steps,n=1)),ylim=c(ymin_ymax_round_steps[1],tail(ymin_ymax_round_steps,n=1)))
       plot(hr50, lty=3, lwd=2.5, border="coral1", add=T,axes=F)
       plot(hr95, lty=1, lwd=2, border="cadetblue2", add=T, axes=F)
@@ -450,7 +503,7 @@ for (samplinginterval in c(1:length(mt_list))){
       plot(SUAQ_pathnetwork_sf_loc, lty=1, lwd=0.3, col=alpha("darkred", 0.7), add=T, axes=F)
       axis(1, at=xmin_xmax_round_steps,pos=ymin+axisshifty) # x axis
       axis(2, at=ymin_ymax_round_steps, pos=xmin+axisshiftx)
-      title(paste(i, " : ",names(mt_list)[samplinginterval], sep=""), line=-1.5)
+      title(paste(i, " : ",names(period_list)[samplinginterval], sep=""), line=-1.5)
       legend("topright", c("HR 50%", "HR 95%", "HR 100%","Trail","River"), col=c("coral1", "cadetblue2", "darkturquoise","darkred",alpha("cornflowerblue", 0.7)), lwd=c(2.5,2,2,0.3,4), lty=c(3,1,4,1,1), inset=c(legendoffsety,legendoffsety))
       dev.off()
       }
@@ -465,7 +518,7 @@ for (samplinginterval in c(1:length(mt_list))){
           hrpercentage = "50%",
           n_gps = n_gps,
           n_follows = n_follows,
-          period = names(mt_list)[samplinginterval],
+          period = names(period_list)[samplinginterval],
           geometry= hr50_sf$geometry
         )
       resultList_95 <-
@@ -475,7 +528,7 @@ for (samplinginterval in c(1:length(mt_list))){
           hrpercentage = "95%",
           n_gps = n_gps,
           n_follows = n_follows,
-          period = names(mt_list)[samplinginterval],
+          period = names(period_list)[samplinginterval],
           geometry= hr95_sf$geometry
         )
       resultList_99 <-
@@ -485,7 +538,7 @@ for (samplinginterval in c(1:length(mt_list))){
           hrpercentage = "99%",
           n_gps = n_gps,
           n_follows = n_follows,
-          period = names(mt_list)[samplinginterval],
+          period = names(period_list)[samplinginterval],
           geometry= hr99_sf$geometry
         )
       resultList_100 <-
@@ -495,7 +548,7 @@ for (samplinginterval in c(1:length(mt_list))){
           hrpercentage = "100%",
           n_gps = n_gps,
           n_follows = n_follows,
-          period = names(mt_list)[samplinginterval],
+          period = names(period_list)[samplinginterval],
           geometry= hr100_sf$geometry
         )
     }
@@ -507,7 +560,7 @@ for (samplinginterval in c(1:length(mt_list))){
           hrpercentage = "50%",
           n_gps = n_gps,
           n_follows = n_follows,
-          period = names(mt_list)[samplinginterval],
+          period = names(period_list)[samplinginterval],
           geometry= NA
         )
       resultList_95 <-
@@ -517,7 +570,7 @@ for (samplinginterval in c(1:length(mt_list))){
           hrpercentage = "95%",
           n_gps = n_gps,
           n_follows = n_follows,
-          period = names(mt_list)[samplinginterval],
+          period = names(period_list)[samplinginterval],
           geometry= NA
         )
       resultList_99 <-
@@ -527,7 +580,7 @@ for (samplinginterval in c(1:length(mt_list))){
           hrpercentage = "99%",
           n_gps = n_gps,
           n_follows = n_follows,
-          period = names(mt_list)[samplinginterval],
+          period = names(period_list)[samplinginterval],
           geometry= NA
         )
       resultList_100 <-
@@ -537,7 +590,7 @@ for (samplinginterval in c(1:length(mt_list))){
           hrpercentage = "100%",
           n_gps = n_gps,
           n_follows = n_follows,
-          period = names(mt_list)[samplinginterval],
+          period = names(period_list)[samplinginterval],
           geometry= NA
         )
     }
@@ -572,19 +625,19 @@ imdir <- paste("output/Homeranges/MCP/years/",format(Sys.Date(), "%Y%m%d"), "/",
 
 mcp_list <- data.frame() # results
 
-for (samplinginterval in c(1:length(mt_list))){
+for (samplinginterval in c(1:length(year_list))){
   print(paste("mcp for period: ",samplinginterval))
   ##### Determine the smoothing parameters
-  selected_females <- mt_list[[samplinginterval]] %>% group_by(focal) %>% summarise()
+  selected_females <- year_list[[samplinginterval]] %>% group_by(focal) %>% summarise()
   selected_females <- as_vector(selected_females)
   
   iterator <- 1
   for (i in selected_females) { # do the following for every animal in the list
     print(paste("mcp for focal: ",i))
-    n_follows <- mt_list[[samplinginterval]] %>% filter(focal%in%c(i)) %>%
+    n_follows <- year_list[[samplinginterval]] %>% filter(focal%in%c(i)) %>%
         group_by(follow) %>% summarise() %>% nrow() # just as a variable for later results dataframe --> number of follows
 
-    xy_selected <- mt_list[[samplinginterval]] %>% filter(focal%in%c(i)) %>%
+    xy_selected <- year_list[[samplinginterval]] %>% filter(focal%in%c(i)) %>%
       dplyr::select(E,N)
     n_gps <- xy_selected %>% nrow() # just as a variable for later results dataframe --> number of GPS points
     
@@ -608,7 +661,7 @@ for (samplinginterval in c(1:length(mt_list))){
       hr50_area <- mcp.area(xy_selected, percent = 50)
   
       
-      png(paste(imdir,i, "_MCP_UD_",names(mt_list)[samplinginterval], ".png", sep=""), width=900, height=700, res=120, units="px")
+      png(paste(imdir,i, "_MCP_UD_",names(year_list)[samplinginterval], ".png", sep=""), width=900, height=700, res=120, units="px")
       plot(xy_selected,pch = 16,cex=0.3,fill="darkolivegreen", xlab="x [m]",ylab="y [m]",xlim=c(xmin_xmax_round_steps[1],tail(xmin_xmax_round_steps,n=1)),ylim=c(ymin_ymax_round_steps[1],tail(ymin_ymax_round_steps,n=1)))
       plot(hr50, lty=3, lwd=2.5, border="coral1", add=T,axes=F)
       plot(hr95, lty=1, lwd=2, border="cadetblue2", add=T, axes=F)
@@ -620,7 +673,7 @@ for (samplinginterval in c(1:length(mt_list))){
       plot(SUAQ_pathnetwork_sf_loc, lty=1, lwd=0.3, col=alpha("darkolivegreen", 0.7), add=T, axes=F)
       axis(1, at=xmin_xmax_round_steps,pos=ymin+axisshifty) # x axis
       axis(2, at=ymin_ymax_round_steps, pos=xmin+axisshiftx)
-      title(paste(i, " : ",names(mt_list)[samplinginterval], sep=""), line=-1.5)
+      title(paste(i, " : ",names(year_list)[samplinginterval], sep=""), line=-1.5)
       legend("topright", c("HR 50%", "HR 95%", "HR 100%","Trail","River"), col=c("coral1", "cadetblue2", "darkturquoise","darkred",alpha("cornflowerblue", 0.7)), lwd=c(2.5,2,2,0.3,4), lty=c(3,1,4,1,1), inset=c(legendoffsety,legendoffsety))
       dev.off()
       }
@@ -635,7 +688,7 @@ for (samplinginterval in c(1:length(mt_list))){
           hrpercentage = "50%",
           n_gps = n_gps,
           n_follows = n_follows,
-          period = names(mt_list)[samplinginterval],
+          period = names(year_list)[samplinginterval],
           geometry= hr50_sf$geometry
         )
       resultList_95 <-
@@ -645,7 +698,7 @@ for (samplinginterval in c(1:length(mt_list))){
           hrpercentage = "95%",
           n_gps = n_gps,
           n_follows = n_follows,
-          period = names(mt_list)[samplinginterval],
+          period = names(year_list)[samplinginterval],
           geometry= hr95_sf$geometry
         )
       resultList_99 <-
@@ -655,7 +708,7 @@ for (samplinginterval in c(1:length(mt_list))){
           hrpercentage = "99%",
           n_gps = n_gps,
           n_follows = n_follows,
-          period = names(mt_list)[samplinginterval],
+          period = names(year_list)[samplinginterval],
           geometry= hr99_sf$geometry
         )
       resultList_100 <-
@@ -665,7 +718,7 @@ for (samplinginterval in c(1:length(mt_list))){
           hrpercentage = "100%",
           n_gps = n_gps,
           n_follows = n_follows,
-          period = names(mt_list)[samplinginterval],
+          period = names(year_list)[samplinginterval],
           geometry= hr100_sf$geometry
         )
     }
@@ -677,7 +730,7 @@ for (samplinginterval in c(1:length(mt_list))){
           hrpercentage = "50%",
           n_gps = n_gps,
           n_follows = n_follows,
-          period = names(mt_list)[samplinginterval],
+          period = names(year_list)[samplinginterval],
           geometry= NA
         )
       resultList_95 <-
@@ -687,7 +740,7 @@ for (samplinginterval in c(1:length(mt_list))){
           hrpercentage = "95%",
           n_gps = n_gps,
           n_follows = n_follows,
-          period = names(mt_list)[samplinginterval],
+          period = names(year_list)[samplinginterval],
           geometry= NA
         )
       resultList_99 <-
@@ -697,7 +750,7 @@ for (samplinginterval in c(1:length(mt_list))){
           hrpercentage = "99%",
           n_gps = n_gps,
           n_follows = n_follows,
-          period = names(mt_list)[samplinginterval],
+          period = names(year_list)[samplinginterval],
           geometry= NA
         )
       resultList_100 <-
@@ -707,7 +760,7 @@ for (samplinginterval in c(1:length(mt_list))){
           hrpercentage = "100%",
           n_gps = n_gps,
           n_follows = n_follows,
-          period = names(mt_list)[samplinginterval],
+          period = names(year_list)[samplinginterval],
           geometry= NA
         )
     }
@@ -801,7 +854,7 @@ write_csv(bandwiths, path = paste(
 ))
 ```
 
-```{r KDE - HR sizes with bootstrap,echo=FALSE, message=FALSE,comment=FALSE, warning=FALSE}
+```{r KDE - HR sizes with bootstrap sampling amount,echo=FALSE, message=FALSE,comment=FALSE, warning=FALSE}
 #bandwiths <- read_csv(paste0("data/Processed_data/",str_remove_all(Sys.Date(), "-"),"_KDE_bandwiths.csv"))
 
 dir.create(paste(
@@ -1060,20 +1113,25 @@ kde95_bootstrap_long %>%  ggplot(aes(`subset %`,`HR [km2]`,colour=focal)) + geom
 rownames(kde) <- c(1:10)
 ```
 
-```{r KDE - HR per-researchperiods and all - HR sizes,echo=FALSE, message=FALSE,comment=FALSE, warning=FALSE}
+```{r KDE - HR sizes with bootstrap temporal amount,echo=FALSE, message=FALSE,comment=FALSE, warning=FALSE}
 # createa directory for kde periods calculation (named by the current date)
+# Split the data into 4 sampling periods. Calculate the respective HR.
+monthyear_list <- split(SUAQ_rangepoints_11all20_loc_females_10, f = SUAQ_rangepoints_11all20_loc_females_10$monthYearDate)
+
 dir.create(paste(
-    "output/Homeranges/KDE/periods/",
+    "output/Homeranges/KDE/temporalbootstrap/",
     format(Sys.Date(), "%Y%m%d"),
     sep = ""
   ))
-imdir <- paste("output/Homeranges/KDE/periods/",format(Sys.Date(), "%Y%m%d"), "/", sep="")
+imdir <- paste("output/Homeranges/KDE/temporalbootstrap/",format(Sys.Date(), "%Y%m%d"), "/", sep="")
 
-kde_results_perperiod <- data.frame() # results
-for (samplinginterval in c(1:length(mt_list))){
-print(paste("kdes for period: ",samplinginterval))
+kde_results <- data.frame() # results
+for (samplinginterval in c(1:length(monthyear_list))){
+print(paste("kdes for month: ",samplinginterval))
 ##### Determine the smoothing parameters
-selected_females <- mt_list[[samplinginterval]] %>% group_by(focal) %>% summarise()
+selected_females <- data.frame()
+for(l in c(1:samplinginterval)){selected_females <-selected_females %>% rbind(monthyear_list[[l]])}
+selected_females <- selected_females%>% group_by(focal) %>% summarise()
 selected_females <- as_vector(selected_females)
 
 bandwiths <-  data.frame(focal=as_vector(selected_females),
@@ -1082,6 +1140,8 @@ bandwiths <-  data.frame(focal=as_vector(selected_females),
 iterator <- 1
 for (i in selected_females){
   print(paste("kdes for focal: ",i))
+  xy_selected <- data.frame()
+  for(l in c(1:samplinginterval)){xy_selected <-xy_selected %>% rbind(monthyear_list[[l]])}
   xy_selected <- SUAQ_rangepoints_11all20_loc_females_10 %>% filter(focal%in%c(i)) %>% dplyr::select(E,N)
   colnames(xy_selected) <- c("x","y") #adjust column names
   hpi <- sqrt(prod(sqrt(diag(Hpi.diag(xy_selected[,1:2], nstage=2))))) # using diagonal bandwith not full bandwith? why?
@@ -1100,8 +1160,141 @@ rownames(bandwiths) <- c(1:length(selected_females))
 iterator <- 1
 results_focal <- data.frame()
 for (i in selected_females){ # compute KDE home range for every individual
-  n_follows <- mt_list[[samplinginterval]] %>% filter(focal%in%c(i)) %>% group_by(follow) %>% summarise() %>% nrow()
-  xy_selected <- mt_list[[samplinginterval]] %>% filter(focal%in%c(i)) %>% dplyr::select(E,N)
+  xy_selected <- data.frame()
+  for(l in c(1:samplinginterval)){xy_selected <-xy_selected %>% rbind(monthyear_list[[l]])}
+  n_follows <- xy_selected %>% filter(focal%in%c(i)) %>% group_by(follow) %>% summarise() %>% nrow()
+  xy_selected <- xy_selected %>% filter(focal%in%c(i)) %>% dplyr::select(E,N)
+  n_gps <- xy_selected %>% nrow()
+  
+  colnames(xy_selected) <- c("x","y") #adjust column names
+  resultList <- list()
+  methListTitle <- list("REF", "PI", "BCV", "SCV")
+  methList <- list("HREF", "HPI", "HBCV", "HSCV")
+  
+  xy_selected <- SpatialPoints(xy_selected,proj4string = CRS( "+proj=utm +zone=47 +a=6378160 +b=6356774.50408554 +towgs84=-24,-15,5,0,0,0,0 +units=m +no_defs" )) # Converts SpatialPointDataFrame to SpatialPoint (only x & y)
+  
+  extVal <- 15 #0.3 How much bigger the UD should be calculated than the research are (minimum bounding box). The higher the more Computation
+  gridVal <- 700 #700 How much cells or pixels should be considered for UD calculation. The higher the more Computation
+
+  for (j in seq(1, length(methList))) { # compute one home range for each bandwidth method and individual
+    if (j == 1) {
+      UD <- (kernelUD(xy_selected, grid=gridVal, extent=extVal, h="href"))
+    }
+    else if (j == 2) {
+      UD <- (kernelUD(xy_selected, grid=gridVal, extent=extVal, h=bandwiths[iterator,"hpi"]))
+    }
+    else if (j == 3) {
+      UD <- (kernelUD(xy_selected, grid=gridVal, extent=extVal, h=bandwiths[iterator,"hbcv"]))
+    }
+    else if (j == 4) {
+      UD <- (kernelUD(xy_selected, grid=gridVal, extent=extVal, h=bandwiths[iterator,"hscv"])) 
+    }
+    else {
+      print("Error")
+    }
+    hr99 <- getverticeshr(UD, percent=99,unin = c("m"),unout = c("km2"))
+    hr95 <- getverticeshr(UD, percent=95,unin = c("m"),unout = c("km2"))
+    hr50 <- getverticeshr(UD, percent=50,unin = c("m"),unout = c("km2"))
+    hr99_sf <- st_as_sf(hr99)
+    hr95_sf <- st_as_sf(hr95)
+    hr50_sf <- st_as_sf(hr50)
+    
+    ########## plot results ##########
+
+    png(paste(imdir, selected_females[[iterator]],"_",gsub(" ", "", names(monthyear_list)[samplinginterval], fixed = TRUE), "_KDE_VUD_", methList[[j]], ".png", sep=""), width=1800, height=1400, res=240, units="px")
+    image(getvolumeUD(UD), xlab="x [m]",ylab="y [m]",xlim=c(xmin_xmax_round_steps[1],tail(xmin_xmax_round_steps,n=1)),ylim=c(ymin_ymax_round_steps[1],tail(ymin_ymax_round_steps,n=1)))
+    plot(hr50, lty=3, lwd=1.5, border="azure4", add=T,axes=F)
+    plot(hr95, lty=1, lwd=1, border="cadetblue2", add=T, axes=F)
+    plot(hr99, lty=4, lwd=1, border="darkturquoise", add=T, axes=F)
+    plot(SUAQ_contour_sf_loc,lty=3, lwd=0.2, col=alpha("black", 1), add=T, axes=F)
+    plot(SUAQ_station_sf_loc,pch = 21,cex=1.5, col=alpha("black", 0.7), add=T, axes=F)
+    plot(SUAQ_station_sf_loc,pch = 16,cex=1, col=alpha("darkred", 0.7),lwd=0.3, bg="darkred", add=T, axes=F)
+    plot(SUAQ_river_sf_loc,lty=1, lwd=0.3, col=alpha("cornflowerblue", 0.7), add=T, axes=F)
+    plot(SUAQ_pathnetwork_sf_loc, lty=1, lwd=0.3, col=alpha("darkolivegreen", 0.7), add=T, axes=F)
+    axis(1, at=xmin_xmax_round_steps,pos=ymin+axisshifty) # x axis
+    axis(2, at=ymin_ymax_round_steps, pos=xmin+axisshiftx)
+    #text(xmin-500, (ymin+ymax)/2, "y [m]", adj=c(NA,-4), srt=90)
+    title(paste(selected_females[[iterator]], ": KDE ", "(", methListTitle[[j]], ")", sep=""), line=-1.5)
+    legend("topright", c("HR 50%", "HR 95%", "HR 100%","Trail","River"), col=c("coral1", "cadetblue2", "darkturquoise","darkred",alpha("cornflowerblue", 0.7)), lwd=c(2.5,2,2,0.3,4), lty=c(3,1,4,1,1), inset=c(legendoffsety,legendoffsety))
+    dev.off()
+    
+    results_selectedmethod <- data.frame(bandwithmethod=c(methList[[j]],methList[[j]],methList[[j]]),
+            hrpercentage=c("50%","95%","99%"),
+            area=c(hr50_sf$area,hr95_sf$area,hr99_sf$area),
+            n_gps=c(n_gps,n_gps,n_gps),
+            n_follows=c(n_follows,n_follows,n_follows))
+
+    results_selectedfocal<- results_selectedmethod %>% mutate(focal=selected_females[[iterator]])
+    
+    results_focal <- rbind(results_focal,results_selectedfocal)
+  }
+
+  
+
+  print(paste(selected_females[[iterator]], ": Calculation finished", sep=""))
+  iterator <- iterator+1
+}
+results_focal <- results_focal %>% mutate(period=names(monthyear_list)[samplinginterval])
+kde_results <- kde_results %>% rbind(results_focal)
+
+
+}
+st_write(kde_results, dsn = paste(
+  paste(imdir,
+    "kde_temporal_bootstrap_monthly",
+    sep = ""
+  ),
+  "csv",
+  sep = "."
+))
+system("say alle kernel distanzen berechnet für die verschiedenen Untersuchungsperioden")
+
+
+```
+
+
+```{r KDE - HR per-researchperiods and all - HR sizes,echo=FALSE, message=FALSE,comment=FALSE, warning=FALSE}
+# createa directory for kde periods calculation (named by the current date)
+dir.create(paste(
+    "output/Homeranges/KDE/periods/",
+    format(Sys.Date(), "%Y%m%d"),
+    sep = ""
+  ))
+imdir <- paste("output/Homeranges/KDE/periods/",format(Sys.Date(), "%Y%m%d"), "/", sep="")
+
+kde_results_perperiod <- data.frame() # results
+for (samplinginterval in c(1:length(period_list))){
+print(paste("kdes for period: ",samplinginterval))
+##### Determine the smoothing parameters
+selected_females <- period_list[[samplinginterval]] %>% group_by(focal) %>% summarise()
+selected_females <- as_vector(selected_females)
+
+bandwiths <-  data.frame(focal=as_vector(selected_females),
+                 hpi=vector(mode="numeric", length=length(selected_females)),hbcv=vector(mode="numeric", length=length(selected_females)),hscv=vector(mode="numeric", length=length(selected_females)),
+                 stringsAsFactors=FALSE)
+iterator <- 1
+for (i in selected_females){
+  print(paste("kdes for focal: ",i))
+  xy_selected <- period_list[[samplinginterval]] %>% filter(focal%in%c(i)) %>% dplyr::select(E,N)
+  colnames(xy_selected) <- c("x","y") #adjust column names
+  hpi <- sqrt(prod(sqrt(diag(Hpi.diag(xy_selected[,1:2], nstage=2))))) # using diagonal bandwith not full bandwith? why?
+  hbcv <- sqrt(prod(sqrt(diag(Hbcv.diag(xy_selected[,1:2], whichbcv=1)))))
+  hscv <- sqrt(prod(sqrt(diag(Hscv.diag(xy_selected[,1:2], nstage=2)))))
+  bandwiths[iterator,"focal"] <- i
+  bandwiths[iterator,"hpi"] <- as.numeric(hpi)
+  bandwiths[iterator,"hbcv"] <- as.numeric(hbcv)
+  bandwiths[iterator,"hscv"] <- as.numeric(hscv)
+
+  iterator <- iterator+1
+}
+rownames(bandwiths) <- c(1:length(selected_females))
+
+### KDE: Calculate UD, HR
+iterator <- 1
+results_focal <- data.frame()
+for (i in selected_females){ # compute KDE home range for every individual
+  n_follows <- period_list[[samplinginterval]] %>% filter(focal%in%c(i)) %>% group_by(follow) %>% summarise() %>% nrow()
+  xy_selected <- period_list[[samplinginterval]] %>% filter(focal%in%c(i)) %>% dplyr::select(E,N)
   n_gps <- xy_selected %>% nrow()
   
   colnames(xy_selected) <- c("x","y") #adjust column names
@@ -1139,7 +1332,7 @@ for (i in selected_females){ # compute KDE home range for every individual
     hr50_sf <- st_as_sf(hr50)
     
     ########## plot results ##########
-    png(paste(imdir, selected_females[[iterator]],"_",gsub(" ", "", names(mt_list)[samplinginterval], fixed = TRUE), "_KDE_UD_", methList[[j]], ".png", sep=""), width=1800, height=1400, res=240, units="px")
+    png(paste(imdir, selected_females[[iterator]],"_",gsub(" ", "", names(period_list)[samplinginterval], fixed = TRUE), "_KDE_UD_", methList[[j]], ".png", sep=""), width=1800, height=1400, res=240, units="px")
     par(0,0,0,0)
     image(UD, xlab="x [m]",ylab="y [m]",xlim=c(xmin_xmax_round_steps[1],tail(xmin_xmax_round_steps,n=1)),ylim=c(ymin_ymax_round_steps[1],tail(ymin_ymax_round_steps,n=1))) 
     plot(hr50, lty=3, lwd=1.5, border="darkseagreen3", add=T,axes=F)
@@ -1157,7 +1350,7 @@ for (i in selected_females){ # compute KDE home range for every individual
     legend("topright", c("HR 50%", "HR 95%", "HR 100%","Trail","River"), col=c("coral1", "cadetblue2", "darkturquoise","darkred",alpha("cornflowerblue", 0.7)), lwd=c(2.5,2,2,0.3,4), lty=c(3,1,4,1,1), inset=c(legendoffsety,legendoffsety))
     dev.off()
 
-    png(paste(imdir, selected_females[[iterator]],"_",gsub(" ", "", names(mt_list)[samplinginterval], fixed = TRUE), "_KDE_VUD_", methList[[j]], ".png", sep=""), width=1800, height=1400, res=240, units="px")
+    png(paste(imdir, selected_females[[iterator]],"_",gsub(" ", "", names(period_list)[samplinginterval], fixed = TRUE), "_KDE_VUD_", methList[[j]], ".png", sep=""), width=1800, height=1400, res=240, units="px")
     image(getvolumeUD(UD), xlab="x [m]",ylab="y [m]",xlim=c(xmin_xmax_round_steps[1],tail(xmin_xmax_round_steps,n=1)),ylim=c(ymin_ymax_round_steps[1],tail(ymin_ymax_round_steps,n=1)))
     plot(hr50, lty=3, lwd=1.5, border="azure4", add=T,axes=F)
     plot(hr95, lty=1, lwd=1, border="cadetblue2", add=T, axes=F)
@@ -1191,7 +1384,7 @@ for (i in selected_females){ # compute KDE home range for every individual
   print(paste(selected_females[[iterator]], ": Calculation finished", sep=""))
   iterator <- iterator+1
 }
-results_focal <- results_focal %>% mutate(period=names(mt_list)[samplinginterval])
+results_focal <- results_focal %>% mutate(period=names(period_list)[samplinginterval])
 kde_results_perperiod <- kde_results_perperiod %>% rbind(results_focal)
 
 
@@ -1218,10 +1411,10 @@ dir.create(paste(
   ))
 
 kde_results_perperyear <- data.frame() # results
-for (samplinginterval in c(1:length(mt_list))){
+for (samplinginterval in c(1:length(year_list))){
 print(paste("kdes for period: ",samplinginterval))
 ##### Determine the smoothing parameters
-selected_females <- mt_list[[samplinginterval]] %>% group_by(focal) %>% summarise()
+selected_females <- year_list[[samplinginterval]] %>% group_by(focal) %>% summarise()
 selected_females <- as_vector(selected_females)
 
 bandwiths <-  data.frame(focal=as_vector(selected_females),
@@ -1230,7 +1423,7 @@ bandwiths <-  data.frame(focal=as_vector(selected_females),
 iterator <- 1
 for (i in selected_females){
   print(paste("kdes for focal: ",i))
-  xy_selected <- SUAQ_rangepoints_11all20_loc_females_10 %>% filter(focal%in%c(i)) %>% dplyr::select(E,N)
+  xy_selected <- year_list[[samplinginterval]] %>% filter(focal%in%c(i)) %>% dplyr::select(E,N)
   colnames(xy_selected) <- c("x","y") #adjust column names
   hpi <- sqrt(prod(sqrt(diag(Hpi.diag(xy_selected[,1:2], nstage=2))))) # using diagonal bandwith not full bandwith? why?
   hbcv <- sqrt(prod(sqrt(diag(Hbcv.diag(xy_selected[,1:2], whichbcv=1)))))
@@ -1248,8 +1441,8 @@ rownames(bandwiths) <- c(1:length(selected_females))
 iterator <- 1
 results_focal <- data.frame()
 for (i in selected_females){ # compute KDE home range for every individual
-  n_follows <- mt_list[[samplinginterval]] %>% filter(focal%in%c(i)) %>% group_by(follow) %>% summarise() %>% nrow()
-  xy_selected <- mt_list[[samplinginterval]] %>% filter(focal%in%c(i)) %>% dplyr::select(E,N)
+  n_follows <- year_list[[samplinginterval]] %>% filter(focal%in%c(i)) %>% group_by(follow) %>% summarise() %>% nrow()
+  xy_selected <- year_list[[samplinginterval]] %>% filter(focal%in%c(i)) %>% dplyr::select(E,N)
   n_gps <- xy_selected %>% nrow()
   
   colnames(xy_selected) <- c("x","y") #adjust column names
@@ -1295,7 +1488,7 @@ for (i in selected_females){ # compute KDE home range for every individual
     ymin_ymax_round_steps<- c(step*(ceiling(ymin/step)):(round(ymax/step)))
     ymin_ymax_round_steps <- ymin_ymax_round_steps[2:(length(ymin_ymax_round_steps)-1)] #manual adjustment of tick breaks how many does it need
 
-    png(paste(imdirUD, selected_females[[iterator]],"_",gsub(" ", "", names(mt_list)[samplinginterval], fixed = TRUE), "_KDE_UD_", methList[[j]], ".png", sep=""), width=1800, height=1400, res=240, units="px")
+    png(paste(imdirUD, selected_females[[iterator]],"_",gsub(" ", "", names(year_list)[samplinginterval], fixed = TRUE), "_KDE_UD_", methList[[j]], ".png", sep=""), width=1800, height=1400, res=240, units="px")
     par(0,0,0,0)
     image(UD, xlab="x [m]",ylab="y [m]",xlim=c(xmin_xmax_round_steps[1],tail(xmin_xmax_round_steps,n=1)),ylim=c(ymin_ymax_round_steps[1],tail(ymin_ymax_round_steps,n=1))) 
     plot(hr50, lty=3, lwd=1.5, border="darkseagreen3", add=T,axes=F)
@@ -1313,7 +1506,7 @@ for (i in selected_females){ # compute KDE home range for every individual
     legend("topright", c("HR 50%", "HR 95%", "HR 100%","Trail","River"), col=c("coral1", "cadetblue2", "darkturquoise","darkred",alpha("cornflowerblue", 0.7)), lwd=c(2.5,2,2,0.3,4), lty=c(3,1,4,1,1), inset=c(legendoffsety,legendoffsety))
     dev.off()
 
-    png(paste(imdir, selected_females[[iterator]],"_",gsub(" ", "", names(mt_list)[samplinginterval], fixed = TRUE), "_KDE_VUD_", methList[[j]], ".png", sep=""), width=1800, height=1400, res=240, units="px")
+    png(paste(imdir, selected_females[[iterator]],"_",gsub(" ", "", names(year_list)[samplinginterval], fixed = TRUE), "_KDE_VUD_", methList[[j]], ".png", sep=""), width=1800, height=1400, res=240, units="px")
     image(getvolumeUD(UD), xlab="x [m]",ylab="y [m]",xlim=c(xmin_xmax_round_steps[1],tail(xmin_xmax_round_steps,n=1)),ylim=c(ymin_ymax_round_steps[1],tail(ymin_ymax_round_steps,n=1)))
     plot(hr50, lty=3, lwd=1.5, border="azure4", add=T,axes=F)
     plot(hr95, lty=1, lwd=1, border="cadetblue2", add=T, axes=F)
@@ -1347,7 +1540,7 @@ for (i in selected_females){ # compute KDE home range for every individual
   print(paste(selected_females[[iterator]], ": Calculation finished", sep=""))
   iterator <- iterator+1
 }
-results_focal <- results_focal %>% mutate(period=names(mt_list)[samplinginterval])
+results_focal <- results_focal %>% mutate(period=names(year_list)[samplinginterval])
 kde_results_perperyear <- kde_results_perperyear %>% rbind(results_focal)
 
 
@@ -1367,7 +1560,6 @@ system("say alle kernel distanzen berechnet für jedes Jahr")
 
 ```
 
-
 ```{r LOCOH - HR per-researchperiods and all - HR sizes,echo=FALSE, message=FALSE,comment=FALSE, warning=FALSE}
 # createa directory for kde periods calculation (named by the current date)
 dir.create(paste(
@@ -1378,19 +1570,19 @@ dir.create(paste(
 imdir <- paste("output/Homeranges/LOCOH/periods/",format(Sys.Date(), "%Y%m%d"), "/", sep="")
 
 locoh_list <- data.frame() # results
-for (samplinginterval in c(1:length(mt_list))){
+for (samplinginterval in c(1:length(period_list))){
   print(paste("LOCOH for period: ",samplinginterval))
   ##### Determine the smoothing parameters
-  selected_females <- mt_list[[samplinginterval]] %>% group_by(focal) %>% summarise()
+  selected_females <- period_list[[samplinginterval]] %>% group_by(focal) %>% summarise()
   selected_females <- as_vector(selected_females)
   
   iterator <- 1
   for (i in selected_females) { # do the following for every animal in the list
     print(paste("LOCOH for focal: ",i))
-    n_follows <- mt_list[[samplinginterval]] %>% filter(focal%in%c(i)) %>%
+    n_follows <- period_list[[samplinginterval]] %>% filter(focal%in%c(i)) %>%
         group_by(follow) %>% summarise() %>% nrow()
 
-    xy_selected <- mt_list[[samplinginterval]] %>% filter(focal%in%c(i)) %>%
+    xy_selected <- period_list[[samplinginterval]] %>% filter(focal%in%c(i)) %>%
       dplyr::select(E,N,manualDatetime,infantname,followtype,Activity,SUAQ_followlog.Observer1,SUAQ_orangutans.dominancecat,SUAQ_orangutans.matriline,SUAQ_weather.rainfall_ml_evening,SUAQ_fai.fai,ageFromDOB)
     xy_selected <- xy_selected[order(xy_selected$manualDatetime , decreasing = FALSE ),] 
     n_gps <- xy_selected %>% nrow()
@@ -1483,7 +1675,7 @@ for (samplinginterval in c(1:length(mt_list))){
       
   
       
-      png(paste(imdir,i, "_BRB_UD_", hminTxt,"_",names(mt_list)[samplinginterval], ".png", sep=""), width=1800, height=1400, res=240, units="px")
+      png(paste(imdir,i, "_BRB_UD_", hminTxt,"_",names(period_list)[samplinginterval], ".png", sep=""), width=1800, height=1400, res=240, units="px")
       image(UD, xlab="x [m]",ylab="y [m]",xlim=c(xmin_xmax_round_steps[1],tail(xmin_xmax_round_steps,n=1)),ylim=c(ymin_ymax_round_steps[1],tail(ymin_ymax_round_steps,n=1))) 
       plot(hr50, lty=3, lwd=1.5, border="darkseagreen3", add=T,axes=F)
       plot(hr95, lty=1, lwd=1, border="cadetblue2", add=T, axes=F)
@@ -1499,7 +1691,7 @@ for (samplinginterval in c(1:length(mt_list))){
       legend("topright", c("HR 50%", "HR 95%", "HR 100%","Trail","River"), col=c("coral1", "cadetblue2", "darkturquoise","darkred",alpha("cornflowerblue", 0.7)), lwd=c(2.5,2,2,0.3,4), lty=c(3,1,4,1,1), inset=c(legendoffsety,legendoffsety))
       dev.off()
       
-      png(paste(imdir,i, "_BRB_VUD_", hminTxt,"_",names(mt_list)[samplinginterval], ".png", sep=""), width=1800, height=1400, res=240, units="px")
+      png(paste(imdir,i, "_BRB_VUD_", hminTxt,"_",names(period_list)[samplinginterval], ".png", sep=""), width=1800, height=1400, res=240, units="px")
       image(getvolumeUD(UD), xlab="x [m]",ylab="y [m]",xlim=c(xmin_xmax_round_steps[1],tail(xmin_xmax_round_steps,n=1)),ylim=c(ymin_ymax_round_steps[1],tail(ymin_ymax_round_steps,n=1))) 
       plot(hr50, lty=3, lwd=1.5, border="darkseagreen3", add=T,axes=F)
       plot(hr95, lty=1, lwd=1, border="cadetblue2", add=T, axes=F)
@@ -1535,7 +1727,7 @@ for (samplinginterval in c(1:length(mt_list))){
             tau = tau,
             hminfac = hminFactor[[l]],
             hminRef = hminRef,
-            period = names(mt_list)[samplinginterval],
+            period = names(period_list)[samplinginterval],
             processingtime = duration,
             geometry=hr50_sf$geometry
           )
@@ -1554,7 +1746,7 @@ for (samplinginterval in c(1:length(mt_list))){
             tau = tau,
             hminfac = hminFactor[[l]],
             hminRef = hminRef,
-            period = names(mt_list)[samplinginterval],
+            period = names(period_list)[samplinginterval],
             processingtime = duration,
             geometry=hr95_sf$geometry
           )
@@ -1573,7 +1765,7 @@ for (samplinginterval in c(1:length(mt_list))){
             tau = tau,
             hminfac = hminFactor[[l]],
             hminRef = hminRef,
-            period = names(mt_list)[samplinginterval],
+            period = names(period_list)[samplinginterval],
             processingtime = duration,
             geometry=hr99_sf$geometry
           )
@@ -1594,7 +1786,7 @@ for (samplinginterval in c(1:length(mt_list))){
             tau = tau,
             hminfac = hminFactor[[l]],
             hminRef = hminRef,
-            period = names(mt_list)[samplinginterval],
+            period = names(period_list)[samplinginterval],
             processingtime = duration,
             geometry=NA
           )
@@ -1613,7 +1805,7 @@ for (samplinginterval in c(1:length(mt_list))){
             tau = tau,
             hminfac = hminFactor[[l]],
             hminRef = hminRef,
-            period = names(mt_list)[samplinginterval],
+            period = names(period_list)[samplinginterval],
             processingtime = duration,
             geometry=NA
           )
@@ -1632,7 +1824,7 @@ for (samplinginterval in c(1:length(mt_list))){
             tau = tau,
             hminfac = hminFactor[[l]],
             hminRef = hminRef,
-            period = names(mt_list)[samplinginterval],
+            period = names(period_list)[samplinginterval],
             processingtime = duration,
             geometry=NA
           )
@@ -1674,19 +1866,19 @@ imdir <- paste("output/Homeranges/BRB/periods/",format(Sys.Date(), "%Y%m%d"), "/
 mainSI <- rep(30,length(selected_females))
 
 brb_list <- data.frame() # results
-for (samplinginterval in c(1:length(mt_list))){
+for (samplinginterval in c(1:length(period_list))){
   print(paste("brb for period: ",samplinginterval))
   ##### Determine the smoothing parameters
-  selected_females <- mt_list[[samplinginterval]] %>% group_by(focal) %>% summarise()
+  selected_females <- period_list[[samplinginterval]] %>% group_by(focal) %>% summarise()
   selected_females <- as_vector(selected_females)
   
   iterator <- 1
   for (i in selected_females) { # do the following for every animal in the list
     print(paste("brb for focal: ",i))
-    n_follows <- mt_list[[samplinginterval]] %>% filter(focal%in%c(i)) %>%
+    n_follows <- period_list[[samplinginterval]] %>% filter(focal%in%c(i)) %>%
         group_by(follow) %>% summarise() %>% nrow()
 
-    xy_selected <- mt_list[[samplinginterval]] %>% filter(focal%in%c(i)) %>%
+    xy_selected <- period_list[[samplinginterval]] %>% filter(focal%in%c(i)) %>%
       dplyr::select(E,N,timelag_lead,manualDatetime)
     n_gps <- xy_selected %>% nrow()
 
@@ -1756,7 +1948,7 @@ for (samplinginterval in c(1:length(mt_list))){
       
   
       
-      png(paste(imdir,i, "_BRB_UD_", hminTxt,"_",names(mt_list)[samplinginterval], ".png", sep=""), width=1800, height=1400, res=240, units="px")
+      png(paste(imdir,i, "_BRB_UD_", hminTxt,"_",names(period_list)[samplinginterval], ".png", sep=""), width=1800, height=1400, res=240, units="px")
       image(UD, xlab="x [m]",ylab="y [m]",xlim=c(xmin_xmax_round_steps[1],tail(xmin_xmax_round_steps,n=1)),ylim=c(ymin_ymax_round_steps[1],tail(ymin_ymax_round_steps,n=1))) 
       plot(hr50, lty=3, lwd=1.5, border="darkseagreen3", add=T,axes=F)
       plot(hr95, lty=1, lwd=1, border="cadetblue2", add=T, axes=F)
@@ -1772,7 +1964,7 @@ for (samplinginterval in c(1:length(mt_list))){
       legend("topright", c("HR 50%", "HR 95%", "HR 100%","Trail","River"), col=c("coral1", "cadetblue2", "darkturquoise","darkred",alpha("cornflowerblue", 0.7)), lwd=c(2.5,2,2,0.3,4), lty=c(3,1,4,1,1), inset=c(legendoffsety,legendoffsety))
       dev.off()
       
-      png(paste(imdir,i, "_BRB_VUD_", hminTxt,"_",names(mt_list)[samplinginterval], ".png", sep=""), width=1800, height=1400, res=240, units="px")
+      png(paste(imdir,i, "_BRB_VUD_", hminTxt,"_",names(period_list)[samplinginterval], ".png", sep=""), width=1800, height=1400, res=240, units="px")
       image(getvolumeUD(UD), xlab="x [m]",ylab="y [m]",xlim=c(xmin_xmax_round_steps[1],tail(xmin_xmax_round_steps,n=1)),ylim=c(ymin_ymax_round_steps[1],tail(ymin_ymax_round_steps,n=1))) 
       plot(hr50, lty=3, lwd=1.5, border="darkseagreen3", add=T,axes=F)
       plot(hr95, lty=1, lwd=1, border="cadetblue2", add=T, axes=F)
@@ -1808,7 +2000,7 @@ for (samplinginterval in c(1:length(mt_list))){
             tau = tau,
             hminfac = hminFactor[[l]],
             hminRef = hminRef,
-            period = names(mt_list)[samplinginterval],
+            period = names(period_list)[samplinginterval],
             processingtime = duration,
             geometry=hr50_sf$geometry
           )
@@ -1827,7 +2019,7 @@ for (samplinginterval in c(1:length(mt_list))){
             tau = tau,
             hminfac = hminFactor[[l]],
             hminRef = hminRef,
-            period = names(mt_list)[samplinginterval],
+            period = names(period_list)[samplinginterval],
             processingtime = duration,
             geometry=hr95_sf$geometry
           )
@@ -1846,7 +2038,7 @@ for (samplinginterval in c(1:length(mt_list))){
             tau = tau,
             hminfac = hminFactor[[l]],
             hminRef = hminRef,
-            period = names(mt_list)[samplinginterval],
+            period = names(period_list)[samplinginterval],
             processingtime = duration,
             geometry=hr99_sf$geometry
           )
@@ -1867,7 +2059,7 @@ for (samplinginterval in c(1:length(mt_list))){
             tau = tau,
             hminfac = hminFactor[[l]],
             hminRef = hminRef,
-            period = names(mt_list)[samplinginterval],
+            period = names(period_list)[samplinginterval],
             processingtime = duration,
             geometry=NA
           )
@@ -1886,7 +2078,7 @@ for (samplinginterval in c(1:length(mt_list))){
             tau = tau,
             hminfac = hminFactor[[l]],
             hminRef = hminRef,
-            period = names(mt_list)[samplinginterval],
+            period = names(period_list)[samplinginterval],
             processingtime = duration,
             geometry=NA
           )
@@ -1905,7 +2097,7 @@ for (samplinginterval in c(1:length(mt_list))){
             tau = tau,
             hminfac = hminFactor[[l]],
             hminRef = hminRef,
-            period = names(mt_list)[samplinginterval],
+            period = names(period_list)[samplinginterval],
             processingtime = duration,
             geometry=NA
           )
@@ -1931,7 +2123,7 @@ system("say alle kernel distanzen berechnet für die verschiedenen Untersuchungs
 
 ```
 
-```{r BRB - HR per-year and all - HR sizes,echo=FALSE, message=FALSE,comment=FALSE, warning=FALSE}
+```{r BRB - HR per-year - HR sizes,echo=FALSE, message=FALSE,comment=FALSE, warning=FALSE}
 # createa directory for kde periods calculation (named by the current date)
 dir.create(paste(
     "output/Homeranges/BRB/years/",
@@ -1944,17 +2136,22 @@ imdir <- paste("output/Homeranges/BRB/years/",format(Sys.Date(), "%Y%m%d"), "/",
 mainSI <- rep(30,length(selected_females))
 
 brb_list <- data.frame() # results
-for (samplinginterval in c(1:length(mt_list))){
-  print(paste("brb for period: ",samplinginterval))
+for (samplinginterval in c(1:length(year_list))){
+  print(paste("brb for year: ",samplinginterval))
   ##### Determine the smoothing parameters
-  selected_females <- mt_list[[samplinginterval]] %>% group_by(focal) %>% summarise()
+  selected_females <- year_list[[samplinginterval]] %>% group_by(focal) %>% summarise()
   selected_females <- as_vector(selected_females)
   
   iterator <- 1
   for (i in selected_females) { # do the following for every animal in the list
     print(paste("brb for focal: ",i))
-    xy_selected <- mt_list[[samplinginterval]] %>% filter(focal%in%c(i)) %>% dplyr::select(E,N,timelag_lead,manualDatetime)
-    
+    n_follows <- year_list[[samplinginterval]] %>% filter(focal%in%c(i)) %>%
+        group_by(follow) %>% summarise() %>% nrow()
+
+    xy_selected <- year_list[[samplinginterval]] %>% filter(focal%in%c(i)) %>%
+      dplyr::select(E,N,timelag_lead,manualDatetime)
+    n_gps <- xy_selected %>% nrow()
+
     colnames(xy_selected) <- c("x","y","timelag_lead","timestamp") #adjust column names
     xy_selected <- xy_selected %>%  mutate(timelag_lead = round(timelag_lead,digits=0))
   
@@ -2005,6 +2202,9 @@ for (samplinginterval in c(1:length(mt_list))){
       hr95 <- getverticeshr(UD, percent=95, standardize=TRUE,unin = c("m"),unout = c("km2"))
       hr50 <- getverticeshr(UD, percent=50, standardize=TRUE,unin = c("m"),unout = c("km2"))
       hr99 <- getverticeshr(UD, percent=99, standardize=TRUE,unin = c("m"),unout = c("km2"))
+      hr95_sf <- st_as_sf(hr95)
+      hr50_sf <- st_as_sf(hr50)
+      hr99_sf <- st_as_sf(hr99)
       
       par(0,0,0,0)
       step <- 200
@@ -2018,7 +2218,7 @@ for (samplinginterval in c(1:length(mt_list))){
       
   
       
-      png(paste(imdir,i, "_BRB_UD_", hminTxt,"_",names(mt_list)[samplinginterval], ".png", sep=""), width=1800, height=1400, res=240, units="px")
+      png(paste(imdir,i, "_BRB_UD_", hminTxt,"_",names(year_list)[samplinginterval], ".png", sep=""), width=1800, height=1400, res=240, units="px")
       image(UD, xlab="x [m]",ylab="y [m]",xlim=c(xmin_xmax_round_steps[1],tail(xmin_xmax_round_steps,n=1)),ylim=c(ymin_ymax_round_steps[1],tail(ymin_ymax_round_steps,n=1))) 
       plot(hr50, lty=3, lwd=1.5, border="darkseagreen3", add=T,axes=F)
       plot(hr95, lty=1, lwd=1, border="cadetblue2", add=T, axes=F)
@@ -2034,7 +2234,7 @@ for (samplinginterval in c(1:length(mt_list))){
       legend("topright", c("HR 50%", "HR 95%", "HR 100%","Trail","River"), col=c("coral1", "cadetblue2", "darkturquoise","darkred",alpha("cornflowerblue", 0.7)), lwd=c(2.5,2,2,0.3,4), lty=c(3,1,4,1,1), inset=c(legendoffsety,legendoffsety))
       dev.off()
       
-      png(paste(imdir,i, "_BRB_VUD_", hminTxt,"_",names(mt_list)[samplinginterval], ".png", sep=""), width=1800, height=1400, res=240, units="px")
+      png(paste(imdir,i, "_BRB_VUD_", hminTxt,"_",names(year_list)[samplinginterval], ".png", sep=""), width=1800, height=1400, res=240, units="px")
       image(getvolumeUD(UD), xlab="x [m]",ylab="y [m]",xlim=c(xmin_xmax_round_steps[1],tail(xmin_xmax_round_steps,n=1)),ylim=c(ymin_ymax_round_steps[1],tail(ymin_ymax_round_steps,n=1))) 
       plot(hr50, lty=3, lwd=1.5, border="darkseagreen3", add=T,axes=F)
       plot(hr95, lty=1, lwd=1, border="cadetblue2", add=T, axes=F)
@@ -2058,7 +2258,8 @@ for (samplinginterval in c(1:length(mt_list))){
         resultList_50 <-
           data.frame(
             focal = i,
-            hr50 = hr50$area,
+            homerange = hr50$area,
+            hrpercentage ="50%",
             n_gps = n_gps,
             n_follows = n_follows,
             Velocity_percentile99 = velocity,
@@ -2069,14 +2270,15 @@ for (samplinginterval in c(1:length(mt_list))){
             tau = tau,
             hminfac = hminFactor[[l]],
             hminRef = hminRef,
-            period = names(mt_list)[samplinginterval],
+            period = names(year_list)[samplinginterval],
             processingtime = duration,
             geometry=hr50_sf$geometry
           )
         resultList_95 <-
           data.frame(
             focal = i,
-            hr95 = hr95$area,
+            homerange = hr95$area,
+            hrpercentage ="95%",
             n_gps = n_gps,
             n_follows = n_follows,
             Velocity_percentile99 = velocity,
@@ -2087,14 +2289,15 @@ for (samplinginterval in c(1:length(mt_list))){
             tau = tau,
             hminfac = hminFactor[[l]],
             hminRef = hminRef,
-            period = names(mt_list)[samplinginterval],
+            period = names(year_list)[samplinginterval],
             processingtime = duration,
             geometry=hr95_sf$geometry
           )
         resultList_99 <-
           data.frame(
             focal = i,
-            hr99 = hr99$area,
+            homerange = hr99$area,
+            hrpercentage ="99%",
             n_gps = n_gps,
             n_follows = n_follows,
             Velocity_percentile99 = velocity,
@@ -2105,7 +2308,7 @@ for (samplinginterval in c(1:length(mt_list))){
             tau = tau,
             hminfac = hminFactor[[l]],
             hminRef = hminRef,
-            period = names(mt_list)[samplinginterval],
+            period = names(year_list)[samplinginterval],
             processingtime = duration,
             geometry=hr99_sf$geometry
           )
@@ -2114,7 +2317,8 @@ for (samplinginterval in c(1:length(mt_list))){
                 resultList_50 <-
           data.frame(
             focal = i,
-            hr50 = NA,
+            homerange = NA,
+            hrpercentage ="50%",
             n_gps = n_gps,
             n_follows = n_follows,
             Velocity_percentile99 = velocity,
@@ -2125,14 +2329,15 @@ for (samplinginterval in c(1:length(mt_list))){
             tau = tau,
             hminfac = hminFactor[[l]],
             hminRef = hminRef,
-            period = names(mt_list)[samplinginterval],
+            period = names(year_list)[samplinginterval],
             processingtime = duration,
             geometry=NA
           )
         resultList_95 <-
           data.frame(
             focal = i,
-            hr95 = NA,
+            homerange = NA,
+            hrpercentage ="95%",
             n_gps = n_gps,
             n_follows = n_follows,
             Velocity_percentile99 = velocity,
@@ -2143,14 +2348,15 @@ for (samplinginterval in c(1:length(mt_list))){
             tau = tau,
             hminfac = hminFactor[[l]],
             hminRef = hminRef,
-            period = names(mt_list)[samplinginterval],
+            period = names(year_list)[samplinginterval],
             processingtime = duration,
             geometry=NA
           )
         resultList_99 <-
           data.frame(
             focal = i,
-            hr99 = NA,
+            homerange = NA,
+            hrpercentage ="99%",
             n_gps = n_gps,
             n_follows = n_follows,
             Velocity_percentile99 = velocity,
@@ -2161,14 +2367,14 @@ for (samplinginterval in c(1:length(mt_list))){
             tau = tau,
             hminfac = hminFactor[[l]],
             hminRef = hminRef,
-            period = names(mt_list)[samplinginterval],
+            period = names(year_list)[samplinginterval],
             processingtime = duration,
             geometry=NA
           )
       }
       brb_list <- brb_list %>% rbind(resultList_50,resultList_95,resultList_99)
       
-      print(paste(hminTxt, ": Calculation finished", sep=""))
+      print(paste(hminFactor[[l]],": Calculation finished", sep=""))
     }
   }
 }
@@ -2182,7 +2388,7 @@ st_write(brb_list, dsn = paste(
   "shp",
   sep = "."
 ))
-system("say alle kernel distanzen berechnet für jedes Jahr")
+system("say alle kernel distanzen berechnet für die verschiedenen Untersuchungsjahre")
 
 
 ```
@@ -2298,6 +2504,57 @@ dev.off()
 
 ```
 
+```{r Homerange - Normalized fruit tree points,echo=FALSE, message=FALSE,comment=FALSE, warning=FALSE}
+SUAQ_waypoints_11all20_loc_tree <- SUAQ_waypoints_11all20_loc %>% filter(PtType=="tree")
+SUAQ_waypoints_11all20_loc_tree_sf <-  st_as_sf(SUAQ_waypoints_11all20_loc_tree, 
+                          coords = c("E","N"), 
+                          crs = 23847) # can also do that in the new sricpt
+SUAQ_waypoints_11all20_loc_tree_sf_xy <- SUAQ_waypoints_11all20_loc_tree_sf %>% dplyr::select(geometry)
+#### Create a agggregated tree dataset. Distance of trees minimum 20m to be aggregated
+data(meuse)
+pts <- st_as_sf(meuse, coords = c("x", "y"),remove=FALSE)
+
+# This will give lots of warnings since there are non-numeric columns
+pts_agg <- aggregate.sf(pts, pts, mean, 
+     join = function(x, y) st_is_within_distance(x, y, dist = 100))
+
+
+#### Create a raster over research area with resolution in meter
+resolution <- 25
+r <- raster(xmn=xmin, ymn=ymin, xmx=xmax, ymx=ymax, res=resolution)
+r[] <- 0
+
+# note that you should use (lon, lat), in that order!
+SUAQ_waypoints_11all20_loc_tree_xy <- SUAQ_waypoints_11all20_loc_tree %>% dplyr::select(E,N)
+r_trees <- rasterize(SUAQ_waypoints_11all20_loc_tree_xy, r, fun="count")
+plot(r_trees)
+
+# note that you should use (lon, lat), in that order!
+SUAQ_waypoints_11all20_loc_xy <- SUAQ_waypoints_11all20_loc %>% dplyr::select(E,N)
+r_allGPS <- rasterize(SUAQ_waypoints_11all20_loc_xy, r, fun="count")
+plot(r_allGPS)
+
+
+normalized_tree <- overlay(r_trees, r_allGPS, fun="/")
+plot(normalized_tree)
+
+
+
+#### Visuals
+#### Analyze ??: distribution of weather?
+test<- ggplot()+
+  #geom_path(aes(E,N), alpha = 0.7,size=0.5)+
+  geom_sf(data = pts_agg,
+                                               aes(colour = "green"),
+                                               colour = "green")+
+  geom_sf(data = pts,
+                                               aes(colour = "black"),
+                                               colour = "black",size=0.5)
+  
+ggplotly(test)
+
+
+```
 
 
 Homerange Overlap:
