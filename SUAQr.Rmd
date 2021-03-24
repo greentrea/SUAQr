@@ -1995,7 +1995,6 @@ specs_followsStartAndEndWrong_follows <- specs_followsStartAndEndWrong %>% group
 
 ##### TODELETE
 
-
 plot_gps_pttype <- SUAQ_waypoints_11all20[order(SUAQ_waypoints_11all20$manualDatetime , decreasing = TRUE ),] %>% filter((PtType %in% c("party"))) %>% 
   group_by(follow) %>%
   #filter((follow %in% c(1228))) %>%
@@ -2004,10 +2003,6 @@ plot_gps_pttype <- SUAQ_waypoints_11all20[order(SUAQ_waypoints_11all20$manualDat
   #geom_point(data = temp_duplicates,aes(E,N,fill=as.factor(follow)),size=2)+
   geom_path(aes(E,N,color=as.factor(follow)), alpha = 0.7,size=0.5)
 ggplotly(plot_gps_pttype)
-
-
-
-
 
 ##### TODELETE
 ```
@@ -2095,9 +2090,17 @@ harmonize_waypoints <- function(flnm){
 ```
 
 ```{r saving project data}
+### Definitive ID
 identification <- rownames(SUAQ_waypoints_11all20)
 SUAQ_waypoints_11all20 <- cbind(identification=as.integer(identification), SUAQ_waypoints_11all20)
+
+### Definitive trackpoint ID (Attention still all points in dataset f.e. longcalls --> change when loading for analysis)
 SUAQ_waypoints_11all20 <- SUAQ_waypoints_11all20 %>% group_by(follow) %>% mutate(trackpoint_id = row_number())
+
+### Definitive number of gps per follow
+result_totnumfollows <- SUAQ_waypoints_11all20 %>% 
+  group_by(follow) %>% summarise(follow_totNumOfGPSpoints=n()) # 1323 Follows
+SUAQ_waypoints_11all20 <- SUAQ_waypoints_11all20 %>%dplyr::select(-follow_totNumOfGPSpoints) %>% left_join(result_totnumfollows,by=c("follow"="follow"))
 
 ### Make Project variables ### 
 ##### save all waypoints as sf ##### 

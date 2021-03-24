@@ -211,6 +211,7 @@ setwd("/Users/stefgr/Nextcloud/UZH/12_Semester/20200313_Masterthesis/R/")
 1. Getting data from excel/csv files
 2. Getting data from gpx files, clean and order it
 3. Merge Files
+
 ```{r GPS Loader,echo=FALSE, message=FALSE,comment=FALSE, warning=FALSE}
 
 ### Load Project variables ### 
@@ -258,6 +259,24 @@ SUAQ_locationnetwork_loc <- st_drop_geometry(SUAQ_locationnetwork_sf_loc)
 
 ##### Selection only pointtypes which are taken on the orangutan way? is this true for all? ##### 
 SUAQ_rangepoints_11all20_loc <- SUAQ_waypoints_11all20_loc %>% filter(PtType %in% c("daynest","found","lost","mornnest","nightnest","range","tree")) # get rid of lcg lch points and
+
+##### Change trackpoint_id and total num of GPS per follow
+###### trackpoint ID 
+SUAQ_rangepoints_11all20_loc <- SUAQ_rangepoints_11all20_loc %>% group_by(follow) %>% dplyr::select(-trackpoint_id) %>% mutate(trackpoint_id = row_number())
+###### Definitive number of gps per follow
+result_totnumfollows <- SUAQ_rangepoints_11all20_loc %>% 
+  group_by(follow) %>% summarise(follow_totNumOfGPSpoints=n()) # 1323 Follows
+SUAQ_rangepoints_11all20_loc <- SUAQ_rangepoints_11all20_loc %>%dplyr::select(-follow_totNumOfGPSpoints) %>% left_join(result_totnumfollows,by=c("follow"="follow"))
+###### orangutan number of points ID 
+result_numoffollows<- SUAQ_rangepoints_11all20_loc %>% group_by(follow,focal) %>% summarize(count=n()) %>% group_by(focal) %>% summarize(count=n())
+specs_orangutan_tot_num_of_gps <-SUAQ_rangepoints_11all20_loc %>% 
+  group_by(focal) %>%
+  summarise(n()) %>% left_join(result_numoffollows,by=c('focal'='focal'))
+colnames(specs_orangutan_tot_num_of_gps) <- c("focal",
+                                           "orangutan_tot_num_of_gps","orangutan_num_of_follows")
+tmp<- specs_orangutan_tot_num_of_gps
+SUAQ_rangepoints_11all20_loc <-SUAQ_rangepoints_11all20_loc %>% dplyr::select(-orangutan_num_of_follows,-orangutan_tot_num_of_gps) %>% 
+  left_join(tmp,by = c("focal" = "focal"))
 
 ##### Recalculate edge lengths etc. based on new point selection for rangepoints dataframe
 SUAQ_rangepoints_11all20_loc<- SUAQ_rangepoints_11all20_loc %>% 
@@ -312,6 +331,7 @@ SUAQ_rangepoints_11all20_loc_females_12 <-
     )
   )
 ```
+
 ### Analysis
 ## Statistics
 
@@ -356,7 +376,7 @@ TDD_follows <- SUAQ_rangepoints_11all20_loc[order(SUAQ_rangepoints_11all20_loc$m
 
 DJL_follows <- DJL_follows %>% 
   left_join(TDD_follows,by=c("follow"="follow")) %>%
-  mutate(RR=DJL/TDD) %>% 
+  mutate(RR=TDD/DJL) %>% 
   ungroup()
 
 # ##### Adding category number
@@ -437,7 +457,7 @@ TDD_tree_follows <- SUAQ_rangepoints_11all20_loc[order(SUAQ_rangepoints_11all20_
 
 Tree_follows <- Tree_follows %>% 
   left_join(TDD_tree_follows,by=c("follow"="follow")) %>%
-  mutate(tree_RR=tree_DJL/tree_TDD) %>%
+  mutate(tree_RR=tree_TDD/tree_DJL) %>%
   ungroup() %>% 
   left_join(Tree_follows_count,by=c("follow"="follow")) %>% 
   dplyr::select(c("follow","tree_numOfPoints","tree_DJL","tree_RR","tree_GPScount","tree_turningAngleSum","tree_meanTimelag","tree_medianTimelag"))
@@ -542,20 +562,25 @@ follows<- pull(temp_morethanonetree,follow)
 SUAQ_treedirectness$tree_betweentravelled <- NA_real_
 SUAQ_treedirectness$tree_betweennumgps <- NA_integer_
 SUAQ_treedirectness_calc <- data.frame()
-
+i <- 617
+tree <- 1
+test<- SUAQ_rangepoints_11all20_loc %>% filter(follow==617)
 for (i in follows){
   followdf <- SUAQ_treedirectness[SUAQ_treedirectness$follow==i,]
   for (tree in c(1:(nrow(followdf)-1))){
     temp_gpsdf<-SUAQ_rangepoints_11all20_loc[((SUAQ_rangepoints_11all20_loc$follow == i)&(SUAQ_rangepoints_11all20_loc$trackpoint_id %in% c(followdf$trackpoint_id[tree]:followdf$trackpoint_id[tree+1]))), "manual_distToNext"]
+    
+    temp_gpsdf <- temp_gpsdf[1:(nrow(temp_gpsdf)-1),] # delete distance to next from the last element/tree
     tree_row <- followdf[tree,]
     tree_row$tree_betweentravelled[1] <- sum(temp_gpsdf)
-    tree_row$tree_betweennumgps[1] <- nrow(temp_gpsdf)
+    tree_row$tree_betweennumgps[1] <- nrow(temp_gpsdf)-1 # anzahl GPS between plus start & endtree, therefire subtract start end tree because end tree already deleted only minus 1
     tree_row <- tree_row %>% ungroup()
     SUAQ_treedirectness_calc <-  rbind(SUAQ_treedirectness_calc,tree_row)
   }
   setTxtProgressBar(pb,stepi) # change progress bar
   stepi <-  stepi + 1
 }
+
 SUAQ_treedirectness <- SUAQ_treedirectness_calc %>% mutate(rr_treedirectness=tree_DD_next/tree_betweentravelled)
 SUAQ_treedirectness_calc <- NA
 
@@ -565,20 +590,63 @@ SUAQ_treedirectness_stats <- SUAQ_treedirectness %>%
 colnames(SUAQ_treedirectness_stats) <-
   c("follow","focal","ageFromDOB","ClassFocal","rain_eve","watlevel_mo","walevel_eve","rain_mo","avg_temp_tot","max_temp_average","min_temp_average","temp_max_mo","temp_min_mo","temp_max_eve","temp_min_eve","fai","ageOfCurrentOffspring","monthYearDate","tree_numOfPoints","rr_treedirectness","tree_betweennumgps","manualDate")
 
+## take a random sample with same "gps" distances as the between tree gps points.
+### Calculate all the distance travelled between trees.
+##### Adding total number of fruit trees
+pb <-  txtProgressBar(min = 0, max = NROW(random_window_sizes), initial = 0) 
+stepi <-0
+SUAQ_randomdirectness <- data.frame()
+random_window_sizes<- SUAQ_treedirectness %>% pull(tree_betweennumgps)
+for(i in random_window_sizes){
+  windowsize <- i+2 # plus two because thats the window size (Start end tree is not counted in the tree_betweennumgps)
+  points_available<- SUAQ_rangepoints_11all20_loc %>% ungroup() %>% 
+    filter(as.numeric(follow_totNumOfGPSpoints)>as.numeric(windowsize)) 
+  points_available_start_anti<- points_available %>% arrange(desc(trackpoint_id)) %>% 
+    group_by(follow) %>% 
+    top_n((windowsize-1),trackpoint_id) # select last i+1 or windowsize-1 objects these are not appropriate startpoints because they are too short till followend
+  points_available_start<- setdiff(points_available,points_available_start_anti)
+    # find follwos which have enough elements
+  random_start <- points_available_start %>%ungroup() %>%  sample_n(1)
+  random_startid<- pull(random_start,trackpoint_id)
+  random_end <- points_available %>% filter(follow%in%c(random_start$follow)) %>%  filter(trackpoint_id==(random_startid+i+1)) # adding one because of indexing
+  random_endid<- pull(random_end,trackpoint_id)
+  windowselected <- points_available %>% filter(follow%in%c(random_start$follow)) %>% 
+    filter(trackpoint_id%in%c(random_startid:random_endid))
+  random_start$random_betweentravelled <- sum(windowselected[1:(nrow(windowselected)-1),]$manual_distToNext,na.rm = TRUE)
+  random_start$DD <- sqrt((random_start$E-random_end$E)^2+(random_start$N-random_end$N)^2)
+  random_start$random_betweennumgps <- i
+  SUAQ_randomdirectness <- SUAQ_randomdirectness %>% rbind(random_start)
+  # change progress bar
+  setTxtProgressBar(pb,stepi) 
+  stepi <-  stepi + 1
+}
+SUAQ_randomdirectness <- SUAQ_randomdirectness %>% mutate(rr_randomdirectness=DD/random_betweentravelled)
 
+
+
+### renaming and selecting for stats analysis
+SUAQ_randomdirectness_stats <- SUAQ_treedirectness %>%
+  dplyr::select(follow,focal,ageFromDOB,ClassFocal,SUAQ_weather.rainfall_ml_evening,SUAQ_weather.river_waterlevel_morning,SUAQ_weather.river_waterlevel_evening,SUAQ_weather.rainfall_ml_morning,SUAQ_weather.avg_temperature_tot,SUAQ_weather.max_temp_average,SUAQ_weather.min_temp_average,SUAQ_weather.temperature_max_morning,SUAQ_weather.temperature_min_morning,SUAQ_weather.temperature_max_evening,SUAQ_weather.temperature_min_evening,SUAQ_fai.fai,ageOfCurrentOffspring,monthYearDate,follow_totNumOfGPSpoints,rr_treedirectness,tree_betweennumgps,manualDate)
+colnames(SUAQ_randomdirectness_stats) <-
+  c("follow","focal","ageFromDOB","ClassFocal","rain_eve","watlevel_mo","walevel_eve","rain_mo","avg_temp_tot","max_temp_average","min_temp_average","temp_max_mo","temp_min_mo","temp_max_eve","temp_min_eve","fai","ageOfCurrentOffspring","monthYearDate","tree_numOfPoints","rr_treedirectness","tree_betweennumgps","manualDate")
+
+
+
+
+## Visuals
 plot_BetweenTreeDirectnessxClassFocal<- SUAQ_treedirectness %>% 
-  ggplot( aes(x=tree_betweennumgps, y=rr_treedirectness)) +
-    geom_boxplot() +
+  ggplot( aes(x=SUAQ_fai.fai, y=tree_betweentravelled)) +
     scale_fill_viridis(discrete = TRUE, alpha=0.6) +
-    geom_jitter(aes(color=SUAQ_fai.fai), size=2, alpha=1) +
+    geom_jitter(color="blue", size=2, alpha=0.2) +
+    geom_jitter(data=SUAQ_randomdirectness,aes(SUAQ_fai.fai,random_betweentravelled),color="red", size=2, alpha=1) +
     theme_ipsum() +
     theme(
       #legend.position="none",
       plot.title = element_text(size=11)
     ) +
     ggtitle("Class focal and directness between food tree sources") +
-    ylab("Directness index [DD / travelled distance]")+
-  ylim(0,1)
+    ylab("Directness index [DD / travelled distance]")
+  #ylim(0,1)
 plot_BetweenTreeDirectnessxClassFocal
 
 
