@@ -2092,7 +2092,7 @@ harmonize_waypoints <- function(flnm){
 ```{r saving project data}
 ### Definitive ID
 identification <- rownames(SUAQ_waypoints_11all20)
-SUAQ_waypoints_11all20 <- cbind(identification=as.integer(identification), SUAQ_waypoints_11all20)
+SUAQ_waypoints_11all20 <- SUAQ_waypoints_11all20 %>%dplyr::select(-identification) %>%  cbind(identification=as.integer(identification))
 
 ### Definitive trackpoint ID (Attention still all points in dataset f.e. longcalls --> change when loading for analysis)
 SUAQ_waypoints_11all20 <- SUAQ_waypoints_11all20 %>% group_by(follow) %>% mutate(trackpoint_id = row_number())

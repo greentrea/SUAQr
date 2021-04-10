@@ -30,6 +30,7 @@ packages_checker <- function(packages_list){
 
 packages_checker(
   c('tlocoh',
+    'tidyr',
     'tmap',
     'tmaptools',# read_gpx function
     'hrbrthemes', # for colors --> viridis
@@ -216,6 +217,47 @@ aggregate.sf = function(x, by, FUN, ..., do_union = TRUE, simplify = TRUE,
 	}
 }
 
+#### read in homeranges from shp list in data f.e. for ctmm results
+st_read_homeranges <- function(flnm){
+    out <- tryCatch(
+        { message("Try to read file")
+            file <- data.frame()
+            start <- Sys.time()
+            file <- st_read(flnm) # better than read_GPX
+            file<- st_transform(file,crs = 23847)
+            #if(class(file)[1]=="list"){file <- file$waypoints} # only use if read_GPX is used
+            end <- Sys.time()
+            processduration <- end-start
+            file <- file %>% #Skip the first 16 rows because see below
+              mutate(fileN=substr(flnm, regexpr("\\/[^\\/]*$", flnm)+1,nchar(flnm)-4)) %>% 
+              separate(fileN,c("number","hrprcnt","focal2","skip","model","modeltype"),sep =" ")%>%
+              separate(name,c("focal","hrprcnt","statisticalBoundary"),sep =" ") %>% 
+              filter(statisticalBoundary=="est") %>% 
+              dplyr::select(-skip,-number,-focal2)
+
+            return(file)
+        },
+        error=function(cond) {
+            message(paste("File seems not to exist", flnm))
+            message("Here's the original error message:")
+            message(cond)
+            # Choose a return value in case of error
+            return(data.frame()) # use dataframe as return instead of NA --> See here why, without it throws an error. https://stackoverflow.com/questions/48512461/error-in-bind-rows-x-id-argument-1-must-have-names-using-map-df-in-purrr
+        },
+        warning=function(cond) {
+            message(paste("Loading file didn't work", flnm))
+            message("Here's the original warning message:")
+            message(cond)
+            # Choose a return value in case of warning
+            return(data.frame())
+        },
+        finally={
+            message(paste("Processed URL: ", flnm," Duration: ",processduration))
+            message("Finished")
+        }
+    )    
+    return(out)
+}
 
 setwd("/Users/stefgr/Nextcloud/UZH/12_Semester/20200313_Masterthesis/R/")
 
@@ -238,8 +280,6 @@ SUAQ_waypoints_11all20_loc <-
 SUAQ_waypoints_11all20_loc <- SUAQ_waypoints_11all20_loc %>% mutate(monthYearDate=format(as.Date(manualDate), "%Y-%m"))
 SUAQ_waypoints_11all20_loc <- SUAQ_waypoints_11all20_loc %>% mutate(automaticDatetime=with_tz(automaticDatetime,tz = "Asia/Pontianak"))
 SUAQ_waypoints_11all20_loc <- SUAQ_waypoints_11all20_loc %>% mutate(manualDatetime=with_tz(manualDatetime,tz = "Asia/Pontianak"))
-
-
 
 #### add party individuals as individual gps points.
 SUAQ_waypoints_11all20_loc_party <- SUAQ_waypoints_11all20_loc %>% filter(PtType%in%c("party"))
@@ -298,6 +338,24 @@ SUAQ_station_sf_loc <- st_transform(SUAQ_station_sf_wgs,crs = 23847)
 
 ##### Selection only pointtypes which are taken on the orangutan way? is this true for all? ##### 
 SUAQ_rangepoints_11all20_loc <- SUAQ_waypoints_11all20_loc %>% filter(PtType %in% c("daynest","found","lost","mornnest","nightnest","range","tree")) # get rid of lcg lch points and
+
+##### Change trackpoint_id and total num of GPS per follow
+###### trackpoint ID 
+SUAQ_rangepoints_11all20_loc <- SUAQ_rangepoints_11all20_loc %>% group_by(follow) %>% dplyr::select(-trackpoint_id) %>% mutate(trackpoint_id = row_number())
+###### Definitive number of gps per follow
+result_totnumfollows <- SUAQ_rangepoints_11all20_loc %>% 
+  group_by(follow) %>% summarise(follow_totNumOfGPSpoints=n()) # 1323 Follows
+SUAQ_rangepoints_11all20_loc <- SUAQ_rangepoints_11all20_loc %>%dplyr::select(-follow_totNumOfGPSpoints) %>% left_join(result_totnumfollows,by=c("follow"="follow"))
+###### orangutan number of points ID 
+result_numoffollows<- SUAQ_rangepoints_11all20_loc %>% group_by(follow,focal) %>% summarize(count=n()) %>% group_by(focal) %>% summarize(count=n())
+specs_orangutan_tot_num_of_gps <-SUAQ_rangepoints_11all20_loc %>% 
+  group_by(focal) %>%
+  summarise(n()) %>% left_join(result_numoffollows,by=c('focal'='focal'))
+colnames(specs_orangutan_tot_num_of_gps) <- c("focal",
+                                           "orangutan_tot_num_of_gps","orangutan_num_of_follows")
+tmp<- specs_orangutan_tot_num_of_gps
+SUAQ_rangepoints_11all20_loc <-SUAQ_rangepoints_11all20_loc %>% dplyr::select(-orangutan_num_of_follows,-orangutan_tot_num_of_gps) %>% 
+  left_join(tmp,by = c("focal" = "focal"))
 
 ##### Recalculate edge lengths etc. based on new point selection for rangepoints dataframe
 SUAQ_rangepoints_11all20_loc<- SUAQ_rangepoints_11all20_loc %>% 
@@ -407,60 +465,8 @@ selected_females <- as_vector(selected_females)
 
 Homerange sizes:
 
-```{r CTMM - HR size online,echo=FALSE, message=FALSE,comment=FALSE, warning=FALSE}
-
-##### Save Dataset for CTMM online f.e.
-SUAQ_rangepoints_11all20_loc_females12_wgs <- SUAQ_rangepoints_11all20_loc_wgs[order(SUAQ_rangepoints_11all20_loc_wgs$focal,SUAQ_rangepoints_11all20_loc_wgs$manualDatetime , decreasing = TRUE ),] %>% rename(
-    c("event-id"="identification","timestamp"="manualDatetime","location-long"="long","location-lat"="lat","Animal ID"="focal","Tag No"="follow")
-  ) %>% filter(`Animal ID`%in% c("lisa","friska","ellie","cissy","lilly","yulia","raffi","sarabi","trident","alice","tiara","cinnamon")) %>% mutate("sensor-type"="gps")
-write_csv(SUAQ_rangepoints_11all20_loc_wgs, path = paste(
-  paste(
-    "/Users/stefgr/Nextcloud/UZH/12_Semester/20200313_Masterthesis/R/data/Processed_data/",
-    "SUAQ_rangepoints_11all20_loc_females12_wgs",
-    sep = ""
-  ),
-  "csv",
-  sep = "."
-))
-SUAQ_rangepoints_11all20_loc_females6_wgs <- SUAQ_rangepoints_11all20_loc_wgs[order(SUAQ_rangepoints_11all20_loc_wgs$focal,SUAQ_rangepoints_11all20_loc_wgs$manualDatetime , decreasing = TRUE ),] %>% rename(
-    c("event-id"="identification","timestamp"="manualDatetime","location-long"="long","location-lat"="lat","Animal ID"="focal","Tag No"="follow")
-  ) %>% filter(`Animal ID`%in% c("lisa","friska","ellie","cissy","lilly","yulia")) %>% mutate("sensor-type"="gps")
-write_csv(SUAQ_rangepoints_11all20_loc_females6_wgs, path = paste(
-  paste(
-    "/Users/stefgr/Nextcloud/UZH/12_Semester/20200313_Masterthesis/R/data/Processed_data/",
-    "SUAQ_rangepoints_11all20_loc_females6_wgs",
-    sep = ""
-  ),
-  "csv",
-  sep = "."
-))
-
-
-SUAQ_rangepoints_11all20_loc_females_10_wgs <- SUAQ_rangepoints_11all20_loc_wgs[order(SUAQ_rangepoints_11all20_loc_wgs$focal,SUAQ_rangepoints_11all20_loc_wgs$manualDatetime , decreasing = TRUE ),] %>% rename(
-    c("event-id"="identification","timestamp"="manualDatetime","location-long"="long","location-lat"="lat","Animal ID"="focal","Tag No"="follow")
-  ) %>% filter(`Animal ID`%in% c("lisa",
-      "friska",
-      "ellie",
-      "cissy",
-      "lilly",
-      "yulia",
-      "raffi",
-      "sarabi",
-      "trident",
-      "tiara")) %>% mutate("sensor-type"="gps")
-write_csv(SUAQ_rangepoints_11all20_loc_females_10_wgs, path = paste(
-  paste(
-    "/Users/stefgr/Nextcloud/UZH/12_Semester/20200313_Masterthesis/R/data/Processed_data/",
-    "SUAQ_rangepoints_11all20_loc_females_10_wgs",
-    sep = ""
-  ),
-  "csv",
-  sep = "."
-))
-
-```
-
-### Analysis
+# Homerange calculations
+## MCP
 ```{r MCP - HR per-researchperiods and all ,echo=FALSE, message=FALSE,comment=FALSE, warning=FALSE}
 # createa directory for kde periods calculation (named by the current date)
 dir.create(paste(
@@ -839,6 +845,7 @@ all_flatten %>% ggplot()+geom_path(aes(x=points,X50.,colour=focal,linetype=Sex))
   geom_path(aes(x=points,X100.,colour=focal,linetype=Sex,alpha=0.5))
 ```
 
+## KDE
 ```{r KDE - parametrization,echo=FALSE, message=FALSE,comment=FALSE, warning=FALSE}
 ##### Determine the smoothing parameters
 bandwiths <-  data.frame(focal=as_vector(selected_females),
@@ -1160,7 +1167,6 @@ system("say alle kernel distanzen berechnet für die verschiedenen Untersuchungs
 
 ```
 
-
 ```{r KDE - HR per-researchperiods and all - HR sizes,echo=FALSE, message=FALSE,comment=FALSE, warning=FALSE}
 # createa directory for kde periods calculation (named by the current date)
 dir.create(paste(
@@ -1468,6 +1474,7 @@ system("say alle kernel distanzen berechnet für jedes Jahr")
 
 ```
 
+## LOCOH
 ```{r TESTING LOCOH - HR per-researchperiods and all - HR sizes,echo=FALSE, message=FALSE,comment=FALSE, warning=FALSE}
 # createa directory for kde periods calculation (named by the current date)
 dir.create(paste(
@@ -1761,6 +1768,7 @@ toni.lhs.k15 <- lhs.visit.add(toni.lhs.k15, ivg=3600*12)
 
 ```
 
+## BRB
 ```{r BRB - HR sizes with bootstrap sampling - HR sizes,echo=FALSE, message=FALSE,comment=FALSE, warning=FALSE}
 # createa directory for kde periods calculation (named by the current date)
 dir.create(paste(
@@ -2013,6 +2021,7 @@ for (samplinginterval in c(1:length(period_list))){
   selected_females <- as_vector(selected_females)
   
   iterator <- 1
+  indexitter <- 0
   for (i in selected_females) { # do the following for every animal in the list
     print(paste("brb for focal: ",i))
     n_follows <- period_list[[samplinginterval]] %>% filter(focal%in%c(i)) %>%
@@ -2068,7 +2077,6 @@ for (samplinginterval in c(1:length(period_list))){
       hmin <- hminFactor[[l]]*hminRef
       if(xy_selected_toolessdata){# only execute when enough data
       UD <- BRB(traj, D=vv, Tmax=tmax, Lmin=lmin, hmin=hmin, b=T, same4all=T, grid=gridVal, extent=extVal, filtershort=T, type="UD")
-      
       hr95 <- getverticeshr(UD, percent=95, standardize=TRUE,unin = c("m"),unout = c("km2"))
       hr50 <- getverticeshr(UD, percent=50, standardize=TRUE,unin = c("m"),unout = c("km2"))
       hr99 <- getverticeshr(UD, percent=99, standardize=TRUE,unin = c("m"),unout = c("km2"))
@@ -2533,6 +2541,7 @@ system("say alle kernel distanzen berechnet für die verschiedenen Untersuchungs
 
 ```
 
+## dBBMM
 ```{r TESTING dBBMM - HR sizes,echo=FALSE, message=FALSE,comment=FALSE, warning=FALSE}
 # createa directory for kde periods calculation (named by the current date)
 dir.create(paste(
@@ -2803,8 +2812,89 @@ system("say alle kernel distanzen berechnet für die verschiedenen Untersuchungs
 
 ```
 
+```{r CTMM - HR size online,echo=FALSE, message=FALSE,comment=FALSE, warning=FALSE}
+
+##### Save Dataset for CTMM online f.e.
+SUAQ_rangepoints_11all20_loc_females12_wgs <- SUAQ_rangepoints_11all20_loc_wgs[order(SUAQ_rangepoints_11all20_loc_wgs$focal,SUAQ_rangepoints_11all20_loc_wgs$manualDatetime , decreasing = TRUE ),] %>% rename(
+    c("event-id"="identification","timestamp"="manualDatetime","location-long"="long","location-lat"="lat","Animal ID"="focal","Tag No"="follow")
+  ) %>% filter(`Animal ID`%in% c("lisa","friska","ellie","cissy","lilly","yulia","raffi","sarabi","trident","alice","tiara","cinnamon")) %>% mutate("sensor-type"="gps")
+write_csv(SUAQ_rangepoints_11all20_loc_wgs, path = paste(
+  paste(
+    "/Users/stefgr/Nextcloud/UZH/12_Semester/20200313_Masterthesis/R/data/Processed_data/",
+    "SUAQ_rangepoints_11all20_loc_females12_wgs",
+    sep = ""
+  ),
+  "csv",
+  sep = "."
+))
+SUAQ_rangepoints_11all20_loc_females6_wgs <- SUAQ_rangepoints_11all20_loc_wgs[order(SUAQ_rangepoints_11all20_loc_wgs$focal,SUAQ_rangepoints_11all20_loc_wgs$manualDatetime , decreasing = TRUE ),] %>% rename(
+    c("event-id"="identification","timestamp"="manualDatetime","location-long"="long","location-lat"="lat","Animal ID"="focal","Tag No"="follow")
+  ) %>% filter(`Animal ID`%in% c("lisa","friska","ellie","cissy","lilly","yulia")) %>% mutate("sensor-type"="gps")
+write_csv(SUAQ_rangepoints_11all20_loc_females6_wgs, path = paste(
+  paste(
+    "/Users/stefgr/Nextcloud/UZH/12_Semester/20200313_Masterthesis/R/data/Processed_data/",
+    "SUAQ_rangepoints_11all20_loc_females6_wgs",
+    sep = ""
+  ),
+  "csv",
+  sep = "."
+))
+
+
+SUAQ_rangepoints_11all20_loc_females_10_wgs <- SUAQ_rangepoints_11all20_loc_wgs[order(SUAQ_rangepoints_11all20_loc_wgs$focal,SUAQ_rangepoints_11all20_loc_wgs$manualDatetime , decreasing = TRUE ),] %>% rename(
+    c("event-id"="identification","timestamp"="manualDatetime","location-long"="long","location-lat"="lat","Animal ID"="focal","Tag No"="follow")
+  ) %>% filter(`Animal ID`%in% c("lisa",
+      "friska",
+      "ellie",
+      "cissy",
+      "lilly",
+      "yulia",
+      "raffi",
+      "sarabi",
+      "trident",
+      "tiara")) %>% mutate("sensor-type"="gps")
+write_csv(SUAQ_rangepoints_11all20_loc_females_10_wgs, path = paste(
+  paste(
+    "/Users/stefgr/Nextcloud/UZH/12_Semester/20200313_Masterthesis/R/data/Processed_data/",
+    "SUAQ_rangepoints_11all20_loc_females_10_wgs",
+    sep = ""
+  ),
+  "csv",
+  sep = "."
+))
+
+```
+
+
+# Trees per Homeranges and full dataset
 ```{r Homeranges - Create full dataset ,echo=FALSE, message=FALSE,comment=FALSE, warning=FALSE}
-### Import datasets
+## Import datasets
+### read in ctmm results
+#### pooled
+shplist_pooled<- list.files("/Users/stefgr/Nextcloud/UZH/12_Semester/20200313_Masterthesis/R/output/Homeranges/CTMM/periods/pooled/20210325/10_most_ctmm_4errors_12uere_pooled_HR_shp/", pattern="*.shp", full.names=TRUE)
+
+start_time <- Sys.time()
+SUAQ_ctmm_homeranges_pooled<- shplist_pooled%>% 
+  map_df(~st_read_homeranges(.))
+end_time <- Sys.time()
+print(start_time-end_time)
+SUAQ_ctmm_homeranges_pooled <- SUAQ_ctmm_homeranges_pooled %>% mutate(modelbase="pooled",algorithm="ctmm")
+SUAQ_ctmm_homeranges_pooled$area <- as.numeric(st_area(SUAQ_ctmm_homeranges_pooled))/1000000
+
+#### unpooled
+shplist_unpooled<- list.files("/Users/stefgr/Nextcloud/UZH/12_Semester/20200313_Masterthesis/R/output/Homeranges/CTMM/periods/unpooled/20210325/hrshape/", pattern="*.shp", full.names=TRUE)
+
+start_time <- Sys.time()
+SUAQ_ctmm_homeranges_unpooled<- shplist_unpooled%>% 
+  map_df(~st_read_homeranges(.))
+end_time <- Sys.time()
+print(start_time-end_time)
+SUAQ_ctmm_homeranges_unpooled <- SUAQ_ctmm_homeranges_unpooled %>% mutate(modelbase="unpooled",algorithm="ctmm")
+SUAQ_ctmm_homeranges_unpooled$area <- as.numeric(st_area(SUAQ_ctmm_homeranges_unpooled))/1000000
+
+#### total
+ctmm_allperiods_sf <- SUAQ_ctmm_homeranges_unpooled %>% rbind(SUAQ_ctmm_homeranges_pooled) %>% dplyr::select(-statisticalBoundary) %>% mutate(period="total research period")
+
 #### Homerange sizes overview
 kde_allperiods_sf<- st_read(dsn="output/Homeranges/KDE/periods/20210315/kde_values_allperiods.shp") %>% 
   mutate(algorithm="kde") %>% st_set_crs(23847)
@@ -2812,8 +2902,8 @@ brb_allperiods_sf<- st_read(dsn="output/Homeranges/BRB/periods/20210315/brb_valu
   mutate(algorithm="brb") %>% rename(area=homerng) %>% st_set_crs(23847)
 mcp_allperiods_sf<- st_read(dsn="output/Homeranges/MCP/periods/20210316/mcp_values_allperiods.shp") %>% 
   mutate(algorithm="mcp") %>% rename(area=homerng) %>% st_set_crs(23847)
-all_homeranges_sf <- kde_allperiods_sf %>% bind_rows(brb_allperiods_sf) %>% bind_rows(mcp_allperiods_sf)
-all_homeranges_sf$period <- factor(all_homeranges$period, levels = c("before 2012", "2012 until 2016", "left", "2016 until August 2018", "Since August 2018","total research period"))
+all_homeranges_sf <- kde_allperiods_sf %>% bind_rows(brb_allperiods_sf) %>% bind_rows(mcp_allperiods_sf) %>% bind_rows(ctmm_allperiods_sf)
+all_homeranges_sf$period <- factor(all_homeranges_sf$period, levels = c("before 2012", "2012 until 2016", "left", "2016 until August 2018", "Since August 2018","total research period"))
 all_homeranges <- all_homeranges_sf %>% st_drop_geometry()
 
 ### Feeding trees
@@ -2826,13 +2916,19 @@ SUAQ_waypoints_11all20_loc_sf <-  st_as_sf(SUAQ_waypoints_11all20_loc_sf,
                           coords = c("E","N"), 
                           crs = 23847) # can also do that in the new script
 
+
+
+
+```
+
+```{r Homeranges - Number of trees in HR ,echo=FALSE, message=FALSE,comment=FALSE, warning=FALSE}
 ##### Initialize progressbar
 pb <-  txtProgressBar(min = 0, max = NROW(all_homeranges_sf), initial = 0) 
 stepi <-0
 all_homeranges_sf <- all_homeranges_sf %>% mutate(number_of_trees=NA_integer_)
 ##### Adding number of fruittrees
 for (i in c(1:NROW(all_homeranges_sf))){
-  number_of_pnts_within<- st_intersection(SUAQ_waypoints_11all20_loc_tree_sf_xy$geometry,all_homeranges_sf[i,]) %>% NROW()
+  number_of_pnts_within<- st_intersection(SUAQ_waypoints_11all20_loc_tree_sf$geometry,all_homeranges_sf[i,]) %>% NROW()
   all_homeranges_sf$number_of_trees[i] <- number_of_pnts_within
   setTxtProgressBar(pb,stepi) # change progress bar
   stepi <-  stepi + 1
@@ -2846,7 +2942,18 @@ for (i in c(1:NROW(all_homeranges_sf))){
   setTxtProgressBar(pb,stepi) # change progress bar
   stepi <-  stepi + 1
 }
-all_homeranges_sf <- all_homeranges_sf %>% mutate(fruittree_normalized=number_of_trees/researcheffort_ngps) %>% mutate(fruittree_per_sqkm=fruittree_normalized/area)
+all_homeranges_sf <- all_homeranges_sf %>% mutate(fruittree_normalized=number_of_trees/researcheffort_ngps) %>% mutate(fruittree_norm_per_sqkm=fruittree_normalized/area) %>% mutate(fruittree_per_sqkm=number_of_trees/area)
+
+st_write(all_homeranges_sf, dsn = paste(
+  paste(
+    "/Users/stefgr/Nextcloud/UZH/12_Semester/20200313_Masterthesis/R/data/Processed_data/",
+    "all_homeranges_sf",
+    sep = ""
+  ),
+  "shp",  
+  sep = "."
+))
+write.csv(colnames(all_homeranges_sf),"/Users/stefgr/Nextcloud/UZH/12_Semester/20200313_Masterthesis/R/data/Processed_data/all_homeranges_sf_colnames.csv")
 
 ### Create homeranges dataframe with HR levels in each row
 all_homeranges_dense50 <- all_homeranges %>% filter(hrprcnt=="50%") 
@@ -2860,23 +2967,628 @@ all_homeranges_dense <- all_homeranges_dense50 %>%
 all_homeranges_dense <- all_homeranges_dense %>% mutate(corearea_ratio=area_99/area_50) 
 
 
-all_homeranges_dense %>% filter(hminfac%in%c(1,NA)) %>% filter(bndwthm%in%c("HREF",NA)) %>%  ggplot(aes(corearea_ratio,focal,color=algorithm)) +geom_point()
+all_homeranges_dense %>% filter(hminfac%in%c(1,NA)) %>% filter(bndwthm%in%c("HREF",NA)) %>%  ggplot(aes(corearea_ratio,focal)) +geom_boxplot()+geom_point(aes(color=algorithm))
 
 
 ```
 
+# Overlaps and Number of Trees in Overlap
+## Overlaps calculated from 95 and 50% HR
+```{r Homeranges overlaps 50 and 95 (Simple, Jaccard, more??) - Create full dataset ,echo=FALSE, message=FALSE,comment=FALSE, warning=FALSE}
+# reduce the HR amount select the one which we wanna analyse
+all_homeranges_sf <- st_read(dsn="/Users/stefgr/Nextcloud/UZH/12_Semester/20200313_Masterthesis/R/data/Processed_data/all_homeranges_sf.shp")
+colnames(all_homeranges_sf)<- c("bndwthm","hrprcnt","area","n_gps","n_fllws","focal","period","algorithm","Vlct_99","GPSncrt","hmin","tmax","lmin","tau","hminfac","hminRef","model","modltype","modelbase","number_of_trees","researcheffort_ngps","fruittree_normalized","fruittree_norm_per_sqkm","fruittree_per_sqkm","geometry")
+all_homeranges_sf_selected <- all_homeranges_sf %>% filter(bndwthm %in% c(NA,"HBCV","HSCV")) %>% filter(hrprcnt%in%c("95%","50%")) %>% filter(hminfac %in% c(NA,0.6,1,1.6)) %>%  dplyr::select(-Vlct_99,-lmin,-fruittree_normalized,-researcheffort_ngps,-number_of_trees,-fruittree_per_sqkm,-fruittree_norm_per_sqkm,-GPSncrt,-tau,-hmin)
+
+vecalgo<- levels(factor(as.factor(all_homeranges_sf_selected$algorithm)))
+periods<- levels(factor(as.factor(all_homeranges_sf_selected$period)))
+
+all_overlaps_jaccard <- data.frame()
+starttest <- TRUE
+for(algo in vecalgo){
+  print(algo)
+  vechomreange <- levels(factor(as.factor(all_homeranges_sf_selected$hrprcnt)))
+  for (hr in vechomreange){
+    print(hr)
+    if(algo=="ctmm"){methods <- levels(factor(as.factor(all_homeranges_sf_selected$modelbase)))}
+    if(algo=="kde"){methods <- levels(factor(as.factor(all_homeranges_sf_selected$bndwthm)))}
+    if(algo=="brb"){methods <- levels(factor(as.factor(all_homeranges_sf_selected$hminfac)))}
+    if(algo=="mcp"){methods <- "mcptotal"}
+    for (peri in periods){
+      print(peri)
+      for(method in methods){
+      print(method)
+      if(algo=="kde"){algo_data <- all_homeranges_sf_selected %>% filter(algorithm==algo) %>% filter(hrprcnt==hr) %>% filter(bndwthm==method) %>% filter(period==peri)}
+      if(algo=="ctmm"){algo_data <- all_homeranges_sf_selected %>% filter(algorithm==algo) %>% filter(hrprcnt==hr) %>% filter(modelbase==method) %>% filter(period==peri)}
+      if(algo=="brb"){algo_data <- all_homeranges_sf_selected %>% filter(algorithm==algo) %>% filter(hrprcnt==hr) %>% filter(hminfac==method)%>% filter(period==peri)}
+      if(algo=="mcp"){algo_data <- all_homeranges_sf_selected %>% filter(algorithm==algo) %>% filter(hrprcnt==hr)%>% filter(period==peri)}
+      focals<- levels(as.factor(algo_data$focal))
+      focalcombination<- expand.grid(focals,focals)
+      indx <- !duplicated(t(apply(focalcombination, 1, sort))) # finds non - duplicates in sorted rows
+      focalcombination<- focalcombination[indx, ]
+      focalcombination<- focalcombination %>% filter(Var1!=Var2)
+      for(overlap in c(1:NROW(focalcombination))){
+        #print(paste0("overlap calc of ", focalcombination[overlap,1]," : ",focalcombination[overlap,2]))
+        sf_focal1 <- algo_data %>% filter(focal==focalcombination[overlap,1])
+        sf_focal2 <- algo_data %>% filter(focal==focalcombination[overlap,2])
+        result_overlap<- st_intersection(sf_focal1,sf_focal2)
+        jaccard_overlap <- ifelse(as.logical(st_intersects(sf_focal2,sf_focal1, sparse = FALSE)),as.numeric(((st_area(result_overlap)/1000000)/(st_area(st_union(sf_focal1,sf_focal2))/1000000))),0)
+        result_overlap<- bind_cols(result_overlap,data.frame(overlap=as.numeric(st_area(result_overlap)/1000000)))
+        result_overlap<- bind_cols(result_overlap,data.frame(jaccard_overlap=jaccard_overlap)) %>% ungroup()
+        ifelse(starttest,
+               all_overlaps_jaccard <- result_overlap ,
+               all_overlaps_jaccard <- all_overlaps_jaccard %>% rbind(result_overlap))
+        starttest <- FALSE
+
+      }
+      }
+    }
+  }
+}
+
+### Adding number of trees in overlaps --> use the above initialized datasets
+##### Initialize progressbar
+pb <-  txtProgressBar(min = 0, max = NROW(all_overlaps_jaccard), initial = 0) 
+stepi <-0
+all_overlaps_jaccard <- all_overlaps_jaccard %>% mutate(number_of_trees=NA_integer_)
+
+
+##### Adding number of fruittrees
+for (i in c(1:NROW(all_overlaps_jaccard))){
+  number_of_pnts_within<- st_intersection(SUAQ_waypoints_11all20_loc_tree_sf$geometry,all_overlaps_jaccard[i,]) %>% NROW()
+  all_overlaps_jaccard$number_of_trees[i] <- number_of_pnts_within
+  setTxtProgressBar(pb,stepi) # change progress bar
+  stepi <-  stepi + 1
+}
+pb <-  txtProgressBar(min = 0, max = NROW(all_overlaps_jaccard), initial = 0) 
+stepi <-0
+all_overlaps_jaccard <- all_overlaps_jaccard %>% mutate(researcheffort_ngps=NA_integer_)
+for (i in c(1:NROW(all_overlaps_jaccard))){
+  number_of_pnts_within<- st_intersection(SUAQ_waypoints_11all20_loc_sf$geometry,all_overlaps_jaccard[i,]) %>% NROW()
+  all_overlaps_jaccard$researcheffort_ngps[i] <- number_of_pnts_within
+  setTxtProgressBar(pb,stepi) # change progress bar
+  stepi <-  stepi + 1
+}
+all_overlaps_jaccard <- all_overlaps_jaccard %>% mutate(fruittree_normalized=number_of_trees/researcheffort_ngps) %>% mutate(fruittree_norm_per_sqkm=fruittree_normalized/area) %>% mutate(fruittree_per_sqkm=number_of_trees/area)
+
+
+st_write(all_overlaps_jaccard, dsn = paste(
+  paste(
+    "/Users/stefgr/Nextcloud/UZH/12_Semester/20200313_Masterthesis/R/data/Processed_data/",
+    "all_overlaps_jaccard",
+    sep = ""
+  ),
+  "shp",
+  sep = "."
+))
+write.csv(colnames(all_overlaps_jaccard),"/Users/stefgr/Nextcloud/UZH/12_Semester/20200313_Masterthesis/R/data/Processed_data/all_overlaps_jaccard.csv")
+
+### Adding additional infos
+explanatoryvars <- SUAQ_rangepoints_11all20_loc_females_10[,c("focal","SUAQ_orangutans.matriline", "SUAQ_orangutans.agecategory","SUAQ_orangutans.dominancecat")] %>% group_by(focal,SUAQ_orangutans.matriline,SUAQ_orangutans.agecategory,SUAQ_orangutans.dominancecat) %>% summarise()
+colnames(explanatoryvars) <- c("focal","matriline","agecat","dominance")
+
+all_overlaps_50 <- all_overlaps_jaccard %>% left_join(explanatoryvars, by=c("focal"="focal")) %>% filter(hrprcnt=="50%")
+all_overlaps_95 <- all_overlaps_jaccard %>% left_join(explanatoryvars, by=c("focal"="focal")) %>% filter(hrprcnt=="95%")
+colnames(explanatoryvars) <- c("focal1","matriline1","agecat1","dominance1")
+all_overlaps_50 <- all_overlaps_50 %>% left_join(explanatoryvars, by=c("focal.1"="focal1")) %>% filter(hrprcnt=="50%")
+all_overlaps_95 <- all_overlaps_95 %>% left_join(explanatoryvars, by=c("focal.1"="focal1")) %>% filter(hrprcnt=="95%")
+all_overlaps_50 <- all_overlaps_50 %>% mutate(dominancediff=abs(dominance1-dominance),related=ifelse(matriline1==matriline,TRUE,FALSE),agediff=abs(agecat1-agecat))
+all_overlaps_95 <- all_overlaps_95 %>% mutate(dominancediff=abs(dominance1-dominance),related=ifelse(matriline1==matriline,TRUE,FALSE),agediff=abs(agecat1-agecat))
+
+
+all_overlaps_95 %>% 
+  #filter(period=="total research period") %>%  
+  ggplot(aes(jaccard_overlap,agediff,group=agediff)) + 
+  geom_boxplot(aes(jaccard_overlap ,agediff))+
+  geom_point(aes(color=as.character(paste0(focal," : ",focal.1))),size=7)+
+  facet_wrap(~ algorithm)
+
+all_overlaps_95 %>% 
+  #filter(period=="total research period") %>%  
+  ggplot(aes(jaccard_overlap,dominancediff,group=dominancediff)) + 
+  geom_boxplot(aes(jaccard_overlap ,dominancediff))+
+  geom_point(aes(color=as.character(paste0(focal," : ",focal.1))),size=7)+
+  facet_wrap(~ algorithm)
+
+all_overlaps_95 %>% 
+  #filter(period=="total research period") %>%  
+  ggplot(aes(jaccard_overlap,related)) + 
+  geom_boxplot(aes(jaccard_overlap ,related))+
+  geom_point(aes(color=as.character(paste0(focal," : ",focal.1))),size=7)+
+  facet_wrap(~ algorithm)
+
+ggplot() + 
+  geom_point(data=all_overlaps_jaccard,aes(focal,fruittree_normalized,color=hrprcnt))+
+  geom_jitter(data=all_homeranges_sf_selected,aes(focal,fruittree_normalized))
+```
+
+```{r Homeranges simple overlaps - load created full datasets ,echo=FALSE, message=FALSE,comment=FALSE, warning=FALSE}
+### Load datasets if already available and adding right colnames because they are automatically cut probably by st_write function
+all_overlaps<- st_read(dsn="/Users/stefgr/Nextcloud/UZH/12_Semester/20200313_Masterthesis/R/data/Processed_data/all_overlaps_jaccard.shp")
+colnames<- read.csv("/Users/stefgr/Nextcloud/UZH/12_Semester/20200313_Masterthesis/R/data/Processed_data/all_overlaps_jaccard.csv")
+colnames<- colnames$x
+colnames(all_overlaps) <- colnames
+all_homeranges_sf <- st_read(dsn="/Users/stefgr/Nextcloud/UZH/12_Semester/20200313_Masterthesis/R/data/Processed_data/all_homeranges_sf.shp")
+colnames<- read.csv("/Users/stefgr/Nextcloud/UZH/12_Semester/20200313_Masterthesis/R/data/Processed_data/all_homeranges_sf_colnames.csv")
+colnames<- colnames$x
+colnames(all_homeranges_sf) <- colnames
+
+
+
+```
+
+
+
+## Overlaps calculated from UD of algorithms
+```{r Homeranges overlaps recalculate UD from BRB - HR per-researchperiods and all - HR sizes,echo=FALSE, message=FALSE,comment=FALSE, warning=FALSE}
+# Filter research periods if only one of the periods should be calculated
+# period_list <- period_list[1] # keep only the total research period
+
+# createa directory for kde periods calculation (named by the current date)
+dir.create(paste(
+    "output/Homeranges/BRB/periods/",
+    format(Sys.Date(), "%Y%m%d"),
+    sep = ""
+  ))
+imdir <- paste("output/Homeranges/BRB/periods/",format(Sys.Date(), "%Y%m%d"), "/", sep="")
+
+#### retrieve sampling intervals
+mainSI <- rep(30,length(selected_females))
+
+brb_list <- data.frame() # results
+brb_overlap_UD <- list() # only for tital research period activate filter above
+for (samplinginterval in c(1:length(period_list))){
+  print(paste("brb for period: ",samplinginterval))
+  ##### Determine the smoothing parameters
+  selected_females <- period_list[[samplinginterval]] %>% group_by(focal) %>% summarise()
+  selected_females <- as_vector(selected_females)
+  
+  iterator <- 1
+  indexitter <- 0
+  for (i in selected_females) { # do the following for every animal in the list
+    print(paste("brb for focal: ",i))
+    n_follows <- period_list[[samplinginterval]] %>% filter(focal%in%c(i)) %>%
+        group_by(follow) %>% summarise() %>% nrow()
+
+    xy_selected <- period_list[[samplinginterval]] %>% filter(focal%in%c(i)) %>%
+      dplyr::select(E,N,timelag_lead,manualDatetime)
+    n_gps <- xy_selected %>% nrow()
+
+    colnames(xy_selected) <- c("x","y","timelag_lead","timestamp") #adjust column names
+    xy_selected <- xy_selected %>%  mutate(timelag_lead = round(timelag_lead,digits=0))
+  
+    # only select points where timegaps are between 20-40min --> To do pretty bad selection we would need a function which selects points automatically by subsampling if mean timegap is too high or by interpolating if too small. But how much does it really affect the result of HR --> because we mainly compare HR sizes.
+    #xy_selected <- xy_selected %>% filter((timelag_lead/60)>20) #select which SI to remove (xy_selected$timelag_lead/60 < (mainSI[[iterator]]-10))
+    #xy_selected <- xy_selected %>% filter((timelag_lead/60)<40)
+    #xy_selected <- xy_selected[!(is.na(xy_selected$y)),]
+    
+    # check if enough gps points are still here otherwise make NA's
+    xy_selected_toolessdata <- TRUE
+    if(nrow(xy_selected)<30){xy_selected_toolessdata <- FALSE}
+    
+    # samplingI <- vector()
+    # samplingI <- xy_selected$timelag_lead/60
+    # samplingI <- samplingI[2:length(samplingI)] # First value of timelag_lead is NA
+    # plot(table(samplingI), type="h", xlim=c(20,40),col=4, ylab="frequency", xlab="sampling interval [min]")
+    
+    xy_selected <- xy_selected[order(xy_selected$timestamp , decreasing = FALSE ),] 
+    moveObj <- move(x=xy_selected$x, y=xy_selected$y, time=xy_selected$timestamp, proj=CRS( "+proj=utm +zone=47 +a=6378160 +b=6356774.50408554 +towgs84=-24,-15,5,0,0,0,0 +units=m +no_defs" ),animal=i)
+    ##########################################################################################
+    relUn <- 12 # relocation uncertainty [m]
+    ##########################################################################################
+    velocity <- unname(quantile(speed(moveObj), 0.99)) * 60 # unit: [m/min]
+    hmin <- relUn + (0.5 * velocity * 30) # meters, smoothing
+    iterator <- iterator+1
+    
+    
+    
+    traj <- as.ltraj(xy=xy_selected[,c("x", "y")], date=xy_selected$timestamp, id=i)
+  
+    ##########################################################################################
+    tmax <- 70*60 # seconds, maximum time span for a segment
+    lmin <- 12 # meters, minimal distance of a segment in order to count as movement
+    tau <- 1*60 #seconds, approx. duration of one interpolated interval -> defines the number of intervals per step 
+    extVal <- 15
+    gridVal <- 2000
+    hminRef <- hmin # computed through "BRB_leo_hmin computation.R"
+    hminFactor <- c(0.6, 0.8, 1,1.2,1.4,  1.6, 1.8)
+    ##########################################################################################
+  
+    vv <- BRB.D(traj, Tmax=tmax, Lmin=lmin) #estimate the diffusion coefficient
+    for (l in seq(1:length(hminFactor))) {
+      start_time <- Sys.time()
+      hmin <- hminFactor[[l]]*hminRef
+      if(xy_selected_toolessdata){# only execute when enough data
+      UD <- BRB(traj, D=vv, Tmax=tmax, Lmin=lmin, hmin=hmin, b=T, same4all=T, grid=gridVal, extent=extVal, filtershort=T, type="UD")
+      hr95 <- getverticeshr(UD, percent=95, standardize=TRUE,unin = c("m"),unout = c("km2"))
+      hr50 <- getverticeshr(UD, percent=50, standardize=TRUE,unin = c("m"),unout = c("km2"))
+      hr99 <- getverticeshr(UD, percent=99, standardize=TRUE,unin = c("m"),unout = c("km2"))
+      hr95_sf <- st_as_sf(hr95)
+      hr50_sf <- st_as_sf(hr50)
+      hr99_sf <- st_as_sf(hr99)
+      
+      par(0,0,0,0)
+      step <- 200
+      
+      ########## save UD ##########
+      brb_overlap_UD[[1+indexitter]] <- list(i,UD,"brb",hminFactor[[l]],n_gps,n_follows)
+      indexitter <- indexitter+1
+      
+      ########## plot results ##########
+      hminTxt <- gsub(".", "_", as.character(hminFactor[[l]]), fixed=T)
+      xmin_xmax_round_steps<- c(step*(ceiling(xmin/step)):(round(xmax/step)))
+      xmin_xmax_round_steps <- xmin_xmax_round_steps[2:(length(xmin_xmax_round_steps)-2)] #manual adjustment of tick breaks how many does it need
+      ymin_ymax_round_steps<- c(step*(ceiling(ymin/step)):(round(ymax/step)))
+      ymin_ymax_round_steps <- ymin_ymax_round_steps[2:(length(ymin_ymax_round_steps)-1)] #manual adjustment of tick breaks how many does it need    
+      
+  
+      
+      png(paste(imdir,i, "_BRB_UD_", hminTxt,"_",names(period_list)[samplinginterval], ".png", sep=""), width=1800, height=1400, res=240, units="px")
+      image(UD, xlab="x [m]",ylab="y [m]",xlim=c(xmin_xmax_round_steps[1],tail(xmin_xmax_round_steps,n=1)),ylim=c(ymin_ymax_round_steps[1],tail(ymin_ymax_round_steps,n=1))) 
+      plot(hr50, lty=3, lwd=1.5, border="darkseagreen3", add=T,axes=F)
+      plot(hr95, lty=1, lwd=1, border="cadetblue2", add=T, axes=F)
+      plot(hr99, lty=4, lwd=1, border="darkturquoise", add=T, axes=F)
+      plot(SUAQ_contour_sf_loc,lty=3, lwd=0.2, col=alpha("black", 1), add=T, axes=F)
+      plot(SUAQ_station_sf_loc,pch = 21,cex=1.5, col=alpha("black", 0.7), add=T, axes=F)
+      plot(SUAQ_station_sf_loc,pch = 16,cex=1, col=alpha("darkred", 0.7),lwd=0.3, bg="darkred", add=T, axes=F)
+      plot(SUAQ_river_sf_loc,lty=1, lwd=0.3, col=alpha("cornflowerblue", 0.7), add=T, axes=F)
+      plot(SUAQ_pathnetwork_sf_loc, lty=1, lwd=0.3, col=alpha("darkolivegreen", 0.7), add=T, axes=F)
+      axis(1, at=xmin_xmax_round_steps,pos=ymin+axisshifty) # x axis
+      axis(2, at=ymin_ymax_round_steps, pos=xmin+axisshiftx)
+      title(paste(i, ": BRB (", hminFactor[[l]], "*hmin)", sep=""), line=-1.5)
+      legend("topright", c("HR 50%", "HR 95%", "HR 100%","Trail","River"), col=c("coral1", "cadetblue2", "darkturquoise","darkred",alpha("cornflowerblue", 0.7)), lwd=c(2.5,2,2,0.3,4), lty=c(3,1,4,1,1), inset=c(legendoffsety,legendoffsety))
+      dev.off()
+      
+      png(paste(imdir,i, "_BRB_VUD_", hminTxt,"_",names(period_list)[samplinginterval], ".png", sep=""), width=1800, height=1400, res=240, units="px")
+      image(getvolumeUD(UD), xlab="x [m]",ylab="y [m]",xlim=c(xmin_xmax_round_steps[1],tail(xmin_xmax_round_steps,n=1)),ylim=c(ymin_ymax_round_steps[1],tail(ymin_ymax_round_steps,n=1))) 
+      plot(hr50, lty=3, lwd=1.5, border="darkseagreen3", add=T,axes=F)
+      plot(hr95, lty=1, lwd=1, border="cadetblue2", add=T, axes=F)
+      plot(hr99, lty=4, lwd=1, border="darkturquoise", add=T, axes=F)
+      plot(SUAQ_contour_sf_loc,lty=3, lwd=0.2, col=alpha("black", 1), add=T, axes=F)
+      plot(SUAQ_station_sf_loc,pch = 21,cex=1.5, col=alpha("black", 0.7), add=T, axes=F)
+      plot(SUAQ_station_sf_loc,pch = 16,cex=1, col=alpha("darkred", 0.7),lwd=0.3, bg="darkred", add=T, axes=F)
+      plot(SUAQ_river_sf_loc,lty=1, lwd=0.3, col=alpha("cornflowerblue", 0.7), add=T, axes=F)
+      plot(SUAQ_pathnetwork_sf_loc, lty=1, lwd=0.3, col=alpha("darkolivegreen", 0.7), add=T, axes=F)
+      axis(1, at=xmin_xmax_round_steps,pos=ymin+axisshifty) # x axis
+      axis(2, at=ymin_ymax_round_steps, pos=xmin+axisshiftx)
+      title(paste(i, ": BRB (", hminFactor[[l]], "*hmin)", sep=""), line=-1.5)
+      legend("topright", c("HR 50%", "HR 95%", "HR 100%","Trail","River"), col=c("coral1", "cadetblue2", "darkturquoise","darkred",alpha("cornflowerblue", 0.7)), lwd=c(2.5,2,2,0.3,4), lty=c(3,1,4,1,1), inset=c(legendoffsety,legendoffsety))
+      dev.off()}
+      
+      end_time <- Sys.time()
+      duration <- end_time-start_time
+      
+      ########## export results ############
+      if(xy_selected_toolessdata) {
+        resultList_50 <-
+          data.frame(
+            focal = i,
+            homerange = hr50$area,
+            hrpercentage ="50%",
+            n_gps = n_gps,
+            n_follows = n_follows,
+            Velocity_percentile99 = velocity,
+            GPSuncertainty = relUn,
+            hmin = hmin,
+            tmax = tmax,
+            lmin = lmin,
+            tau = tau,
+            hminfac = hminFactor[[l]],
+            hminRef = hminRef,
+            period = names(period_list)[samplinginterval],
+            processingtime = duration,
+            geometry=hr50_sf$geometry
+          )
+        resultList_95 <-
+          data.frame(
+            focal = i,
+            homerange = hr95$area,
+            hrpercentage ="95%",
+            n_gps = n_gps,
+            n_follows = n_follows,
+            Velocity_percentile99 = velocity,
+            GPSuncertainty = relUn,
+            hmin = hmin,
+            tmax = tmax,
+            lmin = lmin,
+            tau = tau,
+            hminfac = hminFactor[[l]],
+            hminRef = hminRef,
+            period = names(period_list)[samplinginterval],
+            processingtime = duration,
+            geometry=hr95_sf$geometry
+          )
+        resultList_99 <-
+          data.frame(
+            focal = i,
+            homerange = hr99$area,
+            hrpercentage ="99%",
+            n_gps = n_gps,
+            n_follows = n_follows,
+            Velocity_percentile99 = velocity,
+            GPSuncertainty = relUn,
+            hmin = hmin,
+            tmax = tmax,
+            lmin = lmin,
+            tau = tau,
+            hminfac = hminFactor[[l]],
+            hminRef = hminRef,
+            period = names(period_list)[samplinginterval],
+            processingtime = duration,
+            geometry=hr99_sf$geometry
+          )
+      }
+      if (!xy_selected_toolessdata) {
+                resultList_50 <-
+          data.frame(
+            focal = i,
+            homerange = NA,
+            hrpercentage ="50%",
+            n_gps = n_gps,
+            n_follows = n_follows,
+            Velocity_percentile99 = velocity,
+            GPSuncertainty = relUn,
+            hmin = hmin,
+            tmax = tmax,
+            lmin = lmin,
+            tau = tau,
+            hminfac = hminFactor[[l]],
+            hminRef = hminRef,
+            period = names(period_list)[samplinginterval],
+            processingtime = duration,
+            geometry=NA
+          )
+        resultList_95 <-
+          data.frame(
+            focal = i,
+            homerange = NA,
+            hrpercentage ="95%",
+            n_gps = n_gps,
+            n_follows = n_follows,
+            Velocity_percentile99 = velocity,
+            GPSuncertainty = relUn,
+            hmin = hmin,
+            tmax = tmax,
+            lmin = lmin,
+            tau = tau,
+            hminfac = hminFactor[[l]],
+            hminRef = hminRef,
+            period = names(period_list)[samplinginterval],
+            processingtime = duration,
+            geometry=NA
+          )
+        resultList_99 <-
+          data.frame(
+            focal = i,
+            homerange = NA,
+            hrpercentage ="99%",
+            n_gps = n_gps,
+            n_follows = n_follows,
+            Velocity_percentile99 = velocity,
+            GPSuncertainty = relUn,
+            hmin = hmin,
+            tmax = tmax,
+            lmin = lmin,
+            tau = tau,
+            hminfac = hminFactor[[l]],
+            hminRef = hminRef,
+            period = names(period_list)[samplinginterval],
+            processingtime = duration,
+            geometry=NA
+          )
+      }
+      brb_list <- brb_list %>% rbind(resultList_50,resultList_95,resultList_99)
+      
+      print(paste(hminTxt, ": Calculation finished", sep=""))
+    }
+  }
+}
+
+st_write(brb_list, dsn = paste(
+  paste(
+    imdir,
+    "brb_values_allperiods",
+    sep = ""
+  ),
+  "shp",
+  sep = "."
+))
+system("say alle kernel distanzen berechnet für die verschiedenen Untersuchungsperioden")
+
+
+```
+
+```{r Homeranges overlaps recalculate UD from KDE - HR per-researchperiods and all - HR sizes,echo=FALSE, message=FALSE,comment=FALSE, warning=FALSE}
+# Filter research periods if only one of the periods should be calculated
+period_list <- period_list[1] # keep only the total research period
+
+# createa directory for kde periods calculation (named by the current date)
+dir.create(paste(
+    "output/Homeranges/KDE/periods/",
+    format(Sys.Date(), "%Y%m%d"),
+    sep = ""
+  ))
+imdir <- paste("output/Homeranges/KDE/periods/",format(Sys.Date(), "%Y%m%d"), "/", sep="")
+
+kde_results_perperiod <- data.frame() # results
+kde_overlap_UD <- list() # only for tital research period activate filter above
+
+for (samplinginterval in c(1:length(period_list))){
+print(paste("kdes for period: ",samplinginterval))
+##### Determine the smoothing parameters
+selected_females <- period_list[[samplinginterval]] %>% group_by(focal) %>% summarise()
+selected_females <- as_vector(selected_females)
+
+bandwiths <-  data.frame(focal=as_vector(selected_females),
+                 hpi=vector(mode="numeric", length=length(selected_females)),hbcv=vector(mode="numeric", length=length(selected_females)),hscv=vector(mode="numeric", length=length(selected_females)),
+                 stringsAsFactors=FALSE)
+iterator <- 1
+indexitter <- 0
+for (i in selected_females){
+  print(paste("kdes for focal: ",i))
+  xy_selected <- period_list[[samplinginterval]] %>% filter(focal%in%c(i)) %>% dplyr::select(E,N)
+  colnames(xy_selected) <- c("x","y") #adjust column names
+  hpi <- sqrt(prod(sqrt(diag(Hpi.diag(xy_selected[,1:2], nstage=2))))) # using diagonal bandwith not full bandwith? why?
+  hbcv <- sqrt(prod(sqrt(diag(Hbcv.diag(xy_selected[,1:2], whichbcv=1)))))
+  hscv <- sqrt(prod(sqrt(diag(Hscv.diag(xy_selected[,1:2], nstage=2)))))
+  bandwiths[iterator,"focal"] <- i
+  bandwiths[iterator,"hpi"] <- as.numeric(hpi)
+  bandwiths[iterator,"hbcv"] <- as.numeric(hbcv)
+  bandwiths[iterator,"hscv"] <- as.numeric(hscv)
+
+  iterator <- iterator+1
+}
+rownames(bandwiths) <- c(1:length(selected_females))
+
+### KDE: Calculate UD, HR
+iterator <- 1
+results_focal <- data.frame()
+for (i in selected_females){ # compute KDE home range for every individual
+  n_follows <- period_list[[samplinginterval]] %>% filter(focal%in%c(i)) %>% group_by(follow) %>% summarise() %>% nrow()
+  xy_selected <- period_list[[samplinginterval]] %>% filter(focal%in%c(i)) %>% dplyr::select(E,N)
+  n_gps <- xy_selected %>% nrow()
+  
+  colnames(xy_selected) <- c("x","y") #adjust column names
+  resultList <- list()
+  methListTitle <- list("REF", "PI", "BCV", "SCV")
+  methList <- list("HREF", "HPI", "HBCV", "HSCV")
+  
+  xy_selected <- SpatialPoints(xy_selected,proj4string = CRS( "+proj=utm +zone=47 +a=6378160 +b=6356774.50408554 +towgs84=-24,-15,5,0,0,0,0 +units=m +no_defs" )) # Converts SpatialPointDataFrame to SpatialPoint (only x & y)
+  
+  extVal <- 15 #0.3 How much bigger the UD should be calculated than the research are (minimum bounding box). The higher the more Computation
+  gridVal <- 2000 #700 How much cells or pixels should be considered for UD calculation. The higher the more Computation
+
+  for (j in seq(1, length(methList))) { # compute one home range for each bandwidth method and individual
+    if (j == 1) {
+      UD <- (kernelUD(xy_selected, grid=gridVal, extent=extVal, h="href"))
+    }
+    else if (j == 2) {
+      UD <- (kernelUD(xy_selected, grid=gridVal, extent=extVal, h=bandwiths[iterator,"hpi"]))
+    }
+    else if (j == 3) {
+      UD <- (kernelUD(xy_selected, grid=gridVal, extent=extVal, h=bandwiths[iterator,"hbcv"]))
+    }
+    else if (j == 4) {
+      UD <- (kernelUD(xy_selected, grid=gridVal, extent=extVal, h=bandwiths[iterator,"hscv"])) 
+    }
+    else {
+      print("Error")
+    }
+    hr99 <- getverticeshr(UD, percent=99,unin = c("m"),unout = c("km2"))
+    hr95 <- getverticeshr(UD, percent=95,unin = c("m"),unout = c("km2"))
+    hr50 <- getverticeshr(UD, percent=50,unin = c("m"),unout = c("km2"))
+    
+    hr99_sf <- st_as_sf(hr99)
+    hr95_sf <- st_as_sf(hr95)
+    hr50_sf <- st_as_sf(hr50)
+    
+    ########## save UD ##########
+      kde_overlap_UD[[1+indexitter]] <- list(i,UD,"kde",methList[[j]],n_gps,n_follows)
+      indexitter <- indexitter+1
+    
+    ########## plot results ##########
+    png(paste(imdir, selected_females[[iterator]],"_",gsub(" ", "", names(period_list)[samplinginterval], fixed = TRUE), "_KDE_UD_", methList[[j]], ".png", sep=""), width=1800, height=1400, res=240, units="px")
+    par(0,0,0,0)
+    image(UD, xlab="x [m]",ylab="y [m]",xlim=c(xmin_xmax_round_steps[1],tail(xmin_xmax_round_steps,n=1)),ylim=c(ymin_ymax_round_steps[1],tail(ymin_ymax_round_steps,n=1))) 
+    plot(hr50, lty=3, lwd=1.5, border="darkseagreen3", add=T,axes=F)
+    plot(hr95, lty=1, lwd=1, border="cadetblue2", add=T, axes=F)
+    plot(hr99, lty=4, lwd=1, border="darkturquoise", add=T, axes=F)
+    plot(SUAQ_contour_sf_loc,lty=3, lwd=0.2, col=alpha("black", 1), add=T, axes=F)
+    plot(SUAQ_station_sf_loc,pch = 21,cex=1.5, col=alpha("black", 0.7), add=T, axes=F)
+    plot(SUAQ_station_sf_loc,pch = 16,cex=1, col=alpha("darkred", 0.7),lwd=0.3, bg="darkred", add=T, axes=F)
+    plot(SUAQ_river_sf_loc,lty=1, lwd=0.3, col=alpha("cornflowerblue", 0.7), add=T, axes=F)
+    plot(SUAQ_pathnetwork_sf_loc, lty=1, lwd=0.3, col=alpha("darkolivegreen", 0.7), add=T, axes=F)
+    axis(1, at=xmin_xmax_round_steps,pos=ymin+axisshifty) # x axis
+    axis(2, at=ymin_ymax_round_steps, pos=xmin+axisshiftx)
+    #text(xmin-550, (ymin+ymax)/2, "y [m]", adj=c(NA,-4), srt=90)
+    title(paste(selected_females[[iterator]], ": KDE ", "(", methListTitle[[j]], ")", sep=""), line=-1.5)
+    legend("topright", c("HR 50%", "HR 95%", "HR 100%","Trail","River"), col=c("coral1", "cadetblue2", "darkturquoise","darkred",alpha("cornflowerblue", 0.7)), lwd=c(2.5,2,2,0.3,4), lty=c(3,1,4,1,1), inset=c(legendoffsety,legendoffsety))
+    dev.off()
+
+    png(paste(imdir, selected_females[[iterator]],"_",gsub(" ", "", names(period_list)[samplinginterval], fixed = TRUE), "_KDE_VUD_", methList[[j]], ".png", sep=""), width=1800, height=1400, res=240, units="px")
+    image(getvolumeUD(UD), xlab="x [m]",ylab="y [m]",xlim=c(xmin_xmax_round_steps[1],tail(xmin_xmax_round_steps,n=1)),ylim=c(ymin_ymax_round_steps[1],tail(ymin_ymax_round_steps,n=1)))
+    plot(hr50, lty=3, lwd=1.5, border="azure4", add=T,axes=F)
+    plot(hr95, lty=1, lwd=1, border="cadetblue2", add=T, axes=F)
+    plot(hr99, lty=4, lwd=1, border="darkturquoise", add=T, axes=F)
+    plot(SUAQ_contour_sf_loc,lty=3, lwd=0.2, col=alpha("black", 1), add=T, axes=F)
+    plot(SUAQ_station_sf_loc,pch = 21,cex=1.5, col=alpha("black", 0.7), add=T, axes=F)
+    plot(SUAQ_station_sf_loc,pch = 16,cex=1, col=alpha("darkred", 0.7),lwd=0.3, bg="darkred", add=T, axes=F)
+    plot(SUAQ_river_sf_loc,lty=1, lwd=0.3, col=alpha("cornflowerblue", 0.7), add=T, axes=F)
+    plot(SUAQ_pathnetwork_sf_loc, lty=1, lwd=0.3, col=alpha("darkolivegreen", 0.7), add=T, axes=F)
+    axis(1, at=xmin_xmax_round_steps,pos=ymin+axisshifty) # x axis
+    axis(2, at=ymin_ymax_round_steps, pos=xmin+axisshiftx)
+    #text(xmin-500, (ymin+ymax)/2, "y [m]", adj=c(NA,-4), srt=90)
+    title(paste(selected_females[[iterator]], ": KDE ", "(", methListTitle[[j]], ")", sep=""), line=-1.5)
+    legend("topright", c("HR 50%", "HR 95%", "HR 100%","Trail","River"), col=c("coral1", "cadetblue2", "darkturquoise","darkred",alpha("cornflowerblue", 0.7)), lwd=c(2.5,2,2,0.3,4), lty=c(3,1,4,1,1), inset=c(legendoffsety,legendoffsety))
+    dev.off()
+    
+    results_selectedmethod <- data.frame(bandwithmethod=c(methList[[j]],methList[[j]],methList[[j]]),
+            hrpercentage=c("50%","95%","99%"),
+            area=c(hr50_sf$area,hr95_sf$area,hr99_sf$area),
+            n_gps=c(n_gps,n_gps,n_gps),
+            n_follows=c(n_follows,n_follows,n_follows),
+            geometry=c(hr50_sf$geometry,hr95_sf$geometry,hr99_sf$geometry))
+
+    results_selectedfocal<- results_selectedmethod %>% mutate(focal=selected_females[[iterator]])
+    
+    results_focal <- rbind(results_focal,results_selectedfocal)
+  }
+
+  
+
+  print(paste(selected_females[[iterator]], ": Calculation finished", sep=""))
+  iterator <- iterator+1
+}
+results_focal <- results_focal %>% mutate(period=names(period_list)[samplinginterval])
+kde_results_perperiod <- kde_results_perperiod %>% rbind(results_focal)
+
+
+}
+st_write(kde_results_perperiod, dsn = paste(
+  paste(imdir,
+    "kde_values_allperiods",
+    sep = ""
+  ),
+  "shp",
+  sep = "."
+))
+system("say alle kernel distanzen berechnet für die verschiedenen Untersuchungsperioden")
+
+
+```
+
+# Visualizations
 ```{r Homeranges - VISUALS ANALYSIS fruittrees ,echo=FALSE, message=FALSE,comment=FALSE, warning=FALSE}
 ### Finding: In core areas the number of trees increase linear with area in 95% area it increases faster but then flattens
-all_homeranges_sf %>%filter(algorithm=="brb") %>% filter(hminfac==1) %>% filter(hrprcnt=="99%") %>%  ggplot(aes(area,number_of_trees)) +geom_point()+geom_smooth()
+all_homeranges_sf  %>%  ggplot(aes(area,number_of_trees,color=algorithm)) +geom_point()
+all_homeranges_sf %>% ggplot(aes(area,fruittree_normalized,color=hrprcnt)) + geom_point()
 
 ### Fruittreeindex
 all_homeranges_sf %>%filter(algorithm=="brb") %>% 
   filter(hminfac==1) %>%  
-  ggplot(aes(focal,fruittree_per_sqkm))+
-  geom_jitter(aes(color=hrprcnt))+
+  ggplot(aes(focal,fruittree_normalized))+
+  geom_point(aes(color=hrprcnt),size=3)+
   geom_smooth()+
-  labs(x="focal",y=expression("trees per tot. gps-effort per area [normalized tree/km"^2*"]"),color="HR [%]") +
+  labs(x="focal",y=expression("normalized trees [tree/tot gps effort]"),color="HR [%]") +
   scale_fill_viridis()
+
+```
+
+```{r Overlaps - VISUALS ANALYSIS fruittrees ,echo=FALSE, message=FALSE,comment=FALSE, warning=FALSE}
+### Finding: In core areas the number of trees increase linear with area in 95% area it increases faster but then flattens
+all_overlaps_jaccard  %>%  ggplot(aes(jaccard_overlap,number_of_trees,color=algorithm)) +geom_point()
+all_homeranges_sf %>% ggplot(aes(area,fruittree_normalized,color=hrprcnt)) + geom_point()
+
+### Fruittreeindex
+all_overlaps_jaccard %>%
+  #filter(algorithm=="brb") %>% 
+  #filter(hminfac==1) %>%  
+  ggplot(aes(overlap,fruittree_normalized))+
+  geom_point(aes(color=hrprcnt),size=3)+
+  geom_point(data=all_homeranges_sf,aes(area,fruittree_normalized),alpha=0.2)+
+  labs(x="overlap or area",y=expression("normalized trees [tree/tot gps effort]"),color="HR [%]") +
+  scale_fill_viridis()+
+  scale_x_log10()
 
 ```
 
@@ -2958,25 +3670,7 @@ plot_brb_temporal_bootstrap_monthly %>% ggsave(filename = paste(
 
 ```{r Homerange - VISUALS - HR sizes,echo=FALSE, message=FALSE,comment=FALSE, warning=FALSE}
 #### Homerange sizes overview
-kde_allperiods<- st_read(dsn="output/Homeranges/KDE/periods/20210315/kde_values_allperiods.shp") %>% 
-  mutate(algorithm="kde") %>% st_drop_geometry()
-brb_allperiods<- st_read(dsn="output/Homeranges/BRB/periods/20210315/brb_values_allperiods.shp") %>% 
-  mutate(algorithm="brb") %>% rename(area=homerng) %>% st_drop_geometry()
-mcp_allperiods<- st_read(dsn="output/Homeranges/MCP/periods/20210316/mcp_values_allperiods.shp") %>% 
-  mutate(algorithm="mcp") %>% rename(area=homerng) %>% st_drop_geometry()
-kde_allperiods_sf<- st_read(dsn="output/Homeranges/KDE/periods/20210315/kde_values_allperiods.shp") %>% 
-  mutate(algorithm="kde") %>% st_set_crs(23847)
-brb_allperiods_sf<- st_read(dsn="output/Homeranges/BRB/periods/20210315/brb_values_allperiods.shp") %>% 
-  mutate(algorithm="brb") %>% rename(area=homerng) %>% st_set_crs(23847)
-mcp_allperiods_sf<- st_read(dsn="output/Homeranges/MCP/periods/20210316/mcp_values_allperiods.shp") %>% 
-  mutate(algorithm="mcp") %>% rename(area=homerng) %>% st_set_crs(23847)
-all_homeranges_sf <- kde_allperiods_sf %>% bind_rows(brb_allperiods_sf) %>% bind_rows(mcp_allperiods_sf)
-all_homeranges <- kde_allperiods %>% bind_rows(brb_allperiods) %>% bind_rows(mcp_allperiods)
-all_homeranges$period <- factor(all_homeranges$period, levels = c("before 2012", "2012 until 2016", "left", "2016 until August 2018", "Since August 2018","total research period"))
-all_homeranges_sf$period <- factor(all_homeranges$period, levels = c("before 2012", "2012 until 2016", "left", "2016 until August 2018", "Since August 2018","total research period"))
-
-
-plot_all50_area_perfemale<- all_homeranges %>% filter(hrprcnt=="95%") %>% 
+plot_all50_area_perfemale<- all_homeranges_sf %>% filter(hrprcnt=="50%") %>% 
   ggplot( aes(x=focal, y=area, fill=algorithm)) +
     geom_boxplot() +
     scale_fill_viridis(discrete = TRUE, alpha=0.6) +
@@ -2987,7 +3681,7 @@ plot_all50_area_perfemale<- all_homeranges %>% filter(hrprcnt=="95%") %>%
       plot.title = element_text(size=18),
       axis.title.x = element_blank()
     ) +
-    ggtitle(expression("Core home range areas: KDE"^"95%"*"")) +
+    ggtitle(expression("Core home range areas: KDE"^"50%"*"")) +
     ylab(expression("area [km"^2*"]"))
 plot_all50_area_perfemale
 
@@ -2996,7 +3690,7 @@ plot_all50_area_perfemale %>% ggsave(filename = paste(
   paste(
     "/Users/stefgr/Dropbox/Apps/Overleaf/Msc_Thesis/figures/",
     format(Sys.Date(), "%Y%m%d"),"_",
-    "plot_95range_BRB_KDE_MCP_area_perfemale",
+    "plot_50range_BRB_KDE_MCP_area_perfemale",
     sep = ""
   ),
   "png",
@@ -3111,27 +3805,21 @@ dev.off()
 
 ```
 
+# Statistics
 ```{r Homerange - Statistics, Explanatory variables,echo=FALSE, message=FALSE,comment=FALSE, warning=FALSE}
 # KDE Homeranges periods and all
-kde_allperiods<- st_read(dsn="output/Homeranges/KDE/periods/20210315/kde_values_allperiods.shp") %>% 
-  mutate(algorithm="kde") %>% st_drop_geometry()
-brb_allperiods<- st_read(dsn="output/Homeranges/BRB/periods/20210315/brb_values_allperiods.shp") %>% 
-  mutate(algorithm="brb") %>% rename(area=homerng) %>% st_drop_geometry()
-all_homeranges <- kde_allperiods %>% bind_rows(brb_allperiods)
-all_homeranges$period <- factor(all_homeranges$period, levels = c("before 2012", "2012 until 2016", "left", "2016 until August 2018", "Since August 2018","total research period"))
-
-all_homeranges <- all_homeranges %>% filter(period!="total research period")
-test <- SUAQ_rangepoints_11all20_loc_females_10[,c("focal","SUAQ_orangutans.matriline", "SUAQ_orangutans.agecategory","SUAQ_orangutans.dominancecat")] %>% group_by(focal,SUAQ_orangutans.matriline,SUAQ_orangutans.agecategory,SUAQ_orangutans.dominancecat) %>% summarise()
-all_homeranges_50 <- all_homeranges %>% left_join(test, by=c("focal"="focal")) %>% filter(hrprcnt=="50%")
-all_homeranges_95 <- all_homeranges %>% left_join(test, by=c("focal"="focal")) %>% filter(hrprcnt=="95%")
+explanatoryvars <- SUAQ_rangepoints_11all20_loc_females_10[,c("focal","SUAQ_orangutans.matriline", "SUAQ_orangutans.agecategory","SUAQ_orangutans.dominancecat")] %>% group_by(focal,SUAQ_orangutans.matriline,SUAQ_orangutans.agecategory,SUAQ_orangutans.dominancecat) %>% summarise()
+colnames(explanatoryvars) <- c("focal","matriline","agecat","dominance")
+all_homeranges_50 <- all_homeranges_sf %>% st_drop_geometry() %>%  left_join(explanatoryvars, by=c("focal"="focal")) %>% filter(hrprcnt=="50%")
+all_homeranges_95 <- all_homeranges_sf %>% st_drop_geometry() %>% left_join(explanatoryvars, by=c("focal"="focal")) %>% filter(hrprcnt=="95%")
 
 ### Matriline
-all_homeranges_50_naomit <- all_homeranges_50 %>% dplyr::select(area,SUAQ_orangutans.matriline,period,focal,n_gps,n_fllws,algorithm) %>%  na.omit()
-all_homeranges_95_naomit <- all_homeranges_95 %>% dplyr::select(area,SUAQ_orangutans.matriline,period,focal,n_gps,n_fllws,algorithm) %>% na.omit()
+all_homeranges_50_naomit <- all_homeranges_50 %>% dplyr::select(area,matriline,period,focal,n_gps,n_fllws,algorithm) %>%  na.omit()
+all_homeranges_95_naomit <- all_homeranges_95 %>% dplyr::select(area,matriline,period,focal,n_gps,n_fllws,algorithm) %>% na.omit()
 hr_all_nullmodell_95 <- lmer(area ~ (1 | focal)+(1| n_gps)+(1| algorithm),all_homeranges_95_naomit,REML=FALSE)
 hr_all_nullmodell_50 <- lmer(area ~ (1 | focal)+(1| n_gps)+(1| algorithm),all_homeranges_50_naomit,REML=FALSE)
 
-all_homeranges_50_naomit %>% ggplot(aes(as.factor(SUAQ_orangutans.matriline),area,colour=period))+
+all_homeranges_50_naomit %>% ggplot(aes(as.factor(matriline),area,colour=period))+
   geom_boxplot() +
   geom_jitter(alpha=0.5)
 # which sample indicator is more correlated with area
@@ -3142,7 +3830,7 @@ test_samplesize <- lm(area ~ n_gps+n_fllws,all_homeranges_50_naomit,REML=FALSE)
 anova(test_samplesize) # n-gps has higher explanatory power
 
 #### core area
-lmer_numOfPoints50 <- lmer(area ~ SUAQ_orangutans.matriline+(1 | focal)+(1| n_gps)+(1| algorithm),all_homeranges_50_naomit,REML=FALSE)
+lmer_numOfPoints50 <- lmer(area ~ matriline+(1 | focal)+(1| n_gps)+(1| algorithm),all_homeranges_50_naomit,REML=FALSE)
 anova(lmer_numOfPoints50,hr_all_nullmodell_50)
 ##### Create P values for lm
 coefs <- data.frame(coef(summary(lmer_numOfPoints50)))
@@ -3150,7 +3838,7 @@ coefs <- data.frame(coef(summary(lmer_numOfPoints50)))
 coefs$p.z <- 2 * (1 - pnorm(abs(coefs$t.value)))
 coefs
 #### core area
-lmer_numOfPoints95 <- lmer(area ~ SUAQ_orangutans.matriline+(1 | focal)+(1| n_gps)+(1| algorithm),all_homeranges_95_naomit,REML=FALSE)
+lmer_numOfPoints95 <- lmer(area ~ matriline+(1 | focal)+(1| n_gps)+(1| algorithm),all_homeranges_95_naomit,REML=FALSE)
 anova(lmer_numOfPoints95,hr_all_nullmodell_95)
 ##### Create P values for lm
 coefs <- data.frame(coef(summary(lmer_numOfPoints95)))
@@ -3161,20 +3849,20 @@ coefs
 
 
 ### Age
-all_homeranges_50_naomit <- all_homeranges_50 %>% dplyr::select(area,SUAQ_orangutans.agecategory,period,focal,n_gps,n_fllws,algorithm) %>%  na.omit() 
-all_homeranges_95_naomit <- all_homeranges_95 %>% dplyr::select(area,SUAQ_orangutans.agecategory,period,focal,n_gps,n_fllws,algorithm) %>% na.omit()
+all_homeranges_50_naomit <- all_homeranges_50 %>% dplyr::select(area,agecat,period,focal,n_gps,n_fllws,algorithm) %>%  na.omit() 
+all_homeranges_95_naomit <- all_homeranges_95 %>% dplyr::select(area,agecat,period,focal,n_gps,n_fllws,algorithm) %>% na.omit()
 hr_all_nullmodell_95 <- lmer(area ~ (1 | focal)+(1| n_gps)+(1| algorithm),all_homeranges_95_naomit,REML=FALSE)
 hr_all_nullmodell_50 <- lmer(area ~ (1 | focal)+(1| n_gps)+(1| algorithm),all_homeranges_50_naomit,REML=FALSE)
 
-all_homeranges_50_naomit %>% ggplot(aes(as.factor(SUAQ_orangutans.agecategory),area,colour=n_gps))+
+all_homeranges_50_naomit %>% ggplot(aes(as.factor(agecat),area,colour=n_gps))+
   geom_boxplot() +
   geom_jitter()
-all_homeranges_95_naomit %>% ggplot(aes(as.factor(SUAQ_orangutans.agecategory),area,colour=n_gps))+
+all_homeranges_95_naomit %>% ggplot(aes(as.factor(agecat),area,colour=n_gps))+
   geom_boxplot() +
   geom_jitter()
 
 #### core area
-lmer_numOfPoints50 <- lmer(area ~ SUAQ_orangutans.agecategory+(1 | focal)+(1| n_gps)+(1| algorithm),all_homeranges_50_naomit,REML=FALSE)
+lmer_numOfPoints50 <- lmer(area ~ agecat+(1 | focal)+(1| n_gps)+(1| algorithm),all_homeranges_50_naomit,REML=FALSE)
 anova(lmer_numOfPoints50,hr_all_nullmodell_50)
 ##### Create P values for lm
 coefs <- data.frame(coef(summary(lmer_numOfPoints50)))
@@ -3182,7 +3870,69 @@ coefs <- data.frame(coef(summary(lmer_numOfPoints50)))
 coefs$p.z <- 2 * (1 - pnorm(abs(coefs$t.value)))
 coefs
 #### core area
-lmer_numOfPoints95 <- lmer(area ~ SUAQ_orangutans.agecategory+(1 | focal)+(1| n_gps)+(1| algorithm),all_homeranges_95_naomit,REML=FALSE)
+lmer_numOfPoints95 <- lmer(area ~ agecat+(1 | focal)+(1| n_gps)+(1| algorithm),all_homeranges_95_naomit,REML=FALSE)
+anova(lmer_numOfPoints95,hr_all_nullmodell_95)
+##### Create P values for lm
+coefs <- data.frame(coef(summary(lmer_numOfPoints95)))
+# use normal distribution to approximate p-value
+coefs$p.z <- 2 * (1 - pnorm(abs(coefs$t.value)))
+coefs
+
+
+### Dominance
+all_homeranges_50_naomit <- all_homeranges_50 %>% dplyr::select(area,dominance,period,focal,n_gps,n_fllws,algorithm) %>%  na.omit() 
+all_homeranges_95_naomit <- all_homeranges_95 %>% dplyr::select(area,dominance,period,focal,n_gps,n_fllws,algorithm) %>% na.omit()
+hr_all_nullmodell_95 <- lmer(area ~ (1 | focal)+(1| n_gps)+(1| algorithm),all_homeranges_95_naomit,REML=FALSE)
+hr_all_nullmodell_50 <- lmer(area ~ (1 | focal)+(1| n_gps)+(1| algorithm),all_homeranges_50_naomit,REML=FALSE)
+
+all_homeranges_50_naomit %>% ggplot(aes(as.factor(dominance),area,colour=n_gps))+
+  geom_boxplot() +
+  geom_jitter()
+all_homeranges_95_naomit %>% ggplot(aes(as.factor(dominance),area,colour=n_gps))+
+  geom_boxplot() +
+  geom_jitter()
+
+#### core area
+lmer_numOfPoints50 <- lmer(area ~ dominance+(1 | focal)+(1| n_gps)+(1| algorithm),all_homeranges_50_naomit,REML=FALSE)
+anova(lmer_numOfPoints50,hr_all_nullmodell_50)
+##### Create P values for lm
+coefs <- data.frame(coef(summary(lmer_numOfPoints50)))
+# use normal distribution to approximate p-value
+coefs$p.z <- 2 * (1 - pnorm(abs(coefs$t.value)))
+coefs
+#### core area
+lmer_numOfPoints95 <- lmer(area ~ dominance+(1 | focal)+(1| n_gps)+(1| algorithm),all_homeranges_95_naomit,REML=FALSE)
+anova(lmer_numOfPoints95,hr_all_nullmodell_95)
+##### Create P values for lm
+coefs <- data.frame(coef(summary(lmer_numOfPoints95)))
+# use normal distribution to approximate p-value
+coefs$p.z <- 2 * (1 - pnorm(abs(coefs$t.value)))
+coefs
+
+# TREES
+### Dominance
+all_tree_naomit_50 <- all_homeranges_50 %>% dplyr::select(fruittree_normalized,area,dominance,period,focal,n_gps,n_fllws,algorithm) %>%  na.omit() 
+all_tree_naomit_95 <- all_homeranges_95 %>% dplyr::select(fruittree_normalized,area,dominance,period,focal,n_gps,n_fllws,algorithm) %>% na.omit()
+hr_all_nullmodell_95 <- lmer(area ~ (1 | focal)+(1| n_gps)+(1| algorithm),all_tree_naomit_95,REML=FALSE)
+hr_all_nullmodell_50 <- lmer(area ~ (1 | focal)+(1| n_gps)+(1| algorithm),all_tree_naomit_50,REML=FALSE)
+
+all_tree_naomit_50 %>% ggplot(aes(as.factor(dominance),fruittree_normalized,colour=n_gps))+
+  geom_boxplot() +
+  geom_jitter()
+all_tree_naomit_95 %>% ggplot(aes(as.factor(dominance),fruittree_normalized,colour=n_gps))+
+  geom_boxplot() +
+  geom_jitter()
+
+#### core area
+lmer_numOfPoints50 <- lmer(area ~ dominance+(1 | focal)+(1| n_gps)+(1| algorithm),all_tree_naomit_50,REML=FALSE)
+anova(lmer_numOfPoints50,hr_all_nullmodell_50)
+##### Create P values for lm
+coefs <- data.frame(coef(summary(lmer_numOfPoints50)))
+# use normal distribution to approximate p-value
+coefs$p.z <- 2 * (1 - pnorm(abs(coefs$t.value)))
+coefs
+#### core area
+lmer_numOfPoints95 <- lmer(area ~ dominance+(1 | focal)+(1| n_gps)+(1| algorithm),all_homeranges_95_naomit,REML=FALSE)
 anova(lmer_numOfPoints95,hr_all_nullmodell_95)
 ##### Create P values for lm
 coefs <- data.frame(coef(summary(lmer_numOfPoints95)))
@@ -3220,8 +3970,99 @@ coefs <- data.frame(coef(summary(lmer_numOfPoints95)))
 # use normal distribution to approximate p-value
 coefs$p.z <- 2 * (1 - pnorm(abs(coefs$t.value)))
 coefs
+
+
 ```
 
+```{r Homerange overlaps - Statistics, Explanatory variables,echo=FALSE, message=FALSE,comment=FALSE, warning=FALSE}
+### Explain jaccard overlap
+all_overlaps_50_naomit <- all_overlaps_50 %>% dplyr::select(area,n_gps,overlap,jaccard_overlap,related,period,focal,focal.1,algorithm) %>% na.omit() %>% st_drop_geometry() %>% ungroup()
+all_overlaps_95_naomit <- all_overlaps_95 %>% dplyr::select(area,n_gps,overlap,jaccard_overlap,related,period,focal,focal.1,algorithm) %>% na.omit()%>% st_drop_geometry() %>% ungroup()
+lmer_overlap_all_nullmodell_95 <- lmer(jaccard_overlap ~ (1 | focal)+(1| n_gps)+(1|algorithm),all_overlaps_95_naomit,REML=FALSE)
+lmer_overlap_all_nullmodell_50 <- lmer(jaccard_overlap ~ (1 | focal)+(1| n_gps)+(1| algorithm),all_overlaps_50_naomit,REML=FALSE)
+
+#### core area, jaccard overlap and matriline
+lmer_jaccard_50 <- lmer(jaccard_overlap ~ related+(1 | focal)+(1| n_gps)+(1| algorithm),all_overlaps_50_naomit,REML=FALSE)
+anova(lmer_jaccard_50,lmer_overlap_all_nullmodell_50)
+anova(lmer_jaccard_50)
+
+##### Create P values for lm
+coefs <- data.frame(coef(summary(lmer_jaccard_50)))
+# use normal distribution to approximate p-value
+coefs$p.z <- 2 * (1 - pnorm(abs(coefs$t.value)))
+coefs
+#### core area
+lmer_numOfPoints95 <- lmer(jaccard_overlap ~ related+(1 | focal)+(1| n_gps)+(1| algorithm),all_overlaps_95_naomit,REML=FALSE)
+anova(lmer_numOfPoints95,lmer_overlap_all_nullmodell_95)
+##### Create P values for lm
+coefs <- data.frame(coef(summary(lmer_numOfPoints95)))
+# use normal distribution to approximate p-value
+coefs$p.z <- 2 * (1 - pnorm(abs(coefs$t.value)))
+coefs
+
+
+
+### Age
+all_overlaps_50_naomitage <- all_overlaps_50 %>% dplyr::select(area,n_gps,overlap,jaccard_overlap,agediff,period,focal,focal.1,algorithm) %>%  na.omit() 
+all_overlaps_95_naomitage <- all_overlaps_95 %>% dplyr::select(area,n_gps,overlap,jaccard_overlap,agediff,period,focal,focal.1,algorithm) %>% na.omit()
+lmer_overlap_nullmodell_95 <- lmer(jaccard_overlap ~ (1 | focal)+(1| n_gps)+(1| algorithm),all_overlaps_95_naomitage,REML=FALSE)
+lmer_overlap_nullmodell_50 <- lmer(jaccard_overlap ~ (1 | focal)+(1| n_gps)+(1| algorithm),all_overlaps_50_naomitage,REML=FALSE)
+
+all_overlaps_50_naomitage %>% ggplot(aes(as.factor(agediff),jaccard_overlap,colour=n_gps))+
+  geom_boxplot() +
+  geom_jitter()
+all_overlaps_95_naomitage %>% ggplot(aes(as.factor(agediff),jaccard_overlap,colour=n_gps))+
+  geom_boxplot() +
+  geom_jitter()
+
+#### core area
+lmer_jaccard_50_agediff <- lmer(jaccard_overlap ~ agediff+(1 | focal)+(1| n_gps)+(1| algorithm),all_overlaps_50_naomitage,REML=FALSE)
+anova(lmer_jaccard_50_agediff,lmer_overlap_nullmodell_50)
+##### Create P values for lm
+coefs <- data.frame(coef(summary(lmer_numOfPoints50)))
+# use normal distribution to approximate p-value
+coefs$p.z <- 2 * (1 - pnorm(abs(coefs$t.value)))
+coefs
+#### core area
+lmer_jaccard_95_agediff <- lmer(jaccard_overlap ~ agediff+(1 | focal)+(1| n_gps)+(1| algorithm),all_overlaps_95_naomitage,REML=FALSE)
+anova(lmer_jaccard_95_agediff,lmer_overlap_nullmodell_95)
+##### Create P values for lm
+coefs <- data.frame(coef(summary(lmer_numOfPoints95)))
+# use normal distribution to approximate p-value
+coefs$p.z <- 2 * (1 - pnorm(abs(coefs$t.value)))
+coefs
+
+
+### Dominance
+all_overlaps_50_naomit_dominance <- all_overlaps_50 %>% dplyr::select(area,n_gps,overlap,jaccard_overlap,dominancediff,period,focal,focal.1,algorithm) %>%  na.omit() 
+all_overlaps_95_naomit_dominance <- all_overlaps_95 %>% dplyr::select(area,n_gps,overlap,jaccard_overlap,dominancediff,period,focal,focal.1,algorithm) %>% na.omit()
+lmer_overlap_nullmodell_95 <- lmer(jaccard_overlap ~ (1 | focal)+(1| n_gps)+(1| algorithm),all_overlaps_95_naomit_dominance,REML=FALSE)
+lmer_overlap_nullmodell_50 <- lmer(jaccard_overlap ~ (1 | focal)+(1| n_gps)+(1| algorithm),all_overlaps_50_naomit_dominance,REML=FALSE)
+
+all_overlaps_50_naomit_dominance %>% ggplot(aes(as.factor(dominancediff),jaccard_overlap,colour=n_gps))+
+  geom_boxplot() +
+  geom_jitter()
+all_overlaps_95_naomit_dominance %>% ggplot(aes(as.factor(dominancediff),jaccard_overlap,colour=n_gps))+
+  geom_boxplot() +
+  geom_jitter()
+
+#### core area
+lmer_jaccard_50_dominance <- lmer(jaccard_overlap ~ dominancediff+(1 | focal)+(1| n_gps)+(1| algorithm),all_overlaps_50_naomit_dominance,REML=FALSE)
+anova(lmer_jaccard_50_dominance,lmer_overlap_nullmodell_50)
+##### Create P values for lm
+coefs <- data.frame(coef(summary(lmer_jaccard_50_dominance)))
+# use normal distribution to approximate p-value
+coefs$p.z <- 2 * (1 - pnorm(abs(coefs$t.value)))
+coefs
+#### core area
+lmer_jaccard_95_dominance <- lmer(jaccard_overlap ~ dominancediff+(1 | focal)+(1| n_gps)+(1| algorithm),all_overlaps_95_naomit_dominance,REML=FALSE)
+anova(lmer_jaccard_95_dominance,lmer_overlap_nullmodell_95)
+##### Create P values for lm
+coefs <- data.frame(coef(summary(lmer_numOfPoints95)))
+# use normal distribution to approximate p-value
+coefs$p.z <- 2 * (1 - pnorm(abs(coefs$t.value)))
+coefs
+```
 
 ```{r DELETE Homerange - Normalized fruit tree points,echo=FALSE, message=FALSE,comment=FALSE, warning=FALSE}
 SUAQ_waypoints_11all20_loc_tree <- SUAQ_waypoints_11all20_loc %>% filter(PtType=="tree")
@@ -3275,5 +4116,3 @@ ggplotly(test)
 
 ```
 
-
-Homerange Overlap:

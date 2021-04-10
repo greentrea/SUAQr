@@ -593,10 +593,10 @@ colnames(SUAQ_treedirectness_stats) <-
 ## take a random sample with same "gps" distances as the between tree gps points.
 ### Calculate all the distance travelled between trees.
 ##### Adding total number of fruit trees
+random_window_sizes<- SUAQ_treedirectness %>% pull(tree_betweennumgps)
 pb <-  txtProgressBar(min = 0, max = NROW(random_window_sizes), initial = 0) 
 stepi <-0
 SUAQ_randomdirectness <- data.frame()
-random_window_sizes<- SUAQ_treedirectness %>% pull(tree_betweennumgps)
 for(i in random_window_sizes){
   windowsize <- i+2 # plus two because thats the window size (Start end tree is not counted in the tree_betweennumgps)
   points_available<- SUAQ_rangepoints_11all20_loc %>% ungroup() %>% 
@@ -635,10 +635,10 @@ colnames(SUAQ_randomdirectness_stats) <-
 
 ## Visuals
 plot_BetweenTreeDirectnessxClassFocal<- SUAQ_treedirectness %>% 
-  ggplot( aes(x=SUAQ_fai.fai, y=tree_betweentravelled)) +
+  ggplot( aes(x=rr_treedirectness, y=tree_betweentravelled)) +
     scale_fill_viridis(discrete = TRUE, alpha=0.6) +
     geom_jitter(color="blue", size=2, alpha=0.2) +
-    geom_jitter(data=SUAQ_randomdirectness,aes(SUAQ_fai.fai,random_betweentravelled),color="red", size=2, alpha=1) +
+    geom_jitter(data=SUAQ_randomdirectness,aes(rr_randomdirectness,random_betweentravelled),color="red", size=2, alpha=0.2) +
     theme_ipsum() +
     theme(
       #legend.position="none",
@@ -667,14 +667,14 @@ anova(glm_minimum,glm_minimum_empty)
 anova(glm_minimum)
 
 #### looking at further explanatory variables
-glm_full <- lmer(rr_treedirectness~ClassFocal+rr_treedirectness+rain_eve+walevel_eve+rain_mo+temp_min_eve+temp_min_mo+avg_temp_tot+fai +(1 | tree_betweennumgps)+ (1 | manualDate),data=SUAQ_treedirectness_stats_naomit)
+glm_full <- lmer(rr_treedirectness~ClassFocal+rain_eve+walevel_eve+rain_mo+temp_min_eve+temp_min_mo+avg_temp_tot+fai +(1 | tree_betweennumgps)+ (1 | manualDate),data=SUAQ_treedirectness_stats_naomit)
 glm_empty <- lmer(rr_treedirectness~ (1 | tree_betweennumgps)+ (1 | manualDate),data=SUAQ_treedirectness_stats_naomit)
 anova(glm_full,glm_empty)
 anova(glm_full)
 
 SUAQ_treedirectness_stats_naomit_mother$ageOfCurrentOffspring
 #### looking at females only
-glm_mothers <- lmer(rr_treedirectness~ ageFromDOB+ageOfCurrentOffspring+(1 | tree_betweennumgps)+ (1 | manualDate),data=SUAQ_treedirectness_stats_naomit_mother)
+glm_mothers <- lmer(rr_treedirectness~rain_eve+walevel_eve+rain_mo+temp_min_eve+temp_min_mo+avg_temp_tot+fai+ ageFromDOB+ageOfCurrentOffspring+(1 | tree_betweennumgps)+ (1 | manualDate),data=SUAQ_treedirectness_stats_naomit_mother)
 glm_mothers_empty <- lmer(rr_treedirectness~ (1 | tree_betweennumgps)+ (1 | manualDate),data=SUAQ_treedirectness_stats_naomit_mother)
 anova(glm_mothers,glm_mothers_empty)
 anova(glm_mothers)
