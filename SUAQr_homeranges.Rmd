@@ -3102,17 +3102,23 @@ ggplot() +
   geom_jitter(data=all_homeranges_sf_selected,aes(focal,fruittree_normalized))
 ```
 
-```{r Homeranges simple overlaps - load created full datasets ,echo=FALSE, message=FALSE,comment=FALSE, warning=FALSE}
-### Load datasets if already available and adding right colnames because they are automatically cut probably by st_write function
-all_overlaps<- st_read(dsn="/Users/stefgr/Nextcloud/UZH/12_Semester/20200313_Masterthesis/R/data/Processed_data/all_overlaps_jaccard.shp")
+```{r Homeranges & Overlaps (With trees) - load created full datasets ,echo=FALSE, message=FALSE,comment=FALSE, warning=FALSE}
+# Load datasets if already available and adding right colnames because they are automatically cut probably by st_write function
+all_overlaps_sf<- st_read(dsn="/Users/stefgr/Nextcloud/UZH/12_Semester/20200313_Masterthesis/R/data/Processed_data/all_overlaps_jaccard.shp")
 colnames<- read.csv("/Users/stefgr/Nextcloud/UZH/12_Semester/20200313_Masterthesis/R/data/Processed_data/all_overlaps_jaccard.csv")
-colnames<- colnames$x
-colnames(all_overlaps) <- colnames
-all_homeranges_sf <- st_read(dsn="/Users/stefgr/Nextcloud/UZH/12_Semester/20200313_Masterthesis/R/data/Processed_data/all_homeranges_sf.shp")
-colnames<- read.csv("/Users/stefgr/Nextcloud/UZH/12_Semester/20200313_Masterthesis/R/data/Processed_data/all_homeranges_sf_colnames.csv")
-colnames<- colnames$x
-colnames(all_homeranges_sf) <- colnames
+colnames<- as.vector(colnames$x[!colnames$x %in% c("geometry")])
+colnames <- c(colnames,c("geometry"))
+colnames(all_overlaps_sf) <- colnames
+all_overlaps <- all_overlaps_sf %>% st_drop_geometry()
 
+# Load results from homerange creation and results of trees in homeranges
+all_homeranges_sf<- st_read(dsn="/Users/stefgr/Nextcloud/UZH/12_Semester/20200313_Masterthesis/R/data/Processed_data/all_homeranges_sf.shp")
+colnames<- read.csv("/Users/stefgr/Nextcloud/UZH/12_Semester/20200313_Masterthesis/R/data/Processed_data/all_homeranges_sf_colnames.csv")
+colnames<- as.vector(colnames$x[!colnames$x %in% c("geometry")])
+colnames <- c(colnames,c("geometry"))
+colnames(all_homeranges_sf) <- colnames
+### Create a non sf object aswell
+all_homeranges <- all_homeranges_sf %>% st_drop_geometry()
 
 
 ```
