@@ -428,19 +428,41 @@ bandwiths <- read_csv(paste0(imdir,paste(mostrecent$date[1], sep="")))
 ### Extent
 # use always same extent
 extentmargin <- 500
-axisshifty <- 125 # shift of axis in plots y axis
-axisshiftx <- -280 # shift of axis in plots x axis
-legendoffsetx <- 0
-legendoffsety <- 0
+extentfactor <- 0.1
+axisshifty <- 110 # shift of axis in plots x axis
+axisshiftx <- -50 # shift of axis in plots y axis
+    
+legendoffsetx <- 0.03
+legendoffsety <- -0.03
 xmin <- min(SUAQ_rangepoints_11all20_loc_females_10$E)-extentmargin 
 xmax <- max(SUAQ_rangepoints_11all20_loc_females_10$E)+extentmargin
 ymin <- min(SUAQ_rangepoints_11all20_loc_females_10$N)-extentmargin 
 ymax <- max(SUAQ_rangepoints_11all20_loc_females_10$N)+extentmargin
-step <- 200
-xmin_xmax_round_steps<- c(step*(ceiling(xmin/step)):(round(xmax/step)))
+step <- 25 # resolution size of grid used in plotting
+axisstep <- 200 # resolution size of grid used in plotting
+
+xmin_xmax_round_steps<- c(axisstep*(ceiling(xmin/axisstep)):(round(xmax/axisstep)))
 xmin_xmax_round_steps <- xmin_xmax_round_steps[2:(length(xmin_xmax_round_steps)-2)] #manual adjustment of tick breaks how many does it need
-ymin_ymax_round_steps<- c(step*(ceiling(ymin/step)):(round(ymax/step)))
+ymin_ymax_round_steps<- c(axisstep*(ceiling(ymin/axisstep)):(round(ymax/axisstep)))
 ymin_ymax_round_steps <- ymin_ymax_round_steps[2:(length(ymin_ymax_round_steps)-1)] #manual adjustment of tick breaks how many does it need
+
+# second approach
+#########same grid for all#########
+xgrid <- seq(xmin,xmax,by=step)
+ygrid <- seq(ymin,ymax,by=step)
+grid <- expand.grid(x=xgrid,y=ygrid)
+coordinates(grid) <- ~x+y
+gridded(grid) <- TRUE
+class(grid)
+
+# Extent for background layers
+SUAQ_river_sf_loc<- st_crop(SUAQ_river_sf_loc, c(xmin = xmin, ymin = ymin, xmax = xmax, ymax = ymax))
+SUAQ_smallriver_sf_loc<- st_crop(SUAQ_smallriver_sf_loc, c(xmin = xmin, ymin = ymin, xmax = xmax, ymax = ymax))
+SUAQ_contour_sf_loc<- st_crop(SUAQ_contour_sf_loc, c(xmin = xmin, ymin = ymin, xmax = xmax, ymax = ymax))
+SUAQ_station_sf_loc<- st_crop(SUAQ_station_sf_loc, c(xmin = xmin, ymin = ymin, xmax = xmax, ymax = ymax))
+
+
+
 
 #### research periods data as list
 # Split the data into 4 sampling periods. Calculate the respective HR.
@@ -1118,7 +1140,7 @@ for (i in selected_females){ # compute KDE home range for every individual
     ########## plot results ##########
 
     png(paste(imdir, selected_females[[iterator]],"_",gsub(" ", "", names(monthyear_list)[samplinginterval], fixed = TRUE), "_KDE_VUD_", methList[[j]], ".png", sep=""), width=1800, height=1400, res=240, units="px")
-    image(getvolumeUD(UD), xlab="x [m]",ylab="y [m]",xlim=c(xmin_xmax_round_steps[1],tail(xmin_xmax_round_steps,n=1)),ylim=c(ymin_ymax_round_steps[1],tail(ymin_ymax_round_steps,n=1)))
+    image(getvolumeUD(UD),xlim=c(xmin_xmax_round_steps[1],tail(xmin_xmax_round_steps,n=1)),ylim=c(ymin_ymax_round_steps[1],tail(ymin_ymax_round_steps,n=1)))
     plot(hr50, lty=3, lwd=1.5, border="azure4", add=T,axes=F)
     plot(hr95, lty=1, lwd=1, border="cadetblue2", add=T, axes=F)
     plot(hr99, lty=4, lwd=1, border="darkturquoise", add=T, axes=F)
@@ -1177,6 +1199,9 @@ dir.create(paste(
 imdir <- paste("output/Homeranges/KDE/periods/",format(Sys.Date(), "%Y%m%d"), "/", sep="")
 
 kde_results_perperiod <- data.frame() # results
+kde_overlap_UD_period <- list() # only for tital research period activate filter above
+indexitter <- 0
+
 for (samplinginterval in c(1:length(period_list))){
 print(paste("kdes for period: ",samplinginterval))
 ##### Determine the smoothing parameters
@@ -1187,6 +1212,7 @@ bandwiths <-  data.frame(focal=as_vector(selected_females),
                  hpi=vector(mode="numeric", length=length(selected_females)),hbcv=vector(mode="numeric", length=length(selected_females)),hscv=vector(mode="numeric", length=length(selected_females)),
                  stringsAsFactors=FALSE)
 iterator <- 1
+
 for (i in selected_females){
   print(paste("kdes for focal: ",i))
   xy_selected <- period_list[[samplinginterval]] %>% filter(focal%in%c(i)) %>% dplyr::select(E,N)
@@ -1223,62 +1249,94 @@ for (i in selected_females){ # compute KDE home range for every individual
 
   for (j in seq(1, length(methList))) { # compute one home range for each bandwidth method and individual
     if (j == 1) {
-      UD <- (kernelUD(xy_selected, grid=gridVal, extent=extVal, h="href"))
+      UD <- (kernelUD(xy_selected, grid=grid, extent=extentfactor, h="href"))
     }
     else if (j == 2) {
-      UD <- (kernelUD(xy_selected, grid=gridVal, extent=extVal, h=bandwiths[iterator,"hpi"]))
+      UD <- (kernelUD(xy_selected, grid=grid, extent=extentfactor, h=bandwiths[iterator,"hpi"]))
     }
     else if (j == 3) {
-      UD <- (kernelUD(xy_selected, grid=gridVal, extent=extVal, h=bandwiths[iterator,"hbcv"]))
+      UD <- (kernelUD(xy_selected, grid=grid, extent=extentfactor, h=bandwiths[iterator,"hbcv"]))
     }
     else if (j == 4) {
-      UD <- (kernelUD(xy_selected, grid=gridVal, extent=extVal, h=bandwiths[iterator,"hscv"])) 
+      UD <- (kernelUD(xy_selected, grid=grid, extent=extentfactor, h=bandwiths[iterator,"hscv"])) 
     }
     else {
       print("Error")
     }
-    hr99 <- getverticeshr(UD, percent=99,unin = c("m"),unout = c("km2"))
-    hr95 <- getverticeshr(UD, percent=95,unin = c("m"),unout = c("km2"))
-    hr50 <- getverticeshr(UD, percent=50,unin = c("m"),unout = c("km2"))
+    tryCatch(
+            expr = {
+              hr95 <- getverticeshr(UD, percent=95, standardize=TRUE,unin = c("m"),unout = c("km2"))
+              hr95_sf <- st_as_sf(hr95)
+            },
+            error = function(e){ 
+              hr95 <- NA
+              hr95_sf <- NA
+              message()
+              message(paste(selected_females[[iterator]],methList[[j]],n_gps,n_follows,samplinginterval,sep = " : "))
+            }
+        )
+      tryCatch(
+            expr = {
+              hr99 <- getverticeshr(UD, percent=99, standardize=TRUE,unin = c("m"),unout = c("km2"))
+              hr99_sf <- st_as_sf(hr99)
+            },
+            error = function(e){ 
+              hr99 <- NA
+              hr99_sf <- NA
+              message()
+              message(paste(selected_females[[iterator]],hminFactor[[l]],n_gps,n_follows,samplinginterval,sep = " : "))
+            }
+        )
+      tryCatch(
+            expr = {
+              hr50 <- getverticeshr(UD, percent=50, standardize=TRUE,unin = c("m"),unout = c("km2"))
+              hr50_sf <- st_as_sf(hr50)
+            },
+            error = function(e){ 
+              hr50 <- NA
+              hr50_sf <- NA
+              message(paste(selected_females[[iterator]],hminFactor[[l]],n_gps,n_follows,samplinginterval," getting hr percentage polygon didn't work",sep = " : "))
+            }
+        )
     
-    hr99_sf <- st_as_sf(hr99)
-    hr95_sf <- st_as_sf(hr95)
-    hr50_sf <- st_as_sf(hr50)
+    ########## save UD ##########
+    kde_overlap_UD_period[[1+indexitter]] <- list(selected_females[[iterator]],UD,"kde",methList[[j]],n_gps,n_follows,samplinginterval)
+    indexitter <- indexitter+1
     
-    ########## plot results ##########
+    ########## plot results #########
     png(paste(imdir, selected_females[[iterator]],"_",gsub(" ", "", names(period_list)[samplinginterval], fixed = TRUE), "_KDE_UD_", methList[[j]], ".png", sep=""), width=1800, height=1400, res=240, units="px")
     par(0,0,0,0)
-    image(UD, xlab="x [m]",ylab="y [m]",xlim=c(xmin_xmax_round_steps[1],tail(xmin_xmax_round_steps,n=1)),ylim=c(ymin_ymax_round_steps[1],tail(ymin_ymax_round_steps,n=1))) 
+    image(UD,xlim=c(xmin_xmax_round_steps[1],tail(xmin_xmax_round_steps,n=1)),ylim=c(ymin_ymax_round_steps[1],tail(ymin_ymax_round_steps,n=1)))
     plot(hr50, lty=3, lwd=1.5, border="darkseagreen3", add=T,axes=F)
     plot(hr95, lty=1, lwd=1, border="cadetblue2", add=T, axes=F)
     plot(hr99, lty=4, lwd=1, border="darkturquoise", add=T, axes=F)
     plot(SUAQ_contour_sf_loc,lty=3, lwd=0.2, col=alpha("black", 1), add=T, axes=F)
-    plot(SUAQ_station_sf_loc,pch = 21,cex=1.5, col=alpha("black", 0.7), add=T, axes=F)
-    plot(SUAQ_station_sf_loc,pch = 16,cex=1, col=alpha("darkred", 0.7),lwd=0.3, bg="darkred", add=T, axes=F)
+    plot(SUAQ_station_sf_loc,pch = 21,cex=1.5, col=alpha("black", 1), add=T, axes=F)
+    plot(SUAQ_station_sf_loc,pch = 16,cex=1, col=alpha("darkred", 1),lwd=0.3, bg="darkred", add=T, axes=F)
     plot(SUAQ_river_sf_loc,lty=1, lwd=0.3, col=alpha("cornflowerblue", 0.7), add=T, axes=F)
     plot(SUAQ_pathnetwork_sf_loc, lty=1, lwd=0.3, col=alpha("darkolivegreen", 0.7), add=T, axes=F)
     axis(1, at=xmin_xmax_round_steps,pos=ymin+axisshifty) # x axis
     axis(2, at=ymin_ymax_round_steps, pos=xmin+axisshiftx)
     #text(xmin-550, (ymin+ymax)/2, "y [m]", adj=c(NA,-4), srt=90)
     title(paste(selected_females[[iterator]], ": KDE ", "(", methListTitle[[j]], ")", sep=""), line=-1.5)
-    legend("topright", c("HR 50%", "HR 95%", "HR 100%","Trail","River"), col=c("coral1", "cadetblue2", "darkturquoise","darkred",alpha("cornflowerblue", 0.7)), lwd=c(2.5,2,2,0.3,4), lty=c(3,1,4,1,1), inset=c(legendoffsety,legendoffsety))
+    legend("topright", c("HR 50%", "HR 95%", "HR 99%","Trail","River"), col=c("coral1", "cadetblue2", "darkturquoise","darkred",alpha("cornflowerblue", 0.7)), lwd=c(2.5,2,2,0.3,4), lty=c(3,1,4,1,1), inset=c(legendoffsetx,legendoffsety), border=NA,box.lwd=NA)
     dev.off()
 
     png(paste(imdir, selected_females[[iterator]],"_",gsub(" ", "", names(period_list)[samplinginterval], fixed = TRUE), "_KDE_VUD_", methList[[j]], ".png", sep=""), width=1800, height=1400, res=240, units="px")
-    image(getvolumeUD(UD), xlab="x [m]",ylab="y [m]",xlim=c(xmin_xmax_round_steps[1],tail(xmin_xmax_round_steps,n=1)),ylim=c(ymin_ymax_round_steps[1],tail(ymin_ymax_round_steps,n=1)))
+    image(getvolumeUD(UD),xlim=c(xmin_xmax_round_steps[1],tail(xmin_xmax_round_steps,n=1)),ylim=c(ymin_ymax_round_steps[1],tail(ymin_ymax_round_steps,n=1)))
     plot(hr50, lty=3, lwd=1.5, border="azure4", add=T,axes=F)
     plot(hr95, lty=1, lwd=1, border="cadetblue2", add=T, axes=F)
     plot(hr99, lty=4, lwd=1, border="darkturquoise", add=T, axes=F)
     plot(SUAQ_contour_sf_loc,lty=3, lwd=0.2, col=alpha("black", 1), add=T, axes=F)
-    plot(SUAQ_station_sf_loc,pch = 21,cex=1.5, col=alpha("black", 0.7), add=T, axes=F)
-    plot(SUAQ_station_sf_loc,pch = 16,cex=1, col=alpha("darkred", 0.7),lwd=0.3, bg="darkred", add=T, axes=F)
+    plot(SUAQ_station_sf_loc,pch = 21,cex=1.5, col=alpha("black", 1), add=T, axes=F)
+    plot(SUAQ_station_sf_loc,pch = 16,cex=1, col=alpha("darkred", 1),lwd=0.3, bg="darkred", add=T, axes=F)
     plot(SUAQ_river_sf_loc,lty=1, lwd=0.3, col=alpha("cornflowerblue", 0.7), add=T, axes=F)
     plot(SUAQ_pathnetwork_sf_loc, lty=1, lwd=0.3, col=alpha("darkolivegreen", 0.7), add=T, axes=F)
     axis(1, at=xmin_xmax_round_steps,pos=ymin+axisshifty) # x axis
     axis(2, at=ymin_ymax_round_steps, pos=xmin+axisshiftx)
     #text(xmin-500, (ymin+ymax)/2, "y [m]", adj=c(NA,-4), srt=90)
     title(paste(selected_females[[iterator]], ": KDE ", "(", methListTitle[[j]], ")", sep=""), line=-1.5)
-    legend("topright", c("HR 50%", "HR 95%", "HR 100%","Trail","River"), col=c("coral1", "cadetblue2", "darkturquoise","darkred",alpha("cornflowerblue", 0.7)), lwd=c(2.5,2,2,0.3,4), lty=c(3,1,4,1,1), inset=c(legendoffsety,legendoffsety))
+    legend("topright", c("HR 50%", "HR 95%", "HR 99%","Trail","River"), col=c("coral1", "cadetblue2", "darkturquoise","darkred",alpha("cornflowerblue", 0.7)), lwd=c(2.5,2,2,0.3,4), lty=c(3,1,4,1,1), inset=c(legendoffsetx,legendoffsety), border=NA,box.lwd=NA)
     dev.off()
     
     results_selectedmethod <- data.frame(bandwithmethod=c(methList[[j]],methList[[j]],methList[[j]]),
@@ -1323,8 +1381,11 @@ dir.create(paste(
     format(Sys.Date(), "%Y%m%d"),
     sep = ""
   ))
+imdir <- paste("output/Homeranges/KDE/years/",format(Sys.Date(), "%Y%m%d"), "/", sep="")
 
 kde_results_perperyear <- data.frame() # results
+kde_overlap_UD_year <- list() # only for tital research period activate filter above
+indexitter <- 0
 for (samplinginterval in c(1:length(year_list))){
 print(paste("kdes for period: ",samplinginterval))
 ##### Determine the smoothing parameters
@@ -1353,6 +1414,7 @@ rownames(bandwiths) <- c(1:length(selected_females))
 
 ### KDE: Calculate UD, HR
 iterator <- 1
+
 results_focal <- data.frame()
 for (i in selected_females){ # compute KDE home range for every individual
   n_follows <- year_list[[samplinginterval]] %>% filter(focal%in%c(i)) %>% group_by(follow) %>% summarise() %>% nrow()
@@ -1371,70 +1433,94 @@ for (i in selected_females){ # compute KDE home range for every individual
 
   for (j in seq(1, length(methList))) { # compute one home range for each bandwidth method and individual
     if (j == 1) {
-      UD <- (kernelUD(xy_selected, grid=gridVal, extent=extVal, h="href"))
+      UD <- (kernelUD(xy_selected, grid=grid, extent=extentfactor, h="href"))
     }
     else if (j == 2) {
-      UD <- (kernelUD(xy_selected, grid=gridVal, extent=extVal, h=bandwiths[iterator,"hpi"]))
+      UD <- (kernelUD(xy_selected, grid=grid, extent=extentfactor, h=bandwiths[iterator,"hpi"]))
     }
     else if (j == 3) {
-      UD <- (kernelUD(xy_selected, grid=gridVal, extent=extVal, h=bandwiths[iterator,"hbcv"]))
+      UD <- (kernelUD(xy_selected, grid=grid, extent=extentfactor, h=bandwiths[iterator,"hbcv"]))
     }
     else if (j == 4) {
-      UD <- (kernelUD(xy_selected, grid=gridVal, extent=extVal, h=bandwiths[iterator,"hscv"])) 
+      UD <- (kernelUD(xy_selected, grid=grid, extent=extentfactor, h=bandwiths[iterator,"hscv"])) 
     }
     else {
       print("Error")
     }
-    hr99 <- getverticeshr(UD, percent=99,unin = c("m"),unout = c("km2"))
-    hr95 <- getverticeshr(UD, percent=95,unin = c("m"),unout = c("km2"))
-    hr50 <- getverticeshr(UD, percent=50,unin = c("m"),unout = c("km2"))
+    tryCatch(
+            expr = {
+              hr95 <- getverticeshr(UD, percent=95, standardize=TRUE,unin = c("m"),unout = c("km2"))
+              hr95_sf <- st_as_sf(hr95)
+            },
+            error = function(e){ 
+              hr95 <- NA
+              hr95_sf <- NA
+              message()
+              message(paste(selected_females[[iterator]],methList[[j]],n_gps,n_follows,samplinginterval,sep = " : "))
+            }
+        )
+      tryCatch(
+            expr = {
+              hr99 <- getverticeshr(UD, percent=99, standardize=TRUE,unin = c("m"),unout = c("km2"))
+              hr99_sf <- st_as_sf(hr99)
+            },
+            error = function(e){ 
+              hr99 <- NA
+              hr99_sf <- NA
+              message()
+              message(paste(selected_females[[iterator]],hminFactor[[l]],n_gps,n_follows,samplinginterval,sep = " : "))
+            }
+        )
+      tryCatch(
+            expr = {
+              hr50 <- getverticeshr(UD, percent=50, standardize=TRUE,unin = c("m"),unout = c("km2"))
+              hr50_sf <- st_as_sf(hr50)
+            },
+            error = function(e){ 
+              hr50 <- NA
+              hr50_sf <- NA
+              message(paste(selected_females[[iterator]],hminFactor[[l]],n_gps,n_follows,samplinginterval," getting hr percentage polygon didn't work",sep = " : "))
+            }
+        )
     
-    hr99_sf <- st_as_sf(hr99)
-    hr95_sf <- st_as_sf(hr95)
-    hr50_sf <- st_as_sf(hr50)
+    ########## save UD ##########
+    kde_overlap_UD_year[[1+indexitter]] <- list(selected_females[[iterator]],UD,"kde",methList[[j]],n_gps,n_follows,names(year_list)[samplinginterval])
+    indexitter <- indexitter+1
     
-    ########## plot results ##########
-    imdir <- paste("output/Homeranges/KDE/years/",format(Sys.Date(), "%Y%m%d"), "/", sep="")
-    imdirUD <- paste("output/Homeranges/KDE/years/",format(Sys.Date(), "%Y%m%d"),"/", sep="")
-    step <- 200
-    xmin_xmax_round_steps<- c(step*(ceiling(xmin/step)):(round(xmax/step)))
-    xmin_xmax_round_steps <- xmin_xmax_round_steps[2:(length(xmin_xmax_round_steps)-2)] #manual adjustment of tick breaks how many does it need
-    ymin_ymax_round_steps<- c(step*(ceiling(ymin/step)):(round(ymax/step)))
-    ymin_ymax_round_steps <- ymin_ymax_round_steps[2:(length(ymin_ymax_round_steps)-1)] #manual adjustment of tick breaks how many does it need
-
-    png(paste(imdirUD, selected_females[[iterator]],"_",gsub(" ", "", names(year_list)[samplinginterval], fixed = TRUE), "_KDE_UD_", methList[[j]], ".png", sep=""), width=1800, height=1400, res=240, units="px")
+    ########## plot results #########
+    png(paste(imdir, selected_females[[iterator]],"_",gsub(" ", "", names(year_list)[samplinginterval], fixed = TRUE), "_KDE_UD_", methList[[j]], ".png", sep=""), width=1800, height=1400, res=240, units="px")
     par(0,0,0,0)
-    image(UD, xlab="x [m]",ylab="y [m]",xlim=c(xmin_xmax_round_steps[1],tail(xmin_xmax_round_steps,n=1)),ylim=c(ymin_ymax_round_steps[1],tail(ymin_ymax_round_steps,n=1))) 
+    image(UD,xlim=c(xmin_xmax_round_steps[1],tail(xmin_xmax_round_steps,n=1)),ylim=c(ymin_ymax_round_steps[1],tail(ymin_ymax_round_steps,n=1))) 
     plot(hr50, lty=3, lwd=1.5, border="darkseagreen3", add=T,axes=F)
     plot(hr95, lty=1, lwd=1, border="cadetblue2", add=T, axes=F)
     plot(hr99, lty=4, lwd=1, border="darkturquoise", add=T, axes=F)
     plot(SUAQ_contour_sf_loc,lty=3, lwd=0.2, col=alpha("black", 1), add=T, axes=F)
-    plot(SUAQ_station_sf_loc,pch = 21,cex=1.5, col=alpha("black", 0.7), add=T, axes=F)
-    plot(SUAQ_station_sf_loc,pch = 16,cex=1, col=alpha("darkred", 0.7),lwd=0.3, bg="darkred", add=T, axes=F)
+    plot(SUAQ_station_sf_loc,pch = 21,cex=1.5, col=alpha("black", 1), add=T, axes=F)
+    plot(SUAQ_station_sf_loc,pch = 16,cex=1, col=alpha("darkred", 1),lwd=0.3, bg="darkred", add=T, axes=F)
     plot(SUAQ_river_sf_loc,lty=1, lwd=0.3, col=alpha("cornflowerblue", 0.7), add=T, axes=F)
     plot(SUAQ_pathnetwork_sf_loc, lty=1, lwd=0.3, col=alpha("darkolivegreen", 0.7), add=T, axes=F)
     axis(1, at=xmin_xmax_round_steps,pos=ymin+axisshifty) # x axis
     axis(2, at=ymin_ymax_round_steps, pos=xmin+axisshiftx)
     #text(xmin-550, (ymin+ymax)/2, "y [m]", adj=c(NA,-4), srt=90)
     title(paste(selected_females[[iterator]], ": KDE ", "(", methListTitle[[j]], ")", sep=""), line=-1.5)
-    legend("topright", c("HR 50%", "HR 95%", "HR 100%","Trail","River"), col=c("coral1", "cadetblue2", "darkturquoise","darkred",alpha("cornflowerblue", 0.7)), lwd=c(2.5,2,2,0.3,4), lty=c(3,1,4,1,1), inset=c(legendoffsety,legendoffsety))
+    legend("topright", c("HR 50%", "HR 95%", "HR 99%","Trail","River"), col=c("coral1", "cadetblue2", "darkturquoise","darkred",alpha("cornflowerblue", 0.7)), lwd=c(2.5,2,2,0.3,4), lty=c(3,1,4,1,1), inset=c(legendoffsetx,legendoffsety), border=NA,box.lwd=NA)
     dev.off()
 
     png(paste(imdir, selected_females[[iterator]],"_",gsub(" ", "", names(year_list)[samplinginterval], fixed = TRUE), "_KDE_VUD_", methList[[j]], ".png", sep=""), width=1800, height=1400, res=240, units="px")
-    image(getvolumeUD(UD), xlab="x [m]",ylab="y [m]",xlim=c(xmin_xmax_round_steps[1],tail(xmin_xmax_round_steps,n=1)),ylim=c(ymin_ymax_round_steps[1],tail(ymin_ymax_round_steps,n=1)))
+    image(getvolumeUD(UD), xlim=c(xmin_xmax_round_steps[1],tail(xmin_xmax_round_steps,n=1)),ylim=c(ymin_ymax_round_steps[1],tail(ymin_ymax_round_steps,n=1)))
     plot(hr50, lty=3, lwd=1.5, border="azure4", add=T,axes=F)
     plot(hr95, lty=1, lwd=1, border="cadetblue2", add=T, axes=F)
     plot(hr99, lty=4, lwd=1, border="darkturquoise", add=T, axes=F)
     plot(SUAQ_contour_sf_loc,lty=3, lwd=0.2, col=alpha("black", 1), add=T, axes=F)
-    plot(SUAQ_station_sf_loc,pch = 21,cex=1.5, col=alpha("black", 0.7), add=T, axes=F)
-    plot(SUAQ_station_sf_loc,pch = 16,cex=1, col=alpha("darkred", 0.7),lwd=0.3, bg="darkred", add=T, axes=F)
+    plot(SUAQ_station_sf_loc,pch = 21,cex=1.5, col=alpha("black", 1), add=T, axes=F)
+    plot(SUAQ_station_sf_loc,pch = 16,cex=1, col=alpha("darkred", 1),lwd=0.3, bg="darkred", add=T, axes=F)
     plot(SUAQ_river_sf_loc,lty=1, lwd=0.3, col=alpha("cornflowerblue", 0.7), add=T, axes=F)
     plot(SUAQ_pathnetwork_sf_loc, lty=1, lwd=0.3, col=alpha("darkolivegreen", 0.7), add=T, axes=F)
-    axis(1, at=xmin_xmax_round_steps,pos=ymin+150) # x axis
-    axis(2, at=ymin_ymax_round_steps, pos=xmin-500)
+    axis(1, at=xmin_xmax_round_steps,pos=ymin+axisshifty) # x axis
+    axis(2, at=ymin_ymax_round_steps, pos=xmin+axisshiftx)
     #text(xmin-500, (ymin+ymax)/2, "y [m]", adj=c(NA,-4), srt=90)
     title(paste(selected_females[[iterator]], ": KDE ", "(", methListTitle[[j]], ")", sep=""), line=-1.5)
-    legend("topright", c("HR 50%", "HR 95%", "HR 100%","Trail","River"), col=c("coral1", "cadetblue2", "darkturquoise","darkred",alpha("cornflowerblue", 0.7)), lwd=c(2.5,2,2,0.3,4), lty=c(3,1,4,1,1), inset=c(legendoffsety,legendoffsety))
+    legend("topright", c("HR 50%", "HR 95%", "HR 99%","Trail","River"), col=c("coral1", "cadetblue2", "darkturquoise","darkred",alpha("cornflowerblue", 0.7)), lwd=c(2.5,2,2,0.3,4), lty=c(3,1,4,1,1), inset=c(legendoffsetx,legendoffsety), border=NA,box.lwd=NA)
     dev.off()
     
     results_selectedmethod <- data.frame(bandwithmethod=c(methList[[j]],methList[[j]],methList[[j]]),
@@ -2012,8 +2098,10 @@ imdir <- paste("output/Homeranges/BRB/periods/",format(Sys.Date(), "%Y%m%d"), "/
 
 #### retrieve sampling intervals
 mainSI <- rep(30,length(selected_females))
-
+indexitter <- 0
 brb_list <- data.frame() # results
+brb_overlap_UD_period <- list() # only for tital research period activate filter above
+
 for (samplinginterval in c(1:length(period_list))){
   print(paste("brb for period: ",samplinginterval))
   ##### Determine the smoothing parameters
@@ -2021,7 +2109,6 @@ for (samplinginterval in c(1:length(period_list))){
   selected_females <- as_vector(selected_females)
   
   iterator <- 1
-  indexitter <- 0
   for (i in selected_females) { # do the following for every animal in the list
     print(paste("brb for focal: ",i))
     n_follows <- period_list[[samplinginterval]] %>% filter(focal%in%c(i)) %>%
@@ -2076,56 +2163,83 @@ for (samplinginterval in c(1:length(period_list))){
       start_time <- Sys.time()
       hmin <- hminFactor[[l]]*hminRef
       if(xy_selected_toolessdata){# only execute when enough data
-      UD <- BRB(traj, D=vv, Tmax=tmax, Lmin=lmin, hmin=hmin, b=T, same4all=T, grid=gridVal, extent=extVal, filtershort=T, type="UD")
-      hr95 <- getverticeshr(UD, percent=95, standardize=TRUE,unin = c("m"),unout = c("km2"))
-      hr50 <- getverticeshr(UD, percent=50, standardize=TRUE,unin = c("m"),unout = c("km2"))
-      hr99 <- getverticeshr(UD, percent=99, standardize=TRUE,unin = c("m"),unout = c("km2"))
-      hr95_sf <- st_as_sf(hr95)
-      hr50_sf <- st_as_sf(hr50)
-      hr99_sf <- st_as_sf(hr99)
+      UD <- BRB(traj, D=vv, Tmax=tmax, Lmin=lmin, hmin=hmin, b=T,  grid=grid, extent=extentfactor, filtershort=T, type="UD")
+
+      tryCatch(
+            expr = {
+              hr95 <- getverticeshr(UD, percent=95, standardize=TRUE,unin = c("m"),unout = c("km2"))
+              hr95_sf <- st_as_sf(hr95)
+            },
+            error = function(e){ 
+              hr95 <- NA
+              hr95_sf <- NA
+              message()
+              message(paste(i,hminFactor[[l]],n_gps,n_follows,samplinginterval,sep = " : "))
+            }
+        )
+      tryCatch(
+            expr = {
+              hr99 <- getverticeshr(UD, percent=99, standardize=TRUE,unin = c("m"),unout = c("km2"))
+              hr99_sf <- st_as_sf(hr99)
+            },
+            error = function(e){ 
+              hr99 <- NA
+              hr99_sf <- NA
+              message()
+              message(paste(i,hminFactor[[l]],n_gps,n_follows,samplinginterval,sep = " : "))
+            }
+        )
+      tryCatch(
+            expr = {
+              hr50 <- getverticeshr(UD, percent=50, standardize=TRUE,unin = c("m"),unout = c("km2"))
+              hr50_sf <- st_as_sf(hr50)
+            },
+            error = function(e){ 
+              hr50 <- NA
+              hr50_sf <- NA
+              message(paste(i,hminFactor[[l]],n_gps,n_follows,samplinginterval," getting hr percentage polygon didn't work",sep = " : "))
+            }
+        )
+
       
-      par(0,0,0,0)
-      step <- 200
+      ########## save UD ##########
+      brb_overlap_UD_period[[1+indexitter]] <- list(i,UD,"brb",hminFactor[[l]],n_gps,n_follows,names(period_list)[samplinginterval])
+      indexitter <- indexitter+1
+      
       
       ########## plot results ##########
       hminTxt <- gsub(".", "_", as.character(hminFactor[[l]]), fixed=T)
-      xmin_xmax_round_steps<- c(step*(ceiling(xmin/step)):(round(xmax/step)))
-      xmin_xmax_round_steps <- xmin_xmax_round_steps[2:(length(xmin_xmax_round_steps)-2)] #manual adjustment of tick breaks how many does it need
-      ymin_ymax_round_steps<- c(step*(ceiling(ymin/step)):(round(ymax/step)))
-      ymin_ymax_round_steps <- ymin_ymax_round_steps[2:(length(ymin_ymax_round_steps)-1)] #manual adjustment of tick breaks how many does it need    
-      
-  
       
       png(paste(imdir,i, "_BRB_UD_", hminTxt,"_",names(period_list)[samplinginterval], ".png", sep=""), width=1800, height=1400, res=240, units="px")
-      image(UD, xlab="x [m]",ylab="y [m]",xlim=c(xmin_xmax_round_steps[1],tail(xmin_xmax_round_steps,n=1)),ylim=c(ymin_ymax_round_steps[1],tail(ymin_ymax_round_steps,n=1))) 
+      image(UD,xlim=c(xmin_xmax_round_steps[1],tail(xmin_xmax_round_steps,n=1)),ylim=c(ymin_ymax_round_steps[1],tail(ymin_ymax_round_steps,n=1))) 
       plot(hr50, lty=3, lwd=1.5, border="darkseagreen3", add=T,axes=F)
       plot(hr95, lty=1, lwd=1, border="cadetblue2", add=T, axes=F)
       plot(hr99, lty=4, lwd=1, border="darkturquoise", add=T, axes=F)
       plot(SUAQ_contour_sf_loc,lty=3, lwd=0.2, col=alpha("black", 1), add=T, axes=F)
-      plot(SUAQ_station_sf_loc,pch = 21,cex=1.5, col=alpha("black", 0.7), add=T, axes=F)
-      plot(SUAQ_station_sf_loc,pch = 16,cex=1, col=alpha("darkred", 0.7),lwd=0.3, bg="darkred", add=T, axes=F)
+      plot(SUAQ_station_sf_loc,pch = 21,cex=1.5, col=alpha("black", 1), add=T, axes=F)
+      plot(SUAQ_station_sf_loc,pch = 16,cex=1, col=alpha("darkred", 1),lwd=0.3, bg="darkred", add=T, axes=F)
       plot(SUAQ_river_sf_loc,lty=1, lwd=0.3, col=alpha("cornflowerblue", 0.7), add=T, axes=F)
       plot(SUAQ_pathnetwork_sf_loc, lty=1, lwd=0.3, col=alpha("darkolivegreen", 0.7), add=T, axes=F)
       axis(1, at=xmin_xmax_round_steps,pos=ymin+axisshifty) # x axis
       axis(2, at=ymin_ymax_round_steps, pos=xmin+axisshiftx)
       title(paste(i, ": BRB (", hminFactor[[l]], "*hmin)", sep=""), line=-1.5)
-      legend("topright", c("HR 50%", "HR 95%", "HR 100%","Trail","River"), col=c("coral1", "cadetblue2", "darkturquoise","darkred",alpha("cornflowerblue", 0.7)), lwd=c(2.5,2,2,0.3,4), lty=c(3,1,4,1,1), inset=c(legendoffsety,legendoffsety))
+      legend("topright", c("HR 50%", "HR 95%", "HR 99%","Trail","River"), col=c("coral1", "cadetblue2", "darkturquoise","darkred",alpha("cornflowerblue", 0.7)), lwd=c(2.5,2,2,0.3,4), lty=c(3,1,4,1,1), inset=c(legendoffsetx,legendoffsety), border=NA,box.lwd=NA)
       dev.off()
       
       png(paste(imdir,i, "_BRB_VUD_", hminTxt,"_",names(period_list)[samplinginterval], ".png", sep=""), width=1800, height=1400, res=240, units="px")
-      image(getvolumeUD(UD), xlab="x [m]",ylab="y [m]",xlim=c(xmin_xmax_round_steps[1],tail(xmin_xmax_round_steps,n=1)),ylim=c(ymin_ymax_round_steps[1],tail(ymin_ymax_round_steps,n=1))) 
+      image(getvolumeUD(UD),xlim=c(xmin_xmax_round_steps[1],tail(xmin_xmax_round_steps,n=1)),ylim=c(ymin_ymax_round_steps[1],tail(ymin_ymax_round_steps,n=1))) 
       plot(hr50, lty=3, lwd=1.5, border="darkseagreen3", add=T,axes=F)
       plot(hr95, lty=1, lwd=1, border="cadetblue2", add=T, axes=F)
       plot(hr99, lty=4, lwd=1, border="darkturquoise", add=T, axes=F)
       plot(SUAQ_contour_sf_loc,lty=3, lwd=0.2, col=alpha("black", 1), add=T, axes=F)
-      plot(SUAQ_station_sf_loc,pch = 21,cex=1.5, col=alpha("black", 0.7), add=T, axes=F)
-      plot(SUAQ_station_sf_loc,pch = 16,cex=1, col=alpha("darkred", 0.7),lwd=0.3, bg="darkred", add=T, axes=F)
+      plot(SUAQ_station_sf_loc,pch = 21,cex=1.5, col=alpha("black", 1), add=T, axes=F)
+      plot(SUAQ_station_sf_loc,pch = 16,cex=1, col=alpha("darkred", 1),lwd=0.3, bg="darkred", add=T, axes=F)
       plot(SUAQ_river_sf_loc,lty=1, lwd=0.3, col=alpha("cornflowerblue", 0.7), add=T, axes=F)
       plot(SUAQ_pathnetwork_sf_loc, lty=1, lwd=0.3, col=alpha("darkolivegreen", 0.7), add=T, axes=F)
       axis(1, at=xmin_xmax_round_steps,pos=ymin+axisshifty) # x axis
       axis(2, at=ymin_ymax_round_steps, pos=xmin+axisshiftx)
       title(paste(i, ": BRB (", hminFactor[[l]], "*hmin)", sep=""), line=-1.5)
-      legend("topright", c("HR 50%", "HR 95%", "HR 100%","Trail","River"), col=c("coral1", "cadetblue2", "darkturquoise","darkred",alpha("cornflowerblue", 0.7)), lwd=c(2.5,2,2,0.3,4), lty=c(3,1,4,1,1), inset=c(legendoffsety,legendoffsety))
+      legend("topright", c("HR 50%", "HR 95%", "HR 99%","Trail","River"), col=c("coral1", "cadetblue2", "darkturquoise","darkred",alpha("cornflowerblue", 0.7)), lwd=c(2.5,2,2,0.3,4), lty=c(3,1,4,1,1), inset=c(legendoffsetx,legendoffsety), border=NA,box.lwd=NA)
       dev.off()}
       
       end_time <- Sys.time()
@@ -2282,8 +2396,10 @@ imdir <- paste("output/Homeranges/BRB/years/",format(Sys.Date(), "%Y%m%d"), "/",
 
 #### retrieve sampling intervals
 mainSI <- rep(30,length(selected_females))
-
+indexitter <- 0
 brb_list <- data.frame() # results
+brb_overlap_UD_year <- list() # only for tital research period activate filter above
+
 for (samplinginterval in c(1:length(year_list))){
   print(paste("brb for year: ",samplinginterval))
   ##### Determine the smoothing parameters
@@ -2345,29 +2461,54 @@ for (samplinginterval in c(1:length(year_list))){
       start_time <- Sys.time()
       hmin <- hminFactor[[l]]*hminRef
       if(xy_selected_toolessdata){# only execute when enough data
-      UD <- BRB(traj, D=vv, Tmax=tmax, Lmin=lmin, hmin=hmin, b=T, same4all=T, grid=gridVal, extent=extVal, filtershort=T, type="UD")
+      UD <- BRB(traj, D=vv, Tmax=tmax, Lmin=lmin, hmin=hmin, b=T,  grid=grid, extent=extentfactor, filtershort=T, type="UD")
+
+      tryCatch(
+            expr = {
+              hr95 <- getverticeshr(UD, percent=95, standardize=TRUE,unin = c("m"),unout = c("km2"))
+              hr95_sf <- st_as_sf(hr95)
+            },
+            error = function(e){ 
+              hr95 <- NA
+              hr95_sf <- NA
+              message()
+              message(paste(i,hminFactor[[l]],n_gps,n_follows,samplinginterval,sep = " : "))
+            }
+        )
+      tryCatch(
+            expr = {
+              hr99 <- getverticeshr(UD, percent=99, standardize=TRUE,unin = c("m"),unout = c("km2"))
+              hr99_sf <- st_as_sf(hr99)
+            },
+            error = function(e){ 
+              hr99 <- NA
+              hr99_sf <- NA
+              message()
+              message(paste(i,hminFactor[[l]],n_gps,n_follows,samplinginterval,sep = " : "))
+            }
+        )
+      tryCatch(
+            expr = {
+              hr50 <- getverticeshr(UD, percent=50, standardize=TRUE,unin = c("m"),unout = c("km2"))
+              hr50_sf <- st_as_sf(hr50)
+            },
+            error = function(e){ 
+              hr50 <- NA
+              hr50_sf <- NA
+              message(paste(i,hminFactor[[l]],n_gps,n_follows,samplinginterval," getting hr percentage polygon didn't work",sep = " : "))
+            }
+        )
+
       
-      hr95 <- getverticeshr(UD, percent=95, standardize=TRUE,unin = c("m"),unout = c("km2"))
-      hr50 <- getverticeshr(UD, percent=50, standardize=TRUE,unin = c("m"),unout = c("km2"))
-      hr99 <- getverticeshr(UD, percent=99, standardize=TRUE,unin = c("m"),unout = c("km2"))
-      hr95_sf <- st_as_sf(hr95)
-      hr50_sf <- st_as_sf(hr50)
-      hr99_sf <- st_as_sf(hr99)
-      
-      par(0,0,0,0)
-      step <- 200
+      ########## save UD ##########
+      brb_overlap_UD_year[[1+indexitter]] <- list(i,UD,"brb",hminFactor[[l]],n_gps,n_follows,names(period_list)[samplinginterval])
+      indexitter <- indexitter+1
       
       ########## plot results ##########
       hminTxt <- gsub(".", "_", as.character(hminFactor[[l]]), fixed=T)
-      xmin_xmax_round_steps<- c(step*(ceiling(xmin/step)):(round(xmax/step)))
-      xmin_xmax_round_steps <- xmin_xmax_round_steps[2:(length(xmin_xmax_round_steps)-2)] #manual adjustment of tick breaks how many does it need
-      ymin_ymax_round_steps<- c(step*(ceiling(ymin/step)):(round(ymax/step)))
-      ymin_ymax_round_steps <- ymin_ymax_round_steps[2:(length(ymin_ymax_round_steps)-1)] #manual adjustment of tick breaks how many does it need    
-      
-  
       
       png(paste(imdir,i, "_BRB_UD_", hminTxt,"_",names(year_list)[samplinginterval], ".png", sep=""), width=1800, height=1400, res=240, units="px")
-      image(UD, xlab="x [m]",ylab="y [m]",xlim=c(xmin_xmax_round_steps[1],tail(xmin_xmax_round_steps,n=1)),ylim=c(ymin_ymax_round_steps[1],tail(ymin_ymax_round_steps,n=1))) 
+      image(UD,xlim=c(xmin_xmax_round_steps[1],tail(xmin_xmax_round_steps,n=1)),ylim=c(ymin_ymax_round_steps[1],tail(ymin_ymax_round_steps,n=1))) 
       plot(hr50, lty=3, lwd=1.5, border="darkseagreen3", add=T,axes=F)
       plot(hr95, lty=1, lwd=1, border="cadetblue2", add=T, axes=F)
       plot(hr99, lty=4, lwd=1, border="darkturquoise", add=T, axes=F)
@@ -2379,11 +2520,11 @@ for (samplinginterval in c(1:length(year_list))){
       axis(1, at=xmin_xmax_round_steps,pos=ymin+axisshifty) # x axis
       axis(2, at=ymin_ymax_round_steps, pos=xmin+axisshiftx)
       title(paste(i, ": BRB (", hminFactor[[l]], "*hmin)", sep=""), line=-1.5)
-      legend("topright", c("HR 50%", "HR 95%", "HR 100%","Trail","River"), col=c("coral1", "cadetblue2", "darkturquoise","darkred",alpha("cornflowerblue", 0.7)), lwd=c(2.5,2,2,0.3,4), lty=c(3,1,4,1,1), inset=c(legendoffsety,legendoffsety))
+      legend("topright", c("HR 50%", "HR 95%", "HR 99%","Trail","River"), col=c("coral1", "cadetblue2", "darkturquoise","darkred",alpha("cornflowerblue", 0.7)), lwd=c(2.5,2,2,0.3,4), lty=c(3,1,4,1,1), inset=c(legendoffsety,legendoffsety), border=NA,box.lwd=NA)
       dev.off()
       
       png(paste(imdir,i, "_BRB_VUD_", hminTxt,"_",names(year_list)[samplinginterval], ".png", sep=""), width=1800, height=1400, res=240, units="px")
-      image(getvolumeUD(UD), xlab="x [m]",ylab="y [m]",xlim=c(xmin_xmax_round_steps[1],tail(xmin_xmax_round_steps,n=1)),ylim=c(ymin_ymax_round_steps[1],tail(ymin_ymax_round_steps,n=1))) 
+      image(getvolumeUD(UD),xlim=c(xmin_xmax_round_steps[1],tail(xmin_xmax_round_steps,n=1)),ylim=c(ymin_ymax_round_steps[1],tail(ymin_ymax_round_steps,n=1))) 
       plot(hr50, lty=3, lwd=1.5, border="darkseagreen3", add=T,axes=F)
       plot(hr95, lty=1, lwd=1, border="cadetblue2", add=T, axes=F)
       plot(hr99, lty=4, lwd=1, border="darkturquoise", add=T, axes=F)
@@ -2395,7 +2536,7 @@ for (samplinginterval in c(1:length(year_list))){
       axis(1, at=xmin_xmax_round_steps,pos=ymin+axisshifty) # x axis
       axis(2, at=ymin_ymax_round_steps, pos=xmin+axisshiftx)
       title(paste(i, ": BRB (", hminFactor[[l]], "*hmin)", sep=""), line=-1.5)
-      legend("topright", c("HR 50%", "HR 95%", "HR 100%","Trail","River"), col=c("coral1", "cadetblue2", "darkturquoise","darkred",alpha("cornflowerblue", 0.7)), lwd=c(2.5,2,2,0.3,4), lty=c(3,1,4,1,1), inset=c(legendoffsety,legendoffsety))
+      legend("topright", c("HR 50%", "HR 95%", "HR 99%","Trail","River"), col=c("coral1", "cadetblue2", "darkturquoise","darkred",alpha("cornflowerblue", 0.7)), lwd=c(2.5,2,2,0.3,4), lty=c(3,1,4,1,1), inset=c(legendoffsety,legendoffsety), border=NA,box.lwd=NA)
       dev.off()}
       
       end_time <- Sys.time()
@@ -2865,7 +3006,6 @@ write_csv(SUAQ_rangepoints_11all20_loc_females_10_wgs, path = paste(
 
 ```
 
-
 # Trees per Homeranges and full dataset
 ```{r Homeranges - Create full dataset ,echo=FALSE, message=FALSE,comment=FALSE, warning=FALSE}
 ## Import datasets
@@ -2975,9 +3115,16 @@ all_homeranges_dense %>% filter(hminfac%in%c(1,NA)) %>% filter(bndwthm%in%c("HRE
 # Overlaps and Number of Trees in Overlap
 ## Overlaps calculated from 95 and 50% HR
 ```{r Homeranges overlaps 50 and 95 (Simple, Jaccard, more??) - Create full dataset ,echo=FALSE, message=FALSE,comment=FALSE, warning=FALSE}
-# reduce the HR amount select the one which we wanna analyse
-all_homeranges_sf <- st_read(dsn="/Users/stefgr/Nextcloud/UZH/12_Semester/20200313_Masterthesis/R/data/Processed_data/all_homeranges_sf.shp")
-colnames(all_homeranges_sf)<- c("bndwthm","hrprcnt","area","n_gps","n_fllws","focal","period","algorithm","Vlct_99","GPSncrt","hmin","tmax","lmin","tau","hminfac","hminRef","model","modltype","modelbase","number_of_trees","researcheffort_ngps","fruittree_normalized","fruittree_norm_per_sqkm","fruittree_per_sqkm","geometry")
+# save.image(file='20210411_HR_UDoverlaps.RData') save the recalculated UD's --> big file
+# Load results from homerange creation and results of trees in homeranges
+all_homeranges_sf<- st_read(dsn="/Users/stefgr/Nextcloud/UZH/12_Semester/20200313_Masterthesis/R/data/Processed_data/all_homeranges_sf.shp")
+colnames<- read.csv("/Users/stefgr/Nextcloud/UZH/12_Semester/20200313_Masterthesis/R/data/Processed_data/all_homeranges_sf_colnames.csv")
+colnames<- as.vector(colnames$x[!colnames$x %in% c("geometry")])
+colnames <- c(colnames,c("geometry"))
+colnames(all_homeranges_sf) <- colnames
+### Create a non sf object aswell
+all_homeranges <- all_homeranges_sf %>% st_drop_geometry()
+
 all_homeranges_sf_selected <- all_homeranges_sf %>% filter(bndwthm %in% c(NA,"HBCV","HSCV")) %>% filter(hrprcnt%in%c("95%","50%")) %>% filter(hminfac %in% c(NA,0.6,1,1.6)) %>%  dplyr::select(-Vlct_99,-lmin,-fruittree_normalized,-researcheffort_ngps,-number_of_trees,-fruittree_per_sqkm,-fruittree_norm_per_sqkm,-GPSncrt,-tau,-hmin)
 
 vecalgo<- levels(factor(as.factor(all_homeranges_sf_selected$algorithm)))
@@ -3008,12 +3155,47 @@ for(algo in vecalgo){
       focalcombination<- focalcombination[indx, ]
       focalcombination<- focalcombination %>% filter(Var1!=Var2)
       for(overlap in c(1:NROW(focalcombination))){
+        # Jaccard and normal overlap
         #print(paste0("overlap calc of ", focalcombination[overlap,1]," : ",focalcombination[overlap,2]))
         sf_focal1 <- algo_data %>% filter(focal==focalcombination[overlap,1])
         sf_focal2 <- algo_data %>% filter(focal==focalcombination[overlap,2])
         result_overlap<- st_intersection(sf_focal1,sf_focal2)
         jaccard_overlap <- ifelse(as.logical(st_intersects(sf_focal2,sf_focal1, sparse = FALSE)),as.numeric(((st_area(result_overlap)/1000000)/(st_area(st_union(sf_focal1,sf_focal2))/1000000))),0)
         result_overlap<- bind_cols(result_overlap,data.frame(overlap=as.numeric(st_area(result_overlap)/1000000)))
+       
+        ### Testing KDE
+        if(algo=="kde"){
+        boolean<- kde_overlap_UD %>% map(~ has_element(.x, c(as.character(focalcombination[overlap,1])))) %>% as_vector() # get the right algorithm
+        focal1_UD<- kde_overlap_UD[boolean]
+        boolean<- focal1_UD %>% map(~ has_element(.x, c(as.character(method)))) %>% as_vector() # get the right algorithm
+        focal1_UD<- focal1_UD[boolean]
+        focal1_UD<- focal1_UD[[1]][[2]]
+        boolean<- kde_overlap_UD %>% map(~ has_element(.x, c(as.character(focalcombination[overlap,2])))) %>% as_vector() # get the right algorithm
+        focal2_UD<- kde_overlap_UD[boolean]
+        boolean<- focal2_UD %>% map(~ has_element(.x, c(as.character(method)))) %>% as_vector() # get the right algorithm
+        focal2_UD<- focal2_UD[boolean]
+        focal2_UD<- focal2_UD[[1]][[2]]
+        estUDm_pseudo <- list(focal1=focal1_UD,focal2=focal2_UD)
+        class(estUDm_pseudo) <- "estUDm"
+        
+        
+        hr95_1 <- getverticeshr(focal1_UD, percent=50,unin = c("m"),unout = c("km2"))
+        hr95_2 <- getverticeshr(focal2_UD, percent=50,unin = c("m"),unout = c("km2"))
+        hr95_1_sf<- st_as_sf(hr95_1) %>% st_set_crs(23847)
+        hr95_2_sf <- st_as_sf(hr95_2)%>% st_set_crs(23847)
+        ggplot(data=hr95_1_sf_crs)+geom_sf(color="green",fill=NA)+geom_sf(data=hr95_1_sf_stamp,color="blue")+geom_sf(data=hr95_2_sf,color="red",fill=NA)
+        
+        
+        
+        
+        currentUDoverlap_PHR<- kerneloverlaphr(estUDm_pseudo, meth="PHR", conditional=TRUE)
+        currentUDoverlap_HR<- kerneloverlaphr(estUDm_pseudo, meth="HR", conditional=TRUE)
+        currentUDoverlap_VI<- kerneloverlaphr(estUDm_pseudo, meth="VI", conditional=TRUE)
+                print(hellodsf)
+        }
+        ###
+
+        
         result_overlap<- bind_cols(result_overlap,data.frame(jaccard_overlap=jaccard_overlap)) %>% ungroup()
         ifelse(starttest,
                all_overlaps_jaccard <- result_overlap ,
@@ -3025,6 +3207,23 @@ for(algo in vecalgo){
     }
   }
 }
+adehabitatHR
+result<- kerneloverlaphr(test, meth="HR", percent = 95)
+
+hr95_1 <- getverticeshr(UD1, percent=50,unin = c("m"),unout = c("km2"))
+hr95_2 <- getverticeshr(UD2, percent=50,unin = c("m"),unout = c("km2"))
+hr95_1_sf <- st_as_sf(hr95_1,crs=) %>% st_set_crs(CRS( "+proj=utm +zone=47 +a=6378160 +b=6356774.50408554 +towgs84=-24,-15,5,0,0,0,0 +units=m +no_defs" ))
+hr95_2_sf <- st_as_sf(hr95_2)%>% st_set_crs(CRS( "+proj=utm +zone=47 +a=6378160 +b=6356774.50408554 +towgs84=-24,-15,5,0,0,0,0 +units=m +no_defs" ))
+ggplot(data=hr95_1_sf)+geom_sf(fill=NA)+geom_sf(data=hr95_2_sf,color="red",fill=NA)
+
+test<- list(focal1=UD1,focal2=UD2, focal3=UD1)
+image(test)
+class(test) <- "estUDm"
+test<- kde_overlap_UD[[1]][[2]]
+test2<- kde_overlap_UD[[2]][[2]]
+
+
+
 
 ### Adding number of trees in overlaps --> use the above initialized datasets
 ##### Initialize progressbar
@@ -3121,12 +3320,23 @@ colnames(all_homeranges_sf) <- colnames
 all_homeranges <- all_homeranges_sf %>% st_drop_geometry()
 
 
+explanatoryvars <- SUAQ_rangepoints_11all20_loc_females_10[,c("focal","SUAQ_orangutans.matriline", "SUAQ_orangutans.agecategory","SUAQ_orangutans.dominancecat")] %>% group_by(focal,SUAQ_orangutans.matriline,SUAQ_orangutans.agecategory,SUAQ_orangutans.dominancecat) %>% summarise()
+colnames(explanatoryvars) <- c("focal","matriline","agecat","dominance")
+
+all_overlaps_50 <- all_overlaps %>% left_join(explanatoryvars, by=c("focal"="focal")) %>% filter(hrprcnt=="50%")
+all_overlaps_95 <- all_overlaps %>% left_join(explanatoryvars, by=c("focal"="focal")) %>% filter(hrprcnt=="95%")
+colnames(explanatoryvars) <- c("focal1","matriline1","agecat1","dominance1")
+all_overlaps_50 <- all_overlaps_50 %>% left_join(explanatoryvars, by=c("focal.1"="focal1")) %>% filter(hrprcnt=="50%")
+all_overlaps_95 <- all_overlaps_95 %>% left_join(explanatoryvars, by=c("focal.1"="focal1")) %>% filter(hrprcnt=="95%")
+all_overlaps_50 <- all_overlaps_50 %>% mutate(dominancediff=abs(dominance1-dominance),related=ifelse(matriline1==matriline,TRUE,FALSE),agediff=abs(agecat1-agecat))
+all_overlaps_95 <- all_overlaps_95 %>% mutate(dominancediff=abs(dominance1-dominance),related=ifelse(matriline1==matriline,TRUE,FALSE),agediff=abs(agecat1-agecat))
+
 ```
 
 
-
-## Overlaps calculated from UD of algorithms
-```{r Homeranges overlaps recalculate UD from BRB - HR per-researchperiods and all - HR sizes,echo=FALSE, message=FALSE,comment=FALSE, warning=FALSE}
+(TODELETE --> integrated above)
+## Overlaps calculated from UD of algorithms (TODELETE)
+```{r Homeranges overlaps: recalculate UD from BRB - HR per-researchperiods and all - HR sizes,echo=FALSE, message=FALSE,comment=FALSE, warning=FALSE}
 # Filter research periods if only one of the periods should be calculated
 # period_list <- period_list[1] # keep only the total research period
 
@@ -3187,7 +3397,6 @@ for (samplinginterval in c(1:length(period_list))){
     iterator <- iterator+1
     
     
-    
     traj <- as.ltraj(xy=xy_selected[,c("x", "y")], date=xy_selected$timestamp, id=i)
   
     ##########################################################################################
@@ -3205,64 +3414,55 @@ for (samplinginterval in c(1:length(period_list))){
       start_time <- Sys.time()
       hmin <- hminFactor[[l]]*hminRef
       if(xy_selected_toolessdata){# only execute when enough data
-      UD <- BRB(traj, D=vv, Tmax=tmax, Lmin=lmin, hmin=hmin, b=T, same4all=T, grid=gridVal, extent=extVal, filtershort=T, type="UD")
-      hr95 <- getverticeshr(UD, percent=95, standardize=TRUE,unin = c("m"),unout = c("km2"))
-      hr50 <- getverticeshr(UD, percent=50, standardize=TRUE,unin = c("m"),unout = c("km2"))
-      hr99 <- getverticeshr(UD, percent=99, standardize=TRUE,unin = c("m"),unout = c("km2"))
-      hr95_sf <- st_as_sf(hr95)
-      hr50_sf <- st_as_sf(hr50)
-      hr99_sf <- st_as_sf(hr99)
-      
-      par(0,0,0,0)
-      step <- 200
+      UD <- BRB(traj, D=vv, Tmax=tmax, Lmin=lmin, hmin=hmin, b=T,  grid=grid, extent=extentfactor, filtershort=T, type="UD")
+
+      tryCatch(
+            expr = {
+              hr95 <- getverticeshr(UD, percent=95, standardize=TRUE,unin = c("m"),unout = c("km2"))
+              hr95_sf <- st_as_sf(hr95)
+            },
+            error = function(e){ 
+              hr95 <- NA
+              hr95_sf <- NA
+              message()
+              message(paste(i,hminFactor[[l]],n_gps,n_follows,samplinginterval,sep = " : "))
+            }
+        )
+      tryCatch(
+            expr = {
+              hr99 <- getverticeshr(UD, percent=99, standardize=TRUE,unin = c("m"),unout = c("km2"))
+              hr99_sf <- st_as_sf(hr99)
+            },
+            error = function(e){ 
+              hr99 <- NA
+              hr99_sf <- NA
+              message()
+              message(paste(i,hminFactor[[l]],n_gps,n_follows,samplinginterval,sep = " : "))
+            }
+        )
+      tryCatch(
+            expr = {
+              hr50 <- getverticeshr(UD, percent=50, standardize=TRUE,unin = c("m"),unout = c("km2"))
+              hr50_sf <- st_as_sf(hr50)
+            },
+            error = function(e){ 
+              hr50 <- NA
+              hr50_sf <- NA
+              message(paste(i,hminFactor[[l]],n_gps,n_follows,samplinginterval," getting hr percentage polygon didn't work",sep = " : "))
+            }
+        )
+
       
       ########## save UD ##########
-      brb_overlap_UD[[1+indexitter]] <- list(i,UD,"brb",hminFactor[[l]],n_gps,n_follows)
+      brb_overlap_UD[[1+indexitter]] <- list(i,UD,"brb",hminFactor[[l]],n_gps,n_follows,samplinginterval)
       indexitter <- indexitter+1
-      
-      ########## plot results ##########
-      hminTxt <- gsub(".", "_", as.character(hminFactor[[l]]), fixed=T)
-      xmin_xmax_round_steps<- c(step*(ceiling(xmin/step)):(round(xmax/step)))
-      xmin_xmax_round_steps <- xmin_xmax_round_steps[2:(length(xmin_xmax_round_steps)-2)] #manual adjustment of tick breaks how many does it need
-      ymin_ymax_round_steps<- c(step*(ceiling(ymin/step)):(round(ymax/step)))
-      ymin_ymax_round_steps <- ymin_ymax_round_steps[2:(length(ymin_ymax_round_steps)-1)] #manual adjustment of tick breaks how many does it need    
-      
-  
-      
-      png(paste(imdir,i, "_BRB_UD_", hminTxt,"_",names(period_list)[samplinginterval], ".png", sep=""), width=1800, height=1400, res=240, units="px")
-      image(UD, xlab="x [m]",ylab="y [m]",xlim=c(xmin_xmax_round_steps[1],tail(xmin_xmax_round_steps,n=1)),ylim=c(ymin_ymax_round_steps[1],tail(ymin_ymax_round_steps,n=1))) 
-      plot(hr50, lty=3, lwd=1.5, border="darkseagreen3", add=T,axes=F)
-      plot(hr95, lty=1, lwd=1, border="cadetblue2", add=T, axes=F)
-      plot(hr99, lty=4, lwd=1, border="darkturquoise", add=T, axes=F)
-      plot(SUAQ_contour_sf_loc,lty=3, lwd=0.2, col=alpha("black", 1), add=T, axes=F)
-      plot(SUAQ_station_sf_loc,pch = 21,cex=1.5, col=alpha("black", 0.7), add=T, axes=F)
-      plot(SUAQ_station_sf_loc,pch = 16,cex=1, col=alpha("darkred", 0.7),lwd=0.3, bg="darkred", add=T, axes=F)
-      plot(SUAQ_river_sf_loc,lty=1, lwd=0.3, col=alpha("cornflowerblue", 0.7), add=T, axes=F)
-      plot(SUAQ_pathnetwork_sf_loc, lty=1, lwd=0.3, col=alpha("darkolivegreen", 0.7), add=T, axes=F)
-      axis(1, at=xmin_xmax_round_steps,pos=ymin+axisshifty) # x axis
-      axis(2, at=ymin_ymax_round_steps, pos=xmin+axisshiftx)
-      title(paste(i, ": BRB (", hminFactor[[l]], "*hmin)", sep=""), line=-1.5)
-      legend("topright", c("HR 50%", "HR 95%", "HR 100%","Trail","River"), col=c("coral1", "cadetblue2", "darkturquoise","darkred",alpha("cornflowerblue", 0.7)), lwd=c(2.5,2,2,0.3,4), lty=c(3,1,4,1,1), inset=c(legendoffsety,legendoffsety))
-      dev.off()
-      
-      png(paste(imdir,i, "_BRB_VUD_", hminTxt,"_",names(period_list)[samplinginterval], ".png", sep=""), width=1800, height=1400, res=240, units="px")
-      image(getvolumeUD(UD), xlab="x [m]",ylab="y [m]",xlim=c(xmin_xmax_round_steps[1],tail(xmin_xmax_round_steps,n=1)),ylim=c(ymin_ymax_round_steps[1],tail(ymin_ymax_round_steps,n=1))) 
-      plot(hr50, lty=3, lwd=1.5, border="darkseagreen3", add=T,axes=F)
-      plot(hr95, lty=1, lwd=1, border="cadetblue2", add=T, axes=F)
-      plot(hr99, lty=4, lwd=1, border="darkturquoise", add=T, axes=F)
-      plot(SUAQ_contour_sf_loc,lty=3, lwd=0.2, col=alpha("black", 1), add=T, axes=F)
-      plot(SUAQ_station_sf_loc,pch = 21,cex=1.5, col=alpha("black", 0.7), add=T, axes=F)
-      plot(SUAQ_station_sf_loc,pch = 16,cex=1, col=alpha("darkred", 0.7),lwd=0.3, bg="darkred", add=T, axes=F)
-      plot(SUAQ_river_sf_loc,lty=1, lwd=0.3, col=alpha("cornflowerblue", 0.7), add=T, axes=F)
-      plot(SUAQ_pathnetwork_sf_loc, lty=1, lwd=0.3, col=alpha("darkolivegreen", 0.7), add=T, axes=F)
-      axis(1, at=xmin_xmax_round_steps,pos=ymin+axisshifty) # x axis
-      axis(2, at=ymin_ymax_round_steps, pos=xmin+axisshiftx)
-      title(paste(i, ": BRB (", hminFactor[[l]], "*hmin)", sep=""), line=-1.5)
-      legend("topright", c("HR 50%", "HR 95%", "HR 100%","Trail","River"), col=c("coral1", "cadetblue2", "darkturquoise","darkred",alpha("cornflowerblue", 0.7)), lwd=c(2.5,2,2,0.3,4), lty=c(3,1,4,1,1), inset=c(legendoffsety,legendoffsety))
-      dev.off()}
+      }
       
       end_time <- Sys.time()
       duration <- end_time-start_time
+      
+      ########## plots ##########
+      hminTxt <- gsub(".", "_", as.character(hminFactor[[l]]), fixed=T)
       
       ########## export results ############
       if(xy_selected_toolessdata) {
@@ -3404,9 +3604,9 @@ system("say alle kernel distanzen berechnet für die verschiedenen Untersuchungs
 
 ```
 
-```{r Homeranges overlaps recalculate UD from KDE - HR per-researchperiods and all - HR sizes,echo=FALSE, message=FALSE,comment=FALSE, warning=FALSE}
+```{r Homeranges overlaps: recalculate UD from KDE - HR per-researchperiods and all - HR sizes,echo=FALSE, message=FALSE,comment=FALSE, warning=FALSE}
 # Filter research periods if only one of the periods should be calculated
-period_list <- period_list[1] # keep only the total research period
+# period_list <- period_list[1] # keep only the total research period
 
 # createa directory for kde periods calculation (named by the current date)
 dir.create(paste(
@@ -3466,16 +3666,16 @@ for (i in selected_females){ # compute KDE home range for every individual
 
   for (j in seq(1, length(methList))) { # compute one home range for each bandwidth method and individual
     if (j == 1) {
-      UD <- (kernelUD(xy_selected, grid=gridVal, extent=extVal, h="href"))
+      UD <- (kernelUD(xy_selected, grid=grid, extent=extVal, h="href"))
     }
     else if (j == 2) {
-      UD <- (kernelUD(xy_selected, grid=gridVal, extent=extVal, h=bandwiths[iterator,"hpi"]))
+      UD <- (kernelUD(xy_selected, grid=grid, extent=extVal, h=bandwiths[iterator,"hpi"]))
     }
     else if (j == 3) {
-      UD <- (kernelUD(xy_selected, grid=gridVal, extent=extVal, h=bandwiths[iterator,"hbcv"]))
+      UD <- (kernelUD(xy_selected, grid=grid, extent=extVal, h=bandwiths[iterator,"hbcv"]))
     }
     else if (j == 4) {
-      UD <- (kernelUD(xy_selected, grid=gridVal, extent=extVal, h=bandwiths[iterator,"hscv"])) 
+      UD <- (kernelUD(xy_selected, grid=grid, extent=extVal, h=bandwiths[iterator,"hscv"])) 
     }
     else {
       print("Error")
@@ -3489,44 +3689,9 @@ for (i in selected_females){ # compute KDE home range for every individual
     hr50_sf <- st_as_sf(hr50)
     
     ########## save UD ##########
-      kde_overlap_UD[[1+indexitter]] <- list(i,UD,"kde",methList[[j]],n_gps,n_follows)
-      indexitter <- indexitter+1
-    
-    ########## plot results ##########
-    png(paste(imdir, selected_females[[iterator]],"_",gsub(" ", "", names(period_list)[samplinginterval], fixed = TRUE), "_KDE_UD_", methList[[j]], ".png", sep=""), width=1800, height=1400, res=240, units="px")
-    par(0,0,0,0)
-    image(UD, xlab="x [m]",ylab="y [m]",xlim=c(xmin_xmax_round_steps[1],tail(xmin_xmax_round_steps,n=1)),ylim=c(ymin_ymax_round_steps[1],tail(ymin_ymax_round_steps,n=1))) 
-    plot(hr50, lty=3, lwd=1.5, border="darkseagreen3", add=T,axes=F)
-    plot(hr95, lty=1, lwd=1, border="cadetblue2", add=T, axes=F)
-    plot(hr99, lty=4, lwd=1, border="darkturquoise", add=T, axes=F)
-    plot(SUAQ_contour_sf_loc,lty=3, lwd=0.2, col=alpha("black", 1), add=T, axes=F)
-    plot(SUAQ_station_sf_loc,pch = 21,cex=1.5, col=alpha("black", 0.7), add=T, axes=F)
-    plot(SUAQ_station_sf_loc,pch = 16,cex=1, col=alpha("darkred", 0.7),lwd=0.3, bg="darkred", add=T, axes=F)
-    plot(SUAQ_river_sf_loc,lty=1, lwd=0.3, col=alpha("cornflowerblue", 0.7), add=T, axes=F)
-    plot(SUAQ_pathnetwork_sf_loc, lty=1, lwd=0.3, col=alpha("darkolivegreen", 0.7), add=T, axes=F)
-    axis(1, at=xmin_xmax_round_steps,pos=ymin+axisshifty) # x axis
-    axis(2, at=ymin_ymax_round_steps, pos=xmin+axisshiftx)
-    #text(xmin-550, (ymin+ymax)/2, "y [m]", adj=c(NA,-4), srt=90)
-    title(paste(selected_females[[iterator]], ": KDE ", "(", methListTitle[[j]], ")", sep=""), line=-1.5)
-    legend("topright", c("HR 50%", "HR 95%", "HR 100%","Trail","River"), col=c("coral1", "cadetblue2", "darkturquoise","darkred",alpha("cornflowerblue", 0.7)), lwd=c(2.5,2,2,0.3,4), lty=c(3,1,4,1,1), inset=c(legendoffsety,legendoffsety))
-    dev.off()
+    kde_overlap_UD[[1+indexitter]] <- list(i,UD,"kde",methList[[j]],n_gps,n_follows,samplinginterval)
+    indexitter <- indexitter+1
 
-    png(paste(imdir, selected_females[[iterator]],"_",gsub(" ", "", names(period_list)[samplinginterval], fixed = TRUE), "_KDE_VUD_", methList[[j]], ".png", sep=""), width=1800, height=1400, res=240, units="px")
-    image(getvolumeUD(UD), xlab="x [m]",ylab="y [m]",xlim=c(xmin_xmax_round_steps[1],tail(xmin_xmax_round_steps,n=1)),ylim=c(ymin_ymax_round_steps[1],tail(ymin_ymax_round_steps,n=1)))
-    plot(hr50, lty=3, lwd=1.5, border="azure4", add=T,axes=F)
-    plot(hr95, lty=1, lwd=1, border="cadetblue2", add=T, axes=F)
-    plot(hr99, lty=4, lwd=1, border="darkturquoise", add=T, axes=F)
-    plot(SUAQ_contour_sf_loc,lty=3, lwd=0.2, col=alpha("black", 1), add=T, axes=F)
-    plot(SUAQ_station_sf_loc,pch = 21,cex=1.5, col=alpha("black", 0.7), add=T, axes=F)
-    plot(SUAQ_station_sf_loc,pch = 16,cex=1, col=alpha("darkred", 0.7),lwd=0.3, bg="darkred", add=T, axes=F)
-    plot(SUAQ_river_sf_loc,lty=1, lwd=0.3, col=alpha("cornflowerblue", 0.7), add=T, axes=F)
-    plot(SUAQ_pathnetwork_sf_loc, lty=1, lwd=0.3, col=alpha("darkolivegreen", 0.7), add=T, axes=F)
-    axis(1, at=xmin_xmax_round_steps,pos=ymin+axisshifty) # x axis
-    axis(2, at=ymin_ymax_round_steps, pos=xmin+axisshiftx)
-    #text(xmin-500, (ymin+ymax)/2, "y [m]", adj=c(NA,-4), srt=90)
-    title(paste(selected_females[[iterator]], ": KDE ", "(", methListTitle[[j]], ")", sep=""), line=-1.5)
-    legend("topright", c("HR 50%", "HR 95%", "HR 100%","Trail","River"), col=c("coral1", "cadetblue2", "darkturquoise","darkred",alpha("cornflowerblue", 0.7)), lwd=c(2.5,2,2,0.3,4), lty=c(3,1,4,1,1), inset=c(legendoffsety,legendoffsety))
-    dev.off()
     
     results_selectedmethod <- data.frame(bandwithmethod=c(methList[[j]],methList[[j]],methList[[j]]),
             hrpercentage=c("50%","95%","99%"),
@@ -3562,6 +3727,7 @@ system("say alle kernel distanzen berechnet für die verschiedenen Untersuchungs
 
 
 ```
+(TODELETE)
 
 # Visualizations
 ```{r Homeranges - VISUALS ANALYSIS fruittrees ,echo=FALSE, message=FALSE,comment=FALSE, warning=FALSE}
@@ -3582,11 +3748,11 @@ all_homeranges_sf %>%filter(algorithm=="brb") %>%
 
 ```{r Overlaps - VISUALS ANALYSIS fruittrees ,echo=FALSE, message=FALSE,comment=FALSE, warning=FALSE}
 ### Finding: In core areas the number of trees increase linear with area in 95% area it increases faster but then flattens
-all_overlaps_jaccard  %>%  ggplot(aes(jaccard_overlap,number_of_trees,color=algorithm)) +geom_point()
+all_overlaps  %>%  ggplot(aes(jaccard_overlap,number_of_trees,color=algorithm)) +geom_point()
 all_homeranges_sf %>% ggplot(aes(area,fruittree_normalized,color=hrprcnt)) + geom_point()
 
 ### Fruittreeindex
-all_overlaps_jaccard %>%
+all_overlaps %>%
   #filter(algorithm=="brb") %>% 
   #filter(hminfac==1) %>%  
   ggplot(aes(overlap,fruittree_normalized))+
