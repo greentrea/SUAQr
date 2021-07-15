@@ -1264,7 +1264,6 @@ st_write(kde_bootstrap_monthly, dsn = paste(
 
 ```
 
-
 ```{r KDE - HR sizes with bootstrap temporal amount,echo=FALSE, message=FALSE,comment=FALSE, warning=FALSE}
 # createa directory for kde periods calculation (named by the current date)
 # Split the data into 4 sampling periods. Calculate the respective HR.
@@ -1402,7 +1401,6 @@ st_write(kde_results, dsn = paste(
 system("say alle kernel distanzen berechnet für die verschiedenen Untersuchungsperioden")
 
 ```
-
 
 ```{r KDE - HR per-researchperiods and all - HR sizes,echo=FALSE, message=FALSE,comment=FALSE, warning=FALSE}
 # createa directory for kde periods calculation (named by the current date)

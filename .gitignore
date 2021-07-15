@@ -82,3 +82,25 @@ vignettes/*.pdf
 /*_files/
 
 # End of https://www.toptal.com/developers/gitignore/api/r,macos
+
+# Files to ignore Stefan
+.Rproj.user_backup10/
+.Rproj.user_backup11/
+.Rproj.user_backup12/
+.Rproj.user_backup13/
+.Rproj.user_backup14/
+.Rproj.user_backup15/
+.Rproj.user_backup2/
+.Rproj.user_backup3/
+.Rproj.user_backup4/
+.Rproj.user_backup5/
+.Rproj.user_backup6/
+.Rproj.user_backup7/
+.Rproj.user_backup8/
+.Rproj.user_backup9/
+2015_Walter_HomerRangeAlgorithms.R
+20201101_ele_60x70_0bis100_mean.tif
+20201101_ele_60x70_0bis100_mean.tif.aux.xml
+20201101_ele_60x70_0bis100_median.tif
+20201101_ele_60x70_0bis100_median.tif.aux.xml
+20210411_HR_UDoverlaps.RData

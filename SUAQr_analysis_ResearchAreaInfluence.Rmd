@@ -1,0 +1,237 @@
+---
+title: "SUAQr_analysis_ResearchAreaInfluence"
+author: "Stefan Graf"
+date: "2/16/2021"
+output: html_document
+---
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+# Markings:
+#### Quality check: --> are quality checks of chunks executed before
+########### DELETE ############--> are chunks to delete
+## Title --> are titles for sections
+### explanations of the following chunk
+##### SUAQ TRACKS 2018 & 2019 ##### --> Code sections to understand code better
+
+```{r import, echo= 'F',results='hide'}
+# CLASSICAL PACKAGE IMPORTER (Stefan Graf & Tobias Frey)
+packages_checker <- function(packages_list){
+  for (package in packages_list){
+    if (!require(package, character.only = T)) {
+      install.packages(package)
+    }
+    library(package, character.only = T)
+  }
+}
+packages_checker(
+  c('rgdal',
+    'ctmm',
+    'lubridate',
+    'plyr',
+    'dplyr',
+    'tidyr',
+    'tidyverse',
+    'sf', # Simple feature --> super spatial data handling structure
+    'raster', # For raster data
+    'rgdal',
+    'plotly', # zoomable, pannable ggplot
+    'move',# Brownian Bridge Movement Model
+    'adehabitatHR',
+    'lme4',
+    'nlme',
+    'ggplot2',
+    'ggpubr',
+    'GGally',
+    'ggfortify', #check linear regression assumptions
+    'GGally', # usefull pairs function to create many scatterplots
+    'maptools',# used in move package
+    'viridis',
+    'lmerTest',
+    'sp',
+    'ks' # used in KDE functions
+    ))
+rm(list = ls())
+getwd()
+
+
+
+### CUSTOM FUNCTIONS ###
+
+# Function for displaying scale labels in ggplot not as f.e. 4e+05
+fancy_scientific <- function(l) {
+     # turn in to character string in scientific notation
+     l <- format(l, scientific = TRUE)
+     # quote the part before the exponent to keep all the digits
+     l <- gsub("^(.*)e", "'\\1'e", l)
+     # turn the 'e+' into plotmath format
+     l <- gsub("e", "%*%10^", l)
+     # return this as an expression
+     parse(text=l)
+}
+
+
+clockS = function(t){hour(t)*3600+minute(t)*60+second(t)}
+st_kde <- function(points,cellsize, bandwith, extent = NULL){
+  require(MASS)
+  require(raster)
+  require(sf)
+  if(is.null(extent)){
+    extent_vec <- st_bbox(points)[c(1,3,2,4)]
+  } else{
+    extent_vec <- st_bbox(extent)[c(1,3,2,4)]
+  }
+  
+  n_y <- ceiling((extent_vec[4]-extent_vec[3])/cellsize)
+  n_x <- ceiling((extent_vec[2]-extent_vec[1])/cellsize)
+  
+  extent_vec[2] <- extent_vec[1]+(n_x*cellsize)-cellsize
+  extent_vec[4] <- extent_vec[3]+(n_y*cellsize)-cellsize
+  
+  coords <- st_coordinates(points)
+  matrix <- kde2d(coords[,1],coords[,2],h = bandwith,n = c(n_x,n_y),lims = extent_vec)
+  raster(matrix)
+}
+
+
+
+
+#### Custom functions for analysis
+clockS = function(t){hour(t)*3600+minute(t)*60+second(t)}
+
+
+euclid <- function(x1,y1,x2,y2){
+  return(sqrt((x1-x2)^2+(y1-y2)^2))
+}
+
+turning_angle <- function(x,y,lead_lag = 1){ 
+  if(length(x) < 3){return(NA)}
+  if(length(x) != length(y)){stop("x and y must be of the same length")}
+  p1x <- lag(x,lead_lag)
+  p1y <- lag(y,lead_lag)
+  p2x <- x
+  p2y <- y
+  p3x <- lead(x,lead_lag)
+  p3y <- lead(y,lead_lag)
+  p12 <- euclid(p1x,p1y,p2x,p2y)
+  p13 <- euclid(p1x,p1y,p3x,p3y)
+  p23 <- euclid(p2x,p2y,p3x,p3y)
+  rad <- acos((p12^2+p23^2-p13^2)/(2*p12*p23))
+  grad <- (rad*180)/pi
+  grad[p12 == 0 | p23 == 0] <- NA
+  d <-  (p3x-p1x)*(p2y-p1y)-(p3y-p1y)*(p2x-p1x)
+  d <- ifelse(d == 0,1,d)
+  d[d>0] <- 1
+  d[d<0] <- -1
+  d[d==0] <- 1
+  turning <- grad*d*-1+180
+  return(turning)
+}
+
+# Source https://exploratory.io/note/kanaugust/1701090969905358
+calculate_mode <- function(x) {
+  uniqx <- unique(na.omit(x))
+  uniqx[which.max(tabulate(match(x, uniqx)))]
+}
+
+
+# Statistics from here: https://github.com/aufrank/R-hacks/blob/master/mer-utils.R
+vif.mer <- function (fit) {
+    ## adapted from rms::vif
+
+    v <- vcov(fit)
+    nam <- names(fixef(fit))
+
+    ## exclude intercepts
+    ns <- sum(1 * (nam == "Intercept" | nam == "(Intercept)"))
+    if (ns > 0) {
+        v <- v[-(1:ns), -(1:ns), drop = FALSE]
+        nam <- nam[-(1:ns)]
+    }
+
+    d <- diag(v)^0.5
+    v <- diag(solve(v/(d %o% d)))
+    names(v) <- nam
+    v
+}
+
+
+
+
+setwd("/Users/stefgr/Nextcloud/UZH/12_Semester/20200313_Masterthesis/R/")
+
+```
+
+#### SUAQ homerange analysis
+
+```{r GPS Loader,echo=FALSE, message=FALSE,comment=FALSE, warning=FALSE}
+
+### Load Project variables ### 
+##### waypoints ##### "data/Processed_data/SUAQ_waypoints_11all20.csv"
+SUAQ_waypoints_11all20_loc <- read_csv(paste0("data/Processed_data/",str_remove_all(Sys.Date()-1, "-"),"_SUAQ_waypoints_11all20.csv"),guess_max = min(10000, 30000))
+SUAQ_waypoints_11all20_loc <- SUAQ_waypoints_11all20_loc %>% mutate(monthYearDate=format(as.Date(manualDate), "%Y-%m"))
+SUAQ_waypoints_11all20_loc <- SUAQ_waypoints_11all20_loc %>% mutate(automaticDatetime=with_tz(automaticDatetime,tz = "Asia/Pontianak"))
+SUAQ_waypoints_11all20_loc <- SUAQ_waypoints_11all20_loc %>% mutate(manualDatetime=with_tz(manualDatetime,tz = "Asia/Pontianak"))
+
+SUAQ_waypoints_11all20_loc_test <- SUAQ_waypoints_11all20_loc %>% filter(focal!=SUAQ_followlog.FocalName)
+SUAQ_waypoints_11all20_loc_test2 <- SUAQ_waypoints_11all20_loc %>% filter((ClassFocal!="mother")&!is.na(ageOfCurrentOffspring))
+
+
+##### Weather and FAI #####
+SUAQ_weather <- read_csv("data/Processed_data/SUAQ_weather.csv")
+SUAQ_fai <- read_csv("data/Processed_data/SUAQ_fai.csv")
+
+SUAQ_weather_monthly<-SUAQ_weather %>% 
+  group_by(SUAQ_weather.year,SUAQ_weather.month) %>% 
+  summarise_all(funs(mean))
+SUAQ_weather_monthly<- SUAQ_weather_monthly%>% dplyr::select(-SUAQ_weather.weather_id,-SUAQ_weather.day,-SUAQ_weather.daymonthyear)
+
+##### location network ##### 
+SUAQ_locationnetwork_sf <- st_read("data/20201201_StudyBalimbingStudyArea_points.GPX")
+SUAQ_locationnetwork_sf_loc <- st_transform(SUAQ_locationnetwork_sf,crs = 32647)
+##### for locale coordinate system
+coordinates_tmp <- st_coordinates(SUAQ_locationnetwork_sf_loc)
+colnames(coordinates_tmp) <- c("E","N")
+SUAQ_locationnetwork_sf_loc <- cbind(SUAQ_locationnetwork_sf_loc,coordinates_tmp)
+SUAQ_locationnetwork_loc <- st_drop_geometry(SUAQ_locationnetwork_sf_loc)
+
+##### Selection only pointtypes which are taken on the orangutan way? is this true for all? ##### 
+SUAQ_rangepoints_11all20_loc <- SUAQ_waypoints_11all20_loc %>% filter(PtType %in% c("daynest","found","lost","mornnest","nightnest","range","tree")) # get rid of lcg lch points and
+
+##### Recalculate edge lengths etc. based on new point selection for rangepoints dataframe
+SUAQ_rangepoints_11all20_loc<- SUAQ_rangepoints_11all20_loc %>% 
+  group_by(follow)%>% arrange(manualTime,.by_group = TRUE) %>% 
+  mutate(timelag=as.numeric(difftime(as.POSIXlt(manualTime),
+                                     as.POSIXlt(lag(manualTime)),units 
+                                     ="secs")),
+         # calculate distance with approach number 1 --> st_distance but to do that we need to calculate lead first because the lead function doesnt work within st distance (not same datatype (df))
+         timelag_lead=as.numeric(difftime(as.POSIXlt(lead(manualTime)),
+                                          as.POSIXlt(manualTime),units ="secs")),
+         manual_distTolast=sqrt((E-lag(E))^2+(N-lag(N))^2),
+         manual_distToNext=sqrt((E-lead(E))^2+(N-lead(N))^2),
+         speed_last = manual_distTolast/timelag,
+         speed_next = manual_distToNext/timelag_lead,
+         turningAngle=turning_angle(E,N),
+         altitudediff_next=altitude-lead(altitude),
+         )
+
+
+
+
+
+##### WGS84 file
+SUAQ_rangepoints_11all20_loc_sf <-  st_as_sf(SUAQ_rangepoints_11all20_loc, 
+                          coords = c("E","N"), 
+                          crs = 32647) # can also do that in the new sricpts
+SUAQ_rangepoints_11all20_loc_wgs <- st_transform(SUAQ_rangepoints_11all20_loc_sf,4326)
+coordinates_tmp <- st_coordinates(SUAQ_rangepoints_11all20_loc_wgs)
+colnames(coordinates_tmp) <- c("long","lat")
+SUAQ_rangepoints_11all20_loc_wgs <- cbind(SUAQ_rangepoints_11all20_loc_wgs,coordinates_tmp)
+SUAQ_rangepoints_11all20_loc_wgs<- st_drop_geometry(SUAQ_rangepoints_11all20_loc_wgs)
+
+
+
+
+```

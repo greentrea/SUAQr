@@ -9,6 +9,16 @@ output: html_document
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = TRUE)
 ```
+#### Script description
+This is the main script for loading all the data and cleaning some attributes as well as joining and merging all aditional data sets.
+1. Loading of packages
+2. Processing 1: Loading and cleaning of seperate GPS file sources (GPX files + Excel File Caroline, Steven Hayward excel, Francis Short Excel)
+3. Processing 2: Second part of loading and cleaning the merged GPS dataset.
+4. Preparation for analysis f.e. calculating distance to next point.
+5. Saving the data sets for later analysis.
+6. Additional visuals, infos and diagnostics
+
+
 #### Naming conventions
 Naming of variables in the code:
 SUAQ_?? = dataset of Suaq where after the underline the type of dataset is stated
@@ -22,7 +32,7 @@ test_??= these are variables only for testing and can be deleted (hopefully I di
 
 
 
-### GITHUB 
+### GITHUB Comments for me
 ## Loading environment / libraries
 
 # Todo:
