@@ -8,14 +8,9 @@ output: html_document
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = TRUE)
 ```
+#### Script description
+This is the main script for calculating the home ranges for individuals of orangutans.
 
-
-# Markings:
-#### Quality check: --> are quality checks of chunks executed before
-########### DELETE ############--> are chunks to delete
-## Title --> are titles for sections
-### explanations of the following chunk
-##### SUAQ TRACKS 2018 & 2019 ##### --> Code sections to understand code better
 
 ```{r import, echo= 'F',results='hide'}
 # CLASSICAL PACKAGE IMPORTER (Stefan Graf & Tobias Frey)

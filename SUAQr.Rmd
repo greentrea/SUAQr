@@ -2230,7 +2230,7 @@ SUAQ_waypoints_11all20_sf <-  st_as_sf(SUAQ_waypoints_11all20,
 
 
 ##### renameing dataframe for further use
-temp_lookup<- read_delim("/Users/stefgr/Nextcloud/UZH/12_Semester/20200313_Masterthesis/R/data/20200601_attrlookup.csv",delim=";")
+temp_lookup<- read_delim("/Users/stefgr/Nextcloud/UZH/12_Semester/20200313_Masterthesis/R/data/20200601_SUAQ_attribute_lookup_short.csv",delim=";")
 SUAQ_waypoints_11all20_short <- SUAQ_waypoints_11all20
 names(SUAQ_waypoints_11all20_short) <-  temp_lookup$new[match(names(SUAQ_waypoints_11all20_short), temp_lookup$old)]
 SUAQ_waypoints_11all20_short <- SUAQ_waypoints_11all20_short %>% dplyr::select(temp_lookup$new)
