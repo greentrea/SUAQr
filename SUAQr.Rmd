@@ -347,7 +347,7 @@ SUAQ_followlog <-
   SUAQ_followlog[, (colSums(is.na(SUAQ_followlog)) < nrow(SUAQ_followlog))]
 
 #### Manually correcting followlog (See dateeckdaten focal GPS is not same as focal followlog --> Caro Kommentar)
-SUAQ_followlog <- SUAQ_followlog %>%.
+SUAQ_followlog <- SUAQ_followlog %>%
   mutate(FocalName=if_else(FollowNumber ==717,"karma",FocalName))
 SUAQ_followlog <- SUAQ_followlog %>%
   mutate(FocalName=if_else(FollowNumber ==2811,"friska",FocalName))
@@ -2030,17 +2030,8 @@ DJL_overview_all<- DJL_follows %>%
   facet_wrap(~ClassFocal,ncol = 5,scales = "free_y")+
   stat_summary(fun.data = give.n, geom = "text", hjust = 0.5,vjust=0,position = position_dodge(2),aes(y = 2500)) +
   coord_flip()
-DJL_overview_all
-ggsave(filename = paste(
-  paste(
-    "/Users/stefgr/Dropbox/Apps/Overleaf/Msc_Thesis/figures/",
-    format(Sys.Date(), "%Y%m%d"),"_",
-    "DJL_overview_all",
-    sep = ""
-  ),
-  "pdf",
-  sep = "."
-), plot = DJL_overview_all, width = 40,height = 20,units="cm")
+
+
 
 
 
@@ -2072,7 +2063,6 @@ SUAQ_waypoints_11all20 <- SUAQ_waypoints_11all20 %>%
   mutate(researchperiod = if_else((manualDatetime>dmy_hms("01-01-2016 00:00:00",tz="Asia/Pontianak"))&
                                     (manualDatetime<dmy_hms("01-08-2018 00:00:00",tz="Asia/Pontianak")),"2016 until August 2018",researchperiod)) %>% 
   mutate(researchperiod = if_else((manualDatetime>dmy_hms("01-08-2018 00:00:00",tz="Asia/Pontianak")),"Since August 2018",researchperiod))
-
 
 
 ### Find follows where monrnest / nightnest is missing or not first or last element of follow. (Found 87 follows of 640 NN follows)

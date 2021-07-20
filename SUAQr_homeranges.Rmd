@@ -350,6 +350,10 @@ ltraj2traj <- function(x)
     return(res)
 }
 
+
+normalize <- function(x){
+  return((x-min(x)) / (max(x)-min(x)))
+}
 ```
 
 #### SUAQ homerange analysis
@@ -374,7 +378,6 @@ SUAQ_waypoints_11all20_loc <- SUAQ_waypoints_11all20_loc %>%
   mutate(monthname=month.name[month])%>%
   mutate(year=as.character(year(lubridate::ym(monthYearDate))))%>%
   mutate(rainyseason=ifelse(month %in% c(10,11,12),"rainy","normal"))
-
 
 SUAQ_orangutans <-
   read_csv(paste0("data/Processed_data/",mostrecent$date[1],"_SUAQ_orangutans.csv"),guess_max = min(10000, 30000))
@@ -1014,17 +1017,19 @@ mcp_list_bootstrap <- data.frame() # results
 follows <- SUAQ_rangepoints_11all20_loc_females_10 %>% group_by(follow) %>% summarise()
 
 for(per in amountofdata){
+  print(paste("PERCENTAGE: ",per))
+
   selected_females <- SUAQ_rangepoints_11all20_loc_females_10 %>% group_by(focal) %>% summarise()
   selected_females <- as_vector(selected_females)
   iterator <- 1
   
   for (i in selected_females) { # do the following for every animal in the list
       print(paste("mcp for focal: ",i))
-      follows <- SUAQ_rangepoints_11all20_loc_females_10 %>% filter(focal%in%c(i)) %>% group_by(follow) %>% summarise()
-      selectedfollows <- SUAQ_rangepoints_11all20_loc_females_10 %>% filter(focal%in%c(i)) %>% sample_n(round(nrow(follows)*per)) #use when  subsetting by follow not but by number of GPS
-      if(nrow(selectedfollows)>0){
+      follows_focal <- SUAQ_rangepoints_11all20_loc_females_10 %>% filter(focal%in%c(i)) %>% group_by(follow) %>% summarise()
+      selectedfollows <- sample_n(follows_focal, round(nrow(follows_focal)*per)) #use when  subsetting by follow not but by number of GPS
+      
       xy_selected_perc <- SUAQ_rangepoints_11all20_loc_females_10 %>% filter(follow %in% pull(selectedfollows,follow))# use when  subsetting by follow not but by number of GPS  
-    
+    if(nrow(xy_selected_perc)>5){
       #xy_selected <- SUAQ_rangepoints_11all20_loc_females_10 %>% filter(focal%in%c(i)) # use when not subsetting by follow but by number of GPS
       xy_selected <- xy_selected_perc %>% filter(focal%in%c(i)) # use when  subsetting by follow not but by number of GPS
       n_follows <- xy_selected %>% group_by(follow) %>% summarise() %>% nrow()
@@ -1085,7 +1090,7 @@ st_write(mcp_list_bootstrap, dsn = paste(
 
 ## KDE
 
-```{r KDE - HR sizes with bootstrap sampling amount,echo=FALSE, message=FALSE,comment=FALSE, warning=FALSE}
+```{r KDE - HR sizes with bootstrap sampling amount per follow,echo=FALSE, message=FALSE,comment=FALSE, warning=FALSE}
 #bandwiths <- read_csv(paste0("data/Processed_data/",str_remove_all(Sys.Date(), "-"),"_KDE_bandwiths.csv"))
 
 dir.create(paste(
@@ -1100,73 +1105,77 @@ imdir <- paste("output/Homeranges/KDE/bootstrap/sampling/",format(Sys.Date(), "%
 kde95_bootstrap_long <- data_frame()
 kde50_bootstrap_long <- data_frame()
 
-for(iter in c(1)){
+for(iter in c(1:20)){
+  print(iter)
 amountofdata <- seq(0.5,10,by=0.5)/10
 kde95_bootstrap <- data.frame(focal=as_vector(selected_females),
-                 HPI_area_5=vector(mode="numeric", length=10),             
-                 HPI_area_10=vector(mode="numeric", length=10),
-                 HPI_area_15=vector(mode="numeric", length=10),
-                 HPI_area_20=vector(mode="numeric", length=10),
-                 HPI_area_25=vector(mode="numeric", length=10),
-                 HPI_area_30=vector(mode="numeric", length=10),
-                 HPI_area_35=vector(mode="numeric", length=10),
-                 HPI_area_40=vector(mode="numeric", length=10),
-                 HPI_area_45=vector(mode="numeric", length=10),
-                 HPI_area_50=vector(mode="numeric", length=10),
-                 HPI_area_55=vector(mode="numeric", length=10),
-                 HPI_area_60=vector(mode="numeric", length=10),
-                 HPI_area_65=vector(mode="numeric", length=10),
-                 HPI_area_70=vector(mode="numeric", length=10),
-                 HPI_area_75=vector(mode="numeric", length=10),
-                 HPI_area_80=vector(mode="numeric", length=10),
-                 HPI_area_85=vector(mode="numeric", length=10),
-                 HPI_area_90=vector(mode="numeric", length=10),
-                 HPI_area_95=vector(mode="numeric", length=10),
-                 HPI_area_100=vector(mode="numeric", length=10),
+                 HSCV_area_5=vector(mode="numeric", length=10),             
+                 HSCV_area_10=vector(mode="numeric", length=10),
+                 HSCV_area_15=vector(mode="numeric", length=10),
+                 HSCV_area_20=vector(mode="numeric", length=10),
+                 HSCV_area_25=vector(mode="numeric", length=10),
+                 HSCV_area_30=vector(mode="numeric", length=10),
+                 HSCV_area_35=vector(mode="numeric", length=10),
+                 HSCV_area_40=vector(mode="numeric", length=10),
+                 HSCV_area_45=vector(mode="numeric", length=10),
+                 HSCV_area_50=vector(mode="numeric", length=10),
+                 HSCV_area_55=vector(mode="numeric", length=10),
+                 HSCV_area_60=vector(mode="numeric", length=10),
+                 HSCV_area_65=vector(mode="numeric", length=10),
+                 HSCV_area_70=vector(mode="numeric", length=10),
+                 HSCV_area_75=vector(mode="numeric", length=10),
+                 HSCV_area_80=vector(mode="numeric", length=10),
+                 HSCV_area_85=vector(mode="numeric", length=10),
+                 HSCV_area_90=vector(mode="numeric", length=10),
+                 HSCV_area_95=vector(mode="numeric", length=10),
+                 HSCV_area_100=vector(mode="numeric", length=10),
                  stringsAsFactors=FALSE)
 kde50_bootstrap <- data.frame(focal=as_vector(selected_females),
-                 HPI_area_5=vector(mode="numeric", length=10),             
-                 HPI_area_10=vector(mode="numeric", length=10),
-                 HPI_area_15=vector(mode="numeric", length=10),
-                 HPI_area_20=vector(mode="numeric", length=10),
-                 HPI_area_25=vector(mode="numeric", length=10),
-                 HPI_area_30=vector(mode="numeric", length=10),
-                 HPI_area_35=vector(mode="numeric", length=10),
-                 HPI_area_40=vector(mode="numeric", length=10),
-                 HPI_area_45=vector(mode="numeric", length=10),
-                 HPI_area_50=vector(mode="numeric", length=10),
-                 HPI_area_55=vector(mode="numeric", length=10),
-                 HPI_area_60=vector(mode="numeric", length=10),
-                 HPI_area_65=vector(mode="numeric", length=10),
-                 HPI_area_70=vector(mode="numeric", length=10),
-                 HPI_area_75=vector(mode="numeric", length=10),
-                 HPI_area_80=vector(mode="numeric", length=10),
-                 HPI_area_85=vector(mode="numeric", length=10),
-                 HPI_area_90=vector(mode="numeric", length=10),
-                 HPI_area_95=vector(mode="numeric", length=10),
-                 HPI_area_100=vector(mode="numeric", length=10),
+                 HSCV_area_5=vector(mode="numeric", length=10),             
+                 HSCV_area_10=vector(mode="numeric", length=10),
+                 HSCV_area_15=vector(mode="numeric", length=10),
+                 HSCV_area_20=vector(mode="numeric", length=10),
+                 HSCV_area_25=vector(mode="numeric", length=10),
+                 HSCV_area_30=vector(mode="numeric", length=10),
+                 HSCV_area_35=vector(mode="numeric", length=10),
+                 HSCV_area_40=vector(mode="numeric", length=10),
+                 HSCV_area_45=vector(mode="numeric", length=10),
+                 HSCV_area_50=vector(mode="numeric", length=10),
+                 HSCV_area_55=vector(mode="numeric", length=10),
+                 HSCV_area_60=vector(mode="numeric", length=10),
+                 HSCV_area_65=vector(mode="numeric", length=10),
+                 HSCV_area_70=vector(mode="numeric", length=10),
+                 HSCV_area_75=vector(mode="numeric", length=10),
+                 HSCV_area_80=vector(mode="numeric", length=10),
+                 HSCV_area_85=vector(mode="numeric", length=10),
+                 HSCV_area_90=vector(mode="numeric", length=10),
+                 HSCV_area_95=vector(mode="numeric", length=10),
+                 HSCV_area_100=vector(mode="numeric", length=10),
                  stringsAsFactors=FALSE)
 
 
 for(per in amountofdata){
   iterator <- 1
 for (i in selected_females){ # compute KDE home range for every individual
+
   #xy_selected <- SUAQ_rangepoints_11all20_loc_females_10 %>% filter(focal%in%c(i)) %>% dplyr::select(E,N)
   #xy_selected<- sample_n(xy_selected, round(nrow(xy_selected)*per))
   follows <- SUAQ_rangepoints_11all20_loc_females_10 %>% filter(focal%in%c(i)) %>% group_by(follow) %>% summarise()
-  selectedfollows <- SUAQ_rangepoints_11all20_loc_females_10 %>% filter(focal%in%c(i)) %>% sample_n(round(nrow(follows)*per))
+  selectedfollows <- sample_n(follows,round(nrow(follows)*per))
   xy_selected_perc <- SUAQ_rangepoints_11all20_loc_females_10 %>% filter(follow %in% pull(selectedfollows,follow))# use when  subsetting by follow not but by number of GPS
   #xy_selected <- SUAQ_rangepoints_11all20_loc_females_10 %>% filter(focal%in%c(i)) # use when not subsetting by follow but by number of GPS
   xy_selected <- xy_selected_perc %>% filter(focal%in%c(i)) %>% dplyr::select(E,N)
   
   colnames(xy_selected) <- c("x","y") #adjust column names
+  
+  resultList <- list(hr50=NA, hr95=NA, UD=NA)
   if(nrow(xy_selected)>5){
   xy_selected <- SpatialPoints(xy_selected,proj4string = CRS( "+proj=utm +zone=47 +ellps=WGS84 +towgs84=0,0,0,0,0,0,0 +units=m +no_defs " )) # Converts SpatialPointDataFrame to SpatialPoint (only x & y)
 
 
   resultList <- list()
-  methListTitle <- list("PI")
-  methList <- list("HPI")
+  methListTitle <- list("SCV")
+  methList <- list("HSCV")
   
   
   extVal <- 0.4 #0.3 How much bigger the UD should be calculated than the research are (minimum bounding box). The higher the more Computation
@@ -1174,7 +1183,7 @@ for (i in selected_females){ # compute KDE home range for every individual
   
   for (j in seq(1, length(methList))) { # compute one home range for each bandwidth method and individual
     if (j == 1) {
-      UD <- (kernelUD(xy_selected, grid=gridVal, extent=2, h=as.numeric(bandwiths[iterator,"hpi"]))) 
+      UD <- (kernelUD(xy_selected, grid=gridVal, extent=3, h=as.numeric(bandwiths[iterator,"hscv"]))) 
     }
     else {
       print("Error")
@@ -1184,11 +1193,14 @@ for (i in selected_females){ # compute KDE home range for every individual
     
     ########## export results #########
     resultList <- list(hr50=hr50, hr95=hr95, UD=UD)
+  }
+  
     assign(methList[[j]], resultList) #resultList is renamed according to the ith element of methList
   }
-  animRes <- list(HPI=HPI)
+
+  animRes <- list(HSCV=HSCV)
   assign(selected_females[[iterator]], animRes) # is renamed according to the ith element of animList
-  print(paste(selected_females[[iterator]], ": Calculation finished with Subset of ",as.character(100*per),"% of Points", sep=""))
+  #print(paste(selected_females[[iterator]], ": Calculation finished with Subset of ",as.character(100*per),"% of Points", sep=""))
   
   iterator <- iterator+1
 }
@@ -1204,11 +1216,11 @@ for (i in selected_females){ # compute KDE home range for every individual
       tiara=tiara)
   itera <- 1
 for(n in as_vector(selected_females)){
-  print(n)
-  try(kde50_bootstrap[itera,paste("HPI_area","_",as.character(100*per),sep = "")] <-  kde_list[[n]]$HPI$hr50$area,silent = TRUE)
-  try(kde95_bootstrap[itera,paste("HPI_area","_",as.character(100*per),sep = "")] <-  kde_list[[n]]$HPI$hr95$area,silent = TRUE)
+  #print(n)
+  try(kde50_bootstrap[itera,paste("HSCV_area","_",as.character(100*per),sep = "")] <-  kde_list[[n]]$HSCV$hr50$area,silent = TRUE)
+  try(kde95_bootstrap[itera,paste("HSCV_area","_",as.character(100*per),sep = "")] <-  kde_list[[n]]$HSCV$hr95$area,silent = TRUE)
   itera <- itera+1
-}
+
 }
   }
 colnames(kde95_bootstrap) <- c("focal",as.character(seq(0.5,10,0.5)*10))
@@ -1247,10 +1259,10 @@ kde50_bootstrap_long <- kde50_bootstrap_long %>% rbind(kde50_bootstrap_long_iter
 kde50_bootstrap_long <- kde50_bootstrap_long %>% mutate(hrpercentage="50%")
 kde95_bootstrap_long <- kde95_bootstrap_long %>% mutate(hrpercentage="95%")
 kde_bootstrap_monthly <- kde50_bootstrap_long %>% rbind(kde95_bootstrap_long) 
-kde_bootstrap_monthly <- kde_bootstrap_monthly %>% mutate(algorithm="HPI")
+kde_bootstrap_monthly <- kde_bootstrap_monthly %>% mutate(algorithm="HSCV")
 st_write(kde_bootstrap_monthly, dsn = paste(
   paste(imdir,
-    "kde_bootstrap_monthly_perfollow_HPI",
+    "kde_bootstrap_monthly_perfollow_HSCV_iterated",
     sep = ""
   ),
   "csv",
@@ -2125,21 +2137,23 @@ follows <- SUAQ_rangepoints_11all20_loc_females_10 %>% group_by(follow) %>% summ
 
 for(per in amountofdata){
   print(paste0("Datenmenge: ",per))
-  selectedfollows<- sample_n(SUAQ_rangepoints_11all20_loc_females_10, round(nrow(follows)*per))
-  xy_selected_perc <- SUAQ_rangepoints_11all20_loc_females_10 %>% filter(follow %in% pull(selectedfollows,follow)) 
-  #xy_selected_perc <- sample_n(SUAQ_rangepoints_11all20_loc_females_10, round(nrow(SUAQ_rangepoints_11all20_loc_females_10)*per)) # for using the percentage of follows instead of points use the two lines above
-
-  
-  #### Selected animals as list/vector
-  selected_females <- xy_selected_perc %>% group_by(focal) %>% summarise()
-  selected_females <- as_vector(selected_females)
   iterator <- 1
   for (i in selected_females) { # do the following for every animal in the list
+      xy_selected <- SUAQ_rangepoints_11all20_loc_females_10 %>% filter(focal%in%c(i))
+      follows_focal <- xy_selected %>% group_by(follow) %>% summarise()
+
+      selectedfollows<- sample_n(follows_focal, round(nrow(follows_focal)*per))
+      #### Selected animals as list/vector
+      xy_selected <- xy_selected %>% filter(follow %in% pull(selectedfollows,follow)) 
+      #xy_selected_perc <- sample_n(SUAQ_rangepoints_11all20_loc_females_10,        round(nrow(SUAQ_rangepoints_11all20_loc_females_10)*per)) # for using the percentage of follows instead of points use the two lines above
+
+      
+  
       print(paste("brb for focal: ",i))
-      n_follows <- xy_selected_perc %>% filter(focal%in%c(i)) %>%
+      n_follows <- xy_selected %>%
           group_by(follow) %>% summarise() %>% nrow()
   
-      xy_selected <- xy_selected_perc %>% filter(focal%in%c(i)) %>%
+      xy_selected <- xy_selected %>% 
         dplyr::select(E,N,timelag_lead,manualDatetime)
       n_gps <- xy_selected %>% nrow()
   
@@ -2154,45 +2168,45 @@ for(per in amountofdata){
       # check if enough gps points are still here otherwise make NA's
       xy_selected_toolessdata <- TRUE
       if(nrow(xy_selected)<20){xy_selected_toolessdata <- FALSE}
-      
-      # samplingI <- vector()
-      # samplingI <- xy_selected$timelag_lead/60
-      # samplingI <- samplingI[2:length(samplingI)] # First value of timelag_lead is NA
-      # plot(table(samplingI), type="h", xlim=c(20,40),col=4, ylab="frequency", xlab="sampling interval [min]")
-      
-      xy_selected <- xy_selected[order(xy_selected$timestamp , decreasing = FALSE ),] 
-      moveObj <- move(x=xy_selected$x, y=xy_selected$y, time=xy_selected$timestamp, proj=CRS( "+proj=utm +zone=47 +ellps=WGS84 +towgs84=0,0,0,0,0,0,0 +units=m +no_defs " ),animal=i)
-      ##########################################################################################
-      relUn <- 12 # relocation uncertainty [m]
-      ##########################################################################################
-      velocity <- unname(quantile(speed(moveObj), 0.99)) * 60 # unit: [m/min]
-      hmin <- relUn + (0.5 * velocity * 30) # meters, smoothing
-      iterator <- iterator+1
-      
-      
-      fulldata_forfemale<- SUAQ_rangepoints_11all20_loc_females_10[SUAQ_rangepoints_11all20_loc_females_10$focal==i,c("E", "N","manualDatetime")]
-      colnames(fulldata_forfemale) <- c("x","y","timestamp")
-      trajfull <- as.ltraj(xy=fulldata_forfemale, date=fulldata_forfemale$timestamp, id=i)
-      traj <- as.ltraj(xy=xy_selected[,c("x", "y")], date=xy_selected$timestamp, id=i)
-
-      ##########################################################################################
-      tmax <- 70*60 # seconds, maximum time span for a segment
-      lmin <- 12 # meters, minimal distance of a segment in order to count as movement
-      tau <- 1*60 #seconds, approx. duration of one interpolated interval -> defines the number of intervals per step 
-      extVal <- 15
-      gridVal <- 2000
-      hminRef <- 102 # computed through "BRB_leo_hmin computation.R"
-      hminFactor <- c(0.8)
-      ##########################################################################################
     
-      vv <- BRB.D(trajfull, Tmax=tmax, Lmin=lmin) #estimate the diffusion coefficient
-      
       for (l in seq(1:length(hminFactor))) {
+        if(xy_selected_toolessdata) {
+        # samplingI <- vector()
+        # samplingI <- xy_selected$timelag_lead/60
+        # samplingI <- samplingI[2:length(samplingI)] # First value of timelag_lead is NA
+        # plot(table(samplingI), type="h", xlim=c(20,40),col=4, ylab="frequency", xlab="sampling interval [min]")
+        
+        xy_selected <- xy_selected[order(xy_selected$timestamp , decreasing = FALSE ),] 
+        moveObj <- move(x=xy_selected$x, y=xy_selected$y, time=xy_selected$timestamp, proj=CRS( "+proj=utm +zone=47 +ellps=WGS84 +towgs84=0,0,0,0,0,0,0 +units=m +no_defs " ),animal=i)
+        ##########################################################################################
+        relUn <- 12 # relocation uncertainty [m]
+        ##########################################################################################
+        velocity <- unname(quantile(speed(moveObj), 0.99)) * 60 # unit: [m/min]
+        hmin <- relUn + (0.5 * velocity * 30) # meters, smoothing
+        iterator <- iterator+1
+        
+        
+        fulldata_forfemale<- SUAQ_rangepoints_11all20_loc_females_10[SUAQ_rangepoints_11all20_loc_females_10$focal==i,c("E", "N","manualDatetime")]
+        colnames(fulldata_forfemale) <- c("x","y","timestamp")
+        trajfull <- as.ltraj(xy=fulldata_forfemale, date=fulldata_forfemale$timestamp, id=i)
+        traj <- as.ltraj(xy=xy_selected[,c("x", "y")], date=xy_selected$timestamp, id=i)
+  
+        ##########################################################################################
+        tmax <- 70*60 # seconds, maximum time span for a segment
+        lmin <- 12 # meters, minimal distance of a segment in order to count as movement
+        tau <- 1*60 #seconds, approx. duration of one interpolated interval -> defines the number of intervals per step 
+        extVal <- 15
+        gridVal <- 2000
+        hminRef <- 102 # computed through "BRB_leo_hmin computation.R"
+        hminFactor <- c(0.8)
+        ##########################################################################################
+      
+        vv <- BRB.D(trajfull, Tmax=tmax, Lmin=lmin) #estimate the diffusion coefficient
+        
+          
         start_time <- Sys.time()
         hmin <- hminFactor[[l]]*hminRef
-
-        
-        if(xy_selected_toolessdata){# only execute when enough data
+     
         UD <- BRB(traj, D=vv, Tmax=tmax, Lmin=lmin, hmin=hmin, b=T,  grid=grid, extent=extentfactor, type="UD")
         plot(UD)
         hr95 <- getverticeshr(UD, percent=95, standardize=TRUE,unin = c("m"),unout = c("km2"))
@@ -2213,7 +2227,7 @@ for(per in amountofdata){
         duration <- end_time-start_time
         
         ########## export results ############
-        if(xy_selected_toolessdata) {
+
           resultList_50 <-
             data.frame(
               focal = i,
@@ -2328,7 +2342,7 @@ for(per in amountofdata){
         brb_list_bootstrap <- brb_list_bootstrap %>% rbind(resultList_50,resultList_95,resultList_99)
         
         print(paste(hminTxt, ": Calculation finished", sep=""))
-      }
+      
     }
 
   }
@@ -2336,7 +2350,7 @@ for(per in amountofdata){
 st_write(brb_list_bootstrap, dsn = paste(
   paste(
     imdir,
-    "brb_list_bootstrap",
+    "brb_list_bootstrap_perfollow",
     sep = ""
   ),
   "csv",
@@ -3326,7 +3340,7 @@ SUAQ_ctmm_homeranges_pooled<- shplist_pooled%>%
   map_df(~st_read_homeranges(.))
 end_time <- Sys.time()
 print(start_time-end_time)
-SUAQ_ctmm_homeranges_pooled <- SUAQ_ctmm_homeranges_pooled %>% mutate(modelbase="pooled",algorithm="ctmm")
+SUAQ_ctmm_homeranges_pooled <- SUAQ_ctmm_homeranges_pooled %>% mutate(modelbase="pooled",algorithm="akde")
 SUAQ_ctmm_homeranges_pooled$area <- as.numeric(st_area(SUAQ_ctmm_homeranges_pooled))/1000000
 
 #### unpooled
@@ -3337,7 +3351,7 @@ SUAQ_ctmm_homeranges_unpooled<- shplist_unpooled%>%
   map_df(~st_read_homeranges(.))
 end_time <- Sys.time()
 print(start_time-end_time)
-SUAQ_ctmm_homeranges_unpooled <- SUAQ_ctmm_homeranges_unpooled %>% mutate(modelbase="unpooled",algorithm="ctmm")
+SUAQ_ctmm_homeranges_unpooled <- SUAQ_ctmm_homeranges_unpooled %>% mutate(modelbase="unpooled",algorithm="akde")
 SUAQ_ctmm_homeranges_unpooled$area <- as.numeric(st_area(SUAQ_ctmm_homeranges_unpooled))/1000000
 
 #### total
@@ -3543,7 +3557,7 @@ colnames(all_homeranges_sf) <- colnames
 ### Create a non sf object aswell
 all_homeranges <- all_homeranges_sf %>% st_drop_geometry()
 
-all_homeranges_sf_selected <- all_homeranges_sf %>% filter(bndwthm %in% c(NA,"HBCV","HSCV")) %>% filter(hrprcnt%in%c("95%","50%")) %>% filter(hminfac %in% c(NA,0.6,1,1.6)) %>%  dplyr::select(-Vlct_99,-lmin,-fruittree_normalized,-researcheffort_ngps,-number_of_trees,-fruittree_per_sqkm,-fruittree_norm_per_sqkm,-GPSncrt,-tau,-hmin)
+all_homeranges_sf_selected <- all_homeranges_sf %>% filter(bndwthm %in% c(NA,"HBCV","HSCV")) %>% filter(hrprcnt%in%c("95%","50%")) %>% filter(hminfac %in% c(NA,0.8,1)) %>%  dplyr::select(-Vlct_99,-lmin,-fruittree_normalized,-researcheffort_ngps,-number_of_trees,-fruittree_per_sqkm,-fruittree_norm_per_sqkm,-GPSncrt,-tau,-hmin)
 
 vecalgo<- levels(factor(as.factor(all_homeranges_sf_selected$algorithm)))
 periods<- levels(factor(as.factor(all_homeranges_sf_selected$periods)))
@@ -3554,11 +3568,11 @@ for(algo in vecalgo){
   vechomreange <- levels(factor(as.factor(all_homeranges_sf_selected$hrprcnt)))
   for (hr in vechomreange){
     print(hr)
-    if(algo=="ctmm"){methods <- levels(factor(as.factor(all_homeranges_sf_selected$modelbase)))}
+    if(algo=="akde"){methods <- levels(factor(as.factor(all_homeranges_sf_selected$modelbase)))}
     if(algo=="kde"){methods <- levels(factor(as.factor(all_homeranges_sf_selected$bndwthm)))}
     if(algo=="brb"){methods <- levels(factor(as.factor(all_homeranges_sf_selected$hminfac)))}
     if(algo=="mcp"){methods <- "mcptotal"}
-    if(algo=="ctmm"){periods<- levels(factor(as.factor(all_homeranges_sf_selected[all_homeranges_sf_selected$algorithm=="ctmm",]$period)))}
+    if(algo=="akde"){periods<- levels(factor(as.factor(all_homeranges_sf_selected[all_homeranges_sf_selected$algorithm=="ctmm",]$period)))}
     if(algo=="kde"){periods<- levels(factor(as.factor(all_homeranges_sf_selected[all_homeranges_sf_selected$algorithm=="kde",]$period)))}
     if(algo=="brb"){periods<- levels(factor(as.factor(all_homeranges_sf_selected[all_homeranges_sf_selected$algorithm=="brb",]$period)))}
     if(algo=="mcp"){periods<- levels(factor(as.factor(all_homeranges_sf_selected[all_homeranges_sf_selected$algorithm=="mcp",]$period)))}
@@ -3568,7 +3582,7 @@ for(algo in vecalgo){
       for(method in methods){
       print(method)
       if(algo=="kde"){algo_data <- all_homeranges_sf_selected %>% filter(algorithm==algo) %>% filter(hrprcnt==hr) %>% filter(bndwthm==method) %>% filter(period==peri)}
-      if(algo=="ctmm"){algo_data <- all_homeranges_sf_selected %>% filter(algorithm==algo) %>% filter(hrprcnt==hr) %>% filter(modelbase==method) %>% filter(period==peri)}
+      if(algo=="akde"){algo_data <- all_homeranges_sf_selected %>% filter(algorithm==algo) %>% filter(hrprcnt==hr) %>% filter(modelbase==method) %>% filter(period==peri)}
       if(algo=="brb"){algo_data <- all_homeranges_sf_selected %>% filter(algorithm==algo) %>% filter(hrprcnt==hr) %>% filter(hminfac==method)%>% filter(period==peri)}
       if(algo=="mcp"){algo_data <- all_homeranges_sf_selected %>% filter(algorithm==algo) %>% filter(hrprcnt==hr)%>% filter(period==peri)}
       focals<- levels(as.factor(algo_data$focal))
@@ -3853,27 +3867,39 @@ all_overlaps %>% dplyr::select(area,,focal,algorithm,overlap,overlap_jaccard,ove
 ```{r Homeranges & Overlaps (With trees) - load created full datasets ,echo=FALSE, message=FALSE,comment=FALSE, warning=FALSE}
 # Load datasets if already available and adding right colnames because they are automatically cut probably by st_write function
 all_overlaps_sf<- st_read(dsn="/Users/stefgr/Nextcloud/UZH/12_Semester/20200313_Masterthesis/R/data/Processed_data/all_overlaps.shp")
+all_overlaps_sf <- all_overlaps_sf%>%  mutate(algrthm=ifelse(algrthm=="ctmm","akde",algrthm),algrt_1=ifelse(algrt_1=="ctmm","akde",algrt_1))
 colnames<- read.csv("/Users/stefgr/Nextcloud/UZH/12_Semester/20200313_Masterthesis/R/data/Processed_data/all_overlaps.csv")
 colnames<- as.vector(colnames$x[!colnames$x %in% c("geometry")])
 colnames <- c(colnames,c("geometry"))
 colnames(all_overlaps_sf) <- colnames
-all_overlaps <- all_overlaps_sf %>% st_drop_geometry() %>% filter(bndwthm %in% c(NA, "HSCV")) %>% filter(period %in% c("total research period")) %>% filter(hminfac %in% c(NA,1))%>% filter(modelbase %in% c(NA,"unpooled"))
+all_overlaps <- all_overlaps_sf %>% st_drop_geometry() %>% filter(bndwthm %in% c(NA, "HSCV")) %>% filter(period %in% c("total research period")) %>% filter(hminfac %in% c(NA,1))%>% filter(modelbase %in% c(NA,"unpooled")) ## overlaps for hminfac 0.8 are not yet calculated but it takes too much time
 
 # Load results from homerange creation and results of trees in homeranges
 all_homeranges_sf<- st_read(dsn="/Users/stefgr/Nextcloud/UZH/12_Semester/20200313_Masterthesis/R/data/Processed_data/all_homeranges_sf.shp")
+all_homeranges_sf <- all_homeranges_sf%>%  mutate(algrthm=ifelse(algrthm=="ctmm","akde",algrthm))
 colnames<- read.csv("/Users/stefgr/Nextcloud/UZH/12_Semester/20200313_Masterthesis/R/data/Processed_data/all_homeranges_sf_colnames.csv")
 colnames<- as.vector(colnames$x[!colnames$x %in% c("geometry")])
 colnames <- c(colnames,c("geometry"))
 colnames(all_homeranges_sf) <- colnames
 ### Create a non sf object aswell
+all_homeranges_sf_selected <- all_homeranges_sf %>% filter(bndwthm %in% c(NA, "HSCV")) %>%filter(hminfac %in% c(NA, "0.8")) %>%filter(modelbase %in% c(NA,"unpooled"))
 all_homeranges <- all_homeranges_sf %>% st_drop_geometry()
-all_homeranges_selected <- all_homeranges %>% filter(bndwthm %in% c(NA, "HSCV")) %>%filter(hminfac %in% c(NA, "0.9")) %>%filter(modelbase %in% c(NA,"unpooled"))
+all_homeranges_selected <- all_homeranges %>% filter(bndwthm %in% c(NA, "HSCV")) %>%filter(hminfac %in% c(NA, "0.8")) %>%filter(modelbase %in% c(NA,"unpooled"))
   
 ### Create Homerange dataframe with additional variables
 explanatoryvars <- SUAQ_rangepoints_11all20_loc_females_10[,c("focal","SUAQ_orangutans.matriline", "SUAQ_orangutans.agecategory","SUAQ_orangutans.dominancecat")] %>% group_by(focal,SUAQ_orangutans.matriline,SUAQ_orangutans.agecategory,SUAQ_orangutans.dominancecat) %>% summarise()
 colnames(explanatoryvars) <- c("focal","matriline","agecat","dominance")
-all_homeranges_50 <- all_homeranges_sf %>% st_drop_geometry() %>%  left_join(explanatoryvars, by=c("focal"="focal")) %>% filter(hrprcnt=="50%")
-all_homeranges_95 <- all_homeranges_sf %>% st_drop_geometry() %>% left_join(explanatoryvars, by=c("focal"="focal")) %>% filter(hrprcnt=="95%")
+all_homeranges_50 <- all_homeranges_sf_selected %>% st_drop_geometry() %>%  left_join(explanatoryvars, by=c("focal"="focal")) %>% filter(hrprcnt=="50%")
+all_homeranges_95 <- all_homeranges_sf_selected %>% st_drop_geometry() %>% left_join(explanatoryvars, by=c("focal"="focal")) %>% filter(hrprcnt=="95%")
+all_homeranges_50_sf <- all_homeranges_sf_selected %>% filter(hrprcnt=="50%")
+all_homeranges_95_sf <- all_homeranges_sf_selected   %>% filter(hrprcnt=="95%")
+
+### additional information
+temp_matriline<- SUAQ_orangutans %>% group_by(focal=SUAQ_orangutans.orangutanname,matriline=SUAQ_orangutans.matriline) %>% summarise() %>% dplyr::select(focal,matriline) %>% 
+  mutate(matriline=ifelse(focal=="tiara",3,matriline)) %>% 
+  mutate(matriline=ifelse(focal=="trident",3,matriline))
+
+specs_orangutan_tot_num_of_gps_NN<- SUAQ_rangepoints_11all20_loc %>% filter(followtype=="NN") %>% group_by(focal,follow) %>% summarise(number_of_gps=n()) %>% group_by(focal) %>% summarise(number_of_gps=sum(number_of_gps,na.rm=TRUE),n_follows=n())
 
 ### Creating overlap dataframe with additional variables
 explanatoryvars <- SUAQ_rangepoints_11all20_loc_females_10[,c("focal","SUAQ_orangutans.matriline", "SUAQ_orangutans.agecategory","SUAQ_orangutans.dominancecat")] %>% group_by(focal,SUAQ_orangutans.matriline,SUAQ_orangutans.agecategory,SUAQ_orangutans.dominancecat) %>% summarise()
@@ -4290,23 +4316,17 @@ system("say alle kernel distanzen berechnet für die verschiedenen Untersuchungs
 
 # Visualizations
 ```{r Homerange - VISUALS - Estimators evaluation,echo=FALSE, message=FALSE,comment=FALSE, warning=FALSE}
-#### Homerange estimators make table with qualitative HRE evaluation
-test<- all_homeranges %>% group_by(algorithm,bndwthm,period,hminfac) %>% 
-  summarise(area=(mean(area,na.rm=TRUE)/max(all_homeranges$area, na.rm = TRUE)),                                                   holearea=(mean(Comp_holearea,na.rm=TRUE)/max(as.numeric(all_homeranges$Comp_holearea), na.rm = TRUE)),
-            Comp_polycount=(mean(Comp_polycount,na.rm=TRUE)/max(all_homeranges$Comp_polycount, na.rm = TRUE)),
-            Comp_compactness=(mean(Comp_compactness,na.rm=TRUE)/max(all_homeranges$Comp_compactness, na.rm = TRUE)),
-)
-
 
 
 #### HRE evaluation KDE
 kde_evaluation<- all_homeranges %>% dplyr::filter(algorithm=="kde") %>% dplyr::filter(period =="total research period")%>%   group_by(focal,hrprcnt,bndwthm) %>% 
-  summarise(area=(mean(area,na.rm=TRUE)),holearea=(mean(Comp_holearea,na.rm=TRUE)),
+  summarise(area=(mean(area,na.rm=TRUE)),
+            Comp_holes=(mean(Comp_holes,na.rm=TRUE)),
             Comp_polycount=(mean(Comp_polycount,na.rm=TRUE)),
             Comp_compactness=(mean(Comp_compactness,na.rm=TRUE)),
             AUC=(mean(AUC,na.rm=TRUE))
 )
-kde_evaluation_temp <- kde_evaluation %>% ungroup() %>%  group_by(focal, hrprcnt) %>% summarise(bndwthm,area=area/max(as.numeric(area), na.rm = TRUE),holearea=holearea/max(as.numeric(holearea), na.rm = TRUE),
+kde_evaluation_temp <- kde_evaluation %>% ungroup() %>%  group_by(focal, hrprcnt) %>% summarise(bndwthm,area=area/max(as.numeric(area), na.rm = TRUE),Comp_holes=Comp_holes/max(as.numeric(Comp_holes), na.rm = TRUE),
             Comp_polycount=Comp_polycount/max(as.numeric(Comp_polycount), na.rm = TRUE),
             Comp_compactness=Comp_compactness/max(as.numeric(Comp_compactness), na.rm = TRUE),
             AUC=AUC,
@@ -4320,7 +4340,7 @@ kde_evaluation<- gather(kde_evaluation,"evaltype","norm_value",4:8)
 plot_kdeeval<- kde_evaluation %>% ggplot(aes(focal, norm_value,color=as.factor(bndwthm)))+
   geom_point(shape= 1,position = position_dodge(width = 0.2),size=2)+
   facet_grid(evaltype~hrprcnt,labeller = labeller(evaltype=as_labeller(
-     c(norm_AUC="AUC",norm_area="area",norm_compactness="compactness",norm_holes="holes area",norm_polygons="polygons"))),scales="free")+
+     c(norm_AUC="AUC",norm_area="area",norm_compactness="compactness",norm_holes="holes",norm_polygons="polygons"))),scales="free")+
   theme(axis.text.x = element_text(angle = 45, hjust = 1,size = 7))+
   labs(color=element_blank(), y="normalized values",x=element_blank())
 plot_kdeeval
@@ -4337,26 +4357,29 @@ plot_kdeeval %>% ggsave(filename = paste(
 
 #### HRE evaluation BRB
 brb_evaluation<- all_homeranges %>% dplyr::filter(algorithm=="brb") %>% dplyr::filter(period =="total research period") %>%  group_by(focal,hrprcnt,hminfac) %>% 
-  summarise(area=(mean(area,na.rm=TRUE)),holearea=(mean(Comp_holearea,na.rm=TRUE)),
+  summarise(area=(mean(area,na.rm=TRUE)),
+            Comp_holes=(mean(Comp_holes,na.rm=TRUE)),
             Comp_polycount=(mean(Comp_polycount,na.rm=TRUE)),
-            Comp_compactness=(mean(Comp_compactness,na.rm=TRUE))
+            Comp_compactness=(mean(Comp_compactness,na.rm=TRUE)),
+            AUC=(mean(AUC,na.rm=TRUE))
 )
-brb_evaluation_temp<- brb_evaluation %>% ungroup() %>%  group_by(focal, hrprcnt) %>% summarise(hminfac,area=area/max(as.numeric(area), na.rm = TRUE),holearea=holearea/max(as.numeric(holearea), na.rm = TRUE),
+brb_evaluation_temp<- brb_evaluation %>% ungroup() %>%  group_by(focal, hrprcnt) %>% summarise(hminfac,area=area/max(as.numeric(area), na.rm = TRUE),Comp_holes=Comp_holes/max(as.numeric(Comp_holes), na.rm = TRUE),
             Comp_polycount=Comp_polycount/max(as.numeric(Comp_polycount), na.rm = TRUE),
             Comp_compactness=Comp_compactness/max(as.numeric(Comp_compactness), na.rm = TRUE),
+            AUC=AUC
 )
-colnames(brb_evaluation_temp) <- c("focal","hrprcnt","hminfac","norm_area","norm_holes","norm_polygons","norm_compactness")
+colnames(brb_evaluation_temp) <- c("focal","hrprcnt","hminfac","norm_area","norm_holes","norm_polygons","norm_compactness","norm_AUC")
 brb_evaluation <- brb_evaluation %>% 
-  left_join(brb_evaluation_temp,by=c("hrprcnt"="hrprcnt","focal"="focal","hminfac"="hminfac")) %>% dplyr::select(focal,hrprcnt,hminfac, norm_area,norm_holes,norm_polygons,norm_compactness)
+  left_join(brb_evaluation_temp,by=c("hrprcnt"="hrprcnt","focal"="focal","hminfac"="hminfac")) %>% dplyr::select(focal,hrprcnt,hminfac, norm_area,norm_holes,norm_polygons,norm_compactness,norm_AUC)
 
-brb_evaluation<- gather(brb_evaluation,"evaltype","norm_value",4:7)
+brb_evaluation<- gather(brb_evaluation,"evaltype","norm_value",4:8)
 
 plot_brbeval<- brb_evaluation %>% ggplot(aes(focal, norm_value,color=as.factor(hminfac)))+
   geom_point(shape= 1,position = position_dodge(width = 0.2),size=2)+
   facet_grid(evaltype~hrprcnt,labeller = labeller(evaltype=as_labeller(
-     c(norm_area="area",norm_compactness="compactness",norm_holes="holes area",norm_polygons="polygons"))))+
+     c(norm_AUC="AUC",norm_area="area",norm_compactness="compactness",norm_holes="holes",norm_polygons="polygons"))),scales="free")+
   theme(axis.text.x = element_text(angle = 45, hjust = 1,size = 7))+
-  labs(color=element_blank())
+  labs(color=element_blank(), y="normalized values",x=element_blank())
 plot_brbeval
 
 plot_brbeval %>% ggsave(filename = paste(
@@ -4370,8 +4393,102 @@ plot_brbeval %>% ggsave(filename = paste(
   sep = "."
 ),dpi=150,width = 24,height = 12,units="cm")
 
-#### Comparison of HRE
+#### AKDE compare pooled and unpooled data
+akde_evaluation<- all_homeranges %>% filter(algorithm =="akde")%>% dplyr::filter(period =="total research period") %>%  group_by(focal,hrprcnt,modelbase) %>% 
+  summarise(area=(mean(area,na.rm=TRUE)),
+            Comp_holes=(mean(Comp_holes,na.rm=TRUE)),
+            Comp_polycount=(mean(Comp_polycount,na.rm=TRUE)),
+            Comp_compactness=(mean(Comp_compactness,na.rm=TRUE)),
+            AUC=(mean(AUC,na.rm=TRUE))
+)
+akde_evaluation_temp<- akde_evaluation %>% ungroup() %>%  group_by(focal, hrprcnt) %>% summarise(area=area/max(as.numeric(area), na.rm = TRUE),Comp_holes=Comp_holes/max(as.numeric(Comp_holes), na.rm = TRUE),
+            Comp_polycount=Comp_polycount/max(as.numeric(Comp_polycount), na.rm = TRUE),
+            Comp_compactness=Comp_compactness/max(as.numeric(Comp_compactness), na.rm = TRUE),
+            AUC=AUC
+)
+colnames(akde_evaluation) <- c("focal","hrprcnt","modelbase","norm_area","norm_holes","norm_polygons","norm_compactness","norm_AUC")
+akde_evaluation <- akde_evaluation %>% 
+  left_join(akde_evaluation_temp,by=c("hrprcnt"="hrprcnt","focal"="focal")) %>% dplyr::select(focal,hrprcnt,modelbase, norm_area,norm_holes,norm_polygons,norm_compactness,norm_AUC)
 
+akde_evaluation<- gather(akde_evaluation,"evaltype","norm_value",4:8)
+
+plot_akdeeval<- akde_evaluation %>% ggplot(aes(focal,norm_value ,color=modelbase))+
+  geom_point(shape= 1,position = position_dodge(width = 0.2),size=2)+
+  facet_grid(evaltype~hrprcnt,labeller = labeller(evaltype=as_labeller(
+     c(norm_AUC="AUC",norm_area="area",norm_compactness="compactness",norm_holes="holes",norm_polygons="polygons"))),scales="free")+
+  theme(axis.text.x = element_text(angle = 45, hjust = 1,size = 7))+
+  labs(color=element_blank(), y="normalized values",x=element_blank())
+plot_akdeeval
+plot_akdeeval %>% ggsave(filename = paste(
+  paste(
+    "/Users/stefgr/Dropbox/Apps/Overleaf/Msc_Thesis/figures/",
+    format(Sys.Date(), "%Y%m%d"),"_",
+    "plot_akdeeval",
+    sep = ""
+  ),
+  "png",
+  sep = "."
+),dpi=150,width = 24,height = 12,units="cm")
+
+#### Comparison of HRE
+all_evaluation<- all_homeranges_selected %>% 
+  filter(hrprcnt!="100%") %>% 
+  #filter(algorithm!="akde") %>% 
+  dplyr::filter(period =="total research period")%>% 
+  group_by(focal,algorithm,hrprcnt) %>%
+  summarise(area=(mean(area,na.rm=TRUE)),
+            Comp_holes=(mean(Comp_holes,na.rm=TRUE)),
+            Comp_polycount=(mean(Comp_polycount,na.rm=TRUE)),
+            Comp_compactness=(mean(Comp_compactness,na.rm=TRUE)),
+            AUC=(mean(AUC,na.rm=TRUE))
+)
+all_evaluation_temp<- all_evaluation %>% ungroup() %>%  
+  group_by(focal, hrprcnt) %>% 
+  summarise(algorithm,
+            area=area/max(as.numeric(area), na.rm = TRUE),
+            Comp_holes=Comp_holes/max(as.numeric(Comp_holes), na.rm = TRUE),
+            Comp_polycount=Comp_polycount/max(as.numeric(Comp_polycount), na.rm = TRUE),
+            Comp_compactness=Comp_compactness/max(as.numeric(Comp_compactness), na.rm = TRUE),
+            AUC=AUC/max(as.numeric(AUC), na.rm = TRUE)
+)
+colnames(all_evaluation_temp) <- c("focal","hrprcnt","algorithm","norm_area","norm_holes","norm_polygons","norm_compactness","norm_AUC")
+all_evaluation <- all_evaluation %>% 
+  left_join(all_evaluation_temp,by=c("hrprcnt"="hrprcnt","focal"="focal","algorithm"="algorithm")) %>% dplyr::select(focal,hrprcnt,algorithm, norm_area,norm_holes,norm_polygons,norm_compactness,norm_AUC)
+
+all_evaluation<- gather(all_evaluation,"evaltype","norm_value",4:8)
+
+plot_alleval<- all_evaluation %>% ggplot(aes(focal, norm_value,color=algorithm))+
+  geom_point(shape= 8,position = position_dodge(width = 0.2),size=2.5)+
+  facet_grid(evaltype~hrprcnt,labeller = labeller(evaltype=as_labeller(
+     c(norm_AUC="AUC",norm_area="area",norm_compactness="compactness",norm_holes="holes",norm_polygons="polygons"))),scales="free")+
+  theme(axis.text.x = element_text(angle = 45, hjust = 1,size = 7))+
+  labs(color=element_blank(), y="normalized values",x=element_blank())
+plot_alleval
+
+
+
+plot_alleval %>% ggsave(filename = paste(
+  paste(
+    "/Users/stefgr/Dropbox/Apps/Overleaf/Msc_Thesis/figures/",
+    format(Sys.Date(), "%Y%m%d"),"_",
+    "plot_alleval_noakde",
+    sep = ""
+  ),
+  "png",
+  sep = "."
+),dpi=150,width = 24,height = 12,units="cm")
+
+##### Quick statistcs HRE evaluation
+hre_evaluation_brb<- all_evaluation[all_evaluation$algorithm=="brb",] %>% filter(hrprcnt=="95%")
+hre_evaluation_kde<- all_evaluation[all_evaluation$algorithm=="kde",]%>% filter(hrprcnt=="95%")
+hre_evaluation_akde<- all_evaluation[all_evaluation$algorithm=="akde",]%>% filter(hrprcnt=="95%")
+hre_evaluation_mcp<- all_evaluation[all_evaluation$algorithm=="mcp",]%>% filter(hrprcnt=="95%")
+all_evaluation$algorithm
+all_evaluation_noakde <- all_evaluation %>% filter(algorithm!="akde")  %>% filter(hrprcnt=="50%") %>% filter(evaltype=="norm_area")
+test<- kruskal.test(norm_value ~ algorithm,data=all_evaluation_noakde)
+pairwise.t.test(all_evaluation_noakde$norm_value,all_evaluation_noakde$algorithm,p.adj="none")
+autoplot(test)
+test
 
 ```
 
@@ -4399,10 +4516,11 @@ kde_temporal_bootstrap_monthly <- kde_temporal_bootstrap_monthly  %>%
 plot_kde_temporal_bootstrap_monthly<- kde_temporal_bootstrap_monthly %>% 
   ggplot(aes(period,area,colour=hrpercentage)) + geom_point(aes(size=relativeamount))+
   theme(axis.text.x = element_text(angle = 45, hjust = 1,size = 7))+
-  facet_grid(focal ~  bandwithmethod)+
+  facet_grid(focal  ~   bandwithmethod)+
   scale_x_discrete(breaks=breaks_vec)+
   scale_colour_manual(values = c("50%" = "#1b9e77", "95%" = "#d95f02", "99%" = "#7570b3"))+
-  scale_size_continuous(range = c(0.1, 1.5))
+  scale_size_continuous(range = c(0.1, 1.5))+
+  labs(size="amount of data",colour="range delineation")
 plot_kde_temporal_bootstrap_monthly
 plot_kde_temporal_bootstrap_monthly %>% ggsave(filename = paste(
   paste(
@@ -4416,16 +4534,25 @@ plot_kde_temporal_bootstrap_monthly %>% ggsave(filename = paste(
 ),dpi=600,width = 21,height = 29.7,units="cm")
 
 ### KDE temporal double bootstrapping
-plot_kde_bootstrap_monthly<- kde_bootstrap_monthly %>% 
-  ggplot(aes(`subset %`,`HR [km2]`,colour=hrpercentage)) + geom_jitter(alpha=0.2)+
+kde_temporal_bootstrap_monthly <- read_csv("output/Homeranges/KDE/bootstrap/sampling/20210713_iteratedbootstrap/kde_bootstrap_monthly_iterated.csv")
+colnames(kde_temporal_bootstrap_monthly) <- c("focal","percentagedata","homerange","iteration","hrpercentage","algorithm")
+
+kde_temporal_bootstrap_monthly <- kde_temporal_bootstrap_monthly %>% mutate(algorithm = "KDE HSCV",percentagedata=percentagedata/100) %>% left_join(temp_ndata, by=c("focal"="focal","hrpercentage"="hrpercentage","percentagedata"="percentagedata"))
+kde_temporal_bootstrap_monthly <- kde_temporal_bootstrap_monthly %>% mutate(n_follows_tot=ifelse(focal=="tiara",10,n_follows_tot)) %>%  mutate(title=as.factor(paste0(focal," (n: ",n_follows_tot,")")))
+
+plot_kde_bootstrap_monthly<- kde_temporal_bootstrap_monthly %>% 
+  ggplot(aes(n_follows,homerange,colour=hrpercentage,group=hrpercentage)) + geom_jitter(alpha=0.2)+
   theme(axis.text.x = element_text(angle = 45, hjust = 1,size = 7))+
-  facet_wrap(.~ focal ,ncol=5,nrow=2)
+  facet_wrap(.~ title ,ncol=6,nrow=2,scales="free")+
+  labs(colour=element_blank(),x="number of follows", y= expression("area [km"^2*"]"))+
+  #geom_smooth(level=0.95,se=TRUE)+
+  expand_limits(y = 0)
 plot_kde_bootstrap_monthly
 plot_kde_bootstrap_monthly %>% ggsave(filename = paste(
   paste(
     "/Users/stefgr/Dropbox/Apps/Overleaf/Msc_Thesis/figures/",
     format(Sys.Date(), "%Y%m%d"),"_",
-    "plot_kde_bootstrap_monthly",
+    "plot_kde_iterated_bootstrap_HSCV_perPoint2",
     sep = ""
   ),
   "png",
@@ -4526,27 +4653,36 @@ ggsave(filename = paste(
 ), plot = plot_mcp_bootstrap_perfollow, width = 24,height = 15,units="cm")
 
 ### Combining all estimators
+kde_bootstrap_monthly_perfollow_HSCV<- read_csv("output/Homeranges/KDE/bootstrap/sampling/20210716/kde_bootstrap_monthly_perfollow_HSCV.csv")
+mcp_bootstrap_monthly_perfollow<- read_csv("output/Homeranges/MCP/bootstrap/sampling/20210716/mcp_list_bootstrap_percfollow.csv")
+brb_bootstrap_monthly_perfollow<- read_csv("output/Homeranges/BRB/bootstrap/sampling/20210716/brb_list_bootstrap_perfollow.csv")
 
-colnames(kde_bootstrap_monthly_perfollow) <- c("focal","percentagedata","homerange","iteration","hrpercentage")
-brb_temporal_bootstrap_monthly <- brb_temporal_bootstrap_monthly %>% mutate(algorithm = "BRB hmin factor 0.8")
-colnames(brb_temporal_bootstrap_monthly)[colnames(brb_temporal_bootstrap_monthly) == 'homerange'] <- 'area'
-kde_bootstrap_monthly_perfollow <- kde_bootstrap_monthly_perfollow %>% mutate(algorithm = "KDE HSCV", percentagedata=percentagedata/100)
-mcp_bootstrap_monthly_perfollow <- mcp_bootstrap_monthly_perfollow %>% mutate(algorithm = "MCP",percentagedata=percentagedate)
 
-all_bootstrapped<- brb_temporal_bootstrap_monthly %>% bind_rows(kde_temporal_bootstrap_monthly)%>% bind_rows(mcp_bootstrap_monthly_perfollow)
+colnames(kde_bootstrap_monthly_perfollow_HSCV) <- c("focal","percentagedata","homerange","iteration","hrpercentage","algorithm")
+brb_bootstrap_monthly_perfollow <- brb_bootstrap_monthly_perfollow %>% mutate(algorithm = "BRB hmin factor 0.8") %>% left_join(specs_orangutan_tot_num_of_gps,by=c("focal"="focal")) 
+colnames(mcp_bootstrap_monthly_perfollow)[colnames(mcp_bootstrap_monthly_perfollow) == 'percentagedate'] <- 'percentagedata'
+colnames(brb_bootstrap_monthly_perfollow)[colnames(brb_bootstrap_monthly_perfollow) == 'homerange'] <- 'area'
+colnames(kde_bootstrap_monthly_perfollow_HSCV)[colnames(kde_bootstrap_monthly_perfollow_HSCV) == 'homerange'] <- 'area'
+temp_ndata<- mcp_bootstrap_monthly_perfollow[,c(1,3:7)] %>% group_by(focal) %>% mutate(n_follows_tot=max(n_follows)) %>% ungroup()
+
+kde_bootstrap_monthly_perfollow_HSCV <- kde_bootstrap_monthly_perfollow_HSCV %>% mutate(algorithm = "KDE HSCV",percentagedata=percentagedata/100) %>% left_join(temp_ndata, by=c("focal"="focal","hrpercentage"="hrpercentage","percentagedata"="percentagedata"))
+mcp_bootstrap_monthly_perfollow <- mcp_bootstrap_monthly_perfollow %>% mutate(algorithm = "MCP")
+
+all_bootstrapped<- brb_bootstrap_monthly_perfollow %>% bind_rows(kde_bootstrap_monthly_perfollow_HSCV)%>% bind_rows(mcp_bootstrap_monthly_perfollow)
 
 plot_brb_temporal_bootstrap_monthly<- all_bootstrapped %>% 
   filter(hrpercentage!="99%") %>% 
-  filter(hminfac%in%c(0.8,NA)) %>%
-  arrange(desc(percentagedata)) %>% 
-  ggplot(aes(percentagedata,area,colour=focal)) + geom_path()+
+  arrange(desc(n_follows)) %>% 
+  ggplot(aes(n_follows,area,colour=focal)) + 
+  geom_point(size=0.5,alpha=0.4)+
   theme(axis.text.x = element_text(angle = 45, hjust = 1,size = 10))+
   scale_fill_viridis()+
+  geom_smooth(se = FALSE)+
   #scale_x_discrete(breaks=breaks_vec)+
   #scale_colour_manual(values = c("50%" = "#1b9e77", "95%" = "#d95f02", "99%" = "#7570b3"))+
   scale_size_continuous(range = c(0.6, 7))+
-  labs(y=expression("area [km"^2*"]"),x= "percentage of data",color="Orangutan")+
-  facet_wrap(hrpercentage~ algorithm,scale="free")
+  labs(y=expression("area [km"^2*"]"),x= "number of follows",color="Orangutan")+
+  facet_grid(hrpercentage~ algorithm,scale="free_y")
   #geom_path()
 plot_brb_temporal_bootstrap_monthly
 plot_brb_temporal_bootstrap_monthly %>% ggsave(filename = paste(
@@ -4561,7 +4697,7 @@ plot_brb_temporal_bootstrap_monthly %>% ggsave(filename = paste(
 ),dpi=600,width = 29.7,height = 21,units="cm")
 ```
 
-```{r Homeranges - VISUALS ANALYSIS fruittrees ,echo=FALSE, message=FALSE,comment=FALSE, warning=FALSE}
+```{r Homeranges - VISUALS ANALYSIS fruittrees + specs HR ratio ,echo=FALSE, message=FALSE,comment=FALSE, warning=FALSE}
 ### Finding: In core areas the number of trees increase linear with area in 95% area it increases faster but then flattens
 all_homeranges_sf  %>%  ggplot(aes(area,number_of_trees,color=algorithm)) +geom_point()
 all_homeranges_sf %>% ggplot(aes(area,fruittree_normalized,color=hrprcnt)) + geom_point()
@@ -4571,20 +4707,73 @@ all_homeranges_sf %>%
   #filter(algorithm=="brb") %>% 
   #filter(hminfac==1) %>%  
   ggplot(aes(focal,fruittree_normalized))+
-  geom_point(aes(color=hrprcnt),size=3)+
+  geom_jitter(aes(color=hrprcnt),size=3)+
   geom_smooth()+
   labs(x="focal",y=expression("normalized trees [tree/tot gps effort]"),color="HR [%]") +
   scale_fill_viridis()
 
 ### Fruittreeindex
-all_homeranges_sf %>%filter(algorithm=="brb") %>% 
-  filter(hminfac==1) %>%  
+fruittrees_brb_08<- all_homeranges_sf %>%filter(algorithm=="brb") %>% 
+  filter(hminfac==0.8) %>%  
   ggplot(aes(focal,first_nn_average))+
   geom_point(aes(color=hrprcnt),size=3)+
   geom_smooth()+
   labs(x="focal",y=expression("normalized trees [tree/tot gps effort]"),color="HR [%]") +
   scale_fill_viridis()
+fruittrees_brb_08
+fruittrees_brb_08 %>% ggsave(filename = paste(
+  paste(
+    "/Users/stefgr/Dropbox/Apps/Overleaf/Msc_Thesis/figures/",
+    format(Sys.Date(), "%Y%m%d"),"_",
+    "fruittrees_brb_08",
+    sep = ""
+  ),
+  "png",
+  sep = "."
+),dpi=150,width = 29.7,height = 21,units="cm")
 
+##### Home range ratio to core range
+temp_hrtoadd<- all_homeranges_95[,c(1,3,7:9,16,28)] %>% rename("area_95"="area")
+
+specs_homeranges <- all_homeranges_50 %>% ungroup() %>% 
+  left_join(temp_hrtoadd,by=c("period"="period","focal"="focal","algorithm"="algorithm","bndwthm"="bndwthm","hminfac"="hminfac")) %>% 
+  mutate(hr_to_core_ratio_area=area/area_95,hr_to_core_ratio_fruittree=fruittree_normalized.x/fruittree_normalized.y)
+specs_homeranges <- specs_homeranges %>% 
+  group_by(focal,algorithm,period) %>% summarise(mean_hr_to_core_ratio_area=mean(hr_to_core_ratio_area,na.rm=TRUE),fruittree_core_normalized=mean(fruittree_normalized.x,na.rm=TRUE),fruittree_full_normalized=mean(fruittree_normalized.y,na.rm=TRUE))
+specs_homeranges$period <- factor(specs_homeranges$period, levels = c("before 2012", "2012 until 2016", "left", "2016 until August 2018", "Since August 2018","total research period"))
+
+plot_specsratio_homeranges <- specs_homeranges %>% 
+  ggplot(aes(focal,mean_hr_to_core_ratio_area,color=focal))+
+  geom_boxplot()+
+  geom_point(aes(y=fruittree_core_normalized),color="IndianRed")+
+  geom_point(aes(y=fruittree_full_normalized),color="cadetblue2")+
+  facet_wrap(.~period)+
+  theme(legend.position = "none")+
+  scale_y_continuous(
+    "home range (HR) to core range (CR) ratio", 
+    sec.axis = sec_axis(~ .*3, name = "ratio of normalized fruittrees (CR/HR)")
+  )
+plot_specsratio_homeranges
+plot_specsratio_homeranges %>% ggsave(filename = paste(
+  paste(
+    "/Users/stefgr/Dropbox/Apps/Overleaf/Msc_Thesis/figures/",
+    format(Sys.Date(), "%Y%m%d"),"_",
+    "plot_specsratio_homeranges_fruittree",
+    sep = ""
+  ),
+  "png",
+  sep = "."
+),dpi=600,width = 29.7,height = 21,units="cm")
+
+#### Is there a significant difference between HR ratio
+specs_HRtoCR_ratio_perfocal<-specs_homeranges %>% 
+  filter(period!="total research period") %>% 
+  filter(algorithm=="brb")
+lmm_hrRatio <- lmer(mean_hr_to_core_ratio_area ~ focal+(1|period),data=specs_HRtoCR_ratio_perfocal)
+lmm_hrRatio <- pairwise.t.test(specs_HRtoCR_ratio_perfocal$mean_hr_to_core_ratio_area,specs_HRtoCR_ratio_perfocal$focal)
+lmm_hrRatio
+
+summary(lmm_hrRatio)
 
 ```
 
@@ -4595,7 +4784,7 @@ all_homeranges_sf %>% ggplot(aes(area,fruittree_normalized,color=hrprcnt)) + geo
 all_overlaps%>% filter() GGally::ggpairs(echo=FALSE, message=FALSE)
 
 ### Fruittreeindex
-all_overlaps %>%
+fruittreeindex_inoverlaps<- all_overlaps %>%
   #filter(algorithm=="brb") %>% 
   #filter(hminfac==1) %>%  
   ggplot(aes(overlap,fruittree_normalized))+
@@ -4604,14 +4793,15 @@ all_overlaps %>%
   labs(x="overlap or area",y=expression("normalized trees [tree/tot gps effort]"),color="HR [%]") +
   scale_fill_viridis()+
   scale_x_log10()
+fruittreeindex_inoverlaps
 
 ### Range sharing
-all_overlaps_sf %>%
+range_sharing<- all_overlaps_sf %>%
   mutate(period = fct_relevel(period, 
             "before 2012", "2012 until 2016", "2016 until August 2018", 
             "Since August 2018", "total research period")) %>%
   #filter(algorithm=="brb") %>% 
-  filter(hminfac%in%c(1,NA)) %>% # filter only brb with 1 --> reduce redundancy
+  filter(hminfac%in%c(0.8,NA)) %>% # filter only brb with 1 --> reduce redundancy
   filter(bndwthm%in%c("HBCV",NA)) %>% # filter only kde with hbcv method
   filter(modelbase%in%c("pooled",NA)) %>% # filter only ctmm with pooled method
   ggplot(aes(area_shared,algorithm))+
@@ -4620,65 +4810,116 @@ all_overlaps_sf %>%
   scale_fill_viridis()+
   scale_x_log10()+
   facet_grid(period ~ focal)
+range_sharing
+range_sharing %>% ggsave(filename = paste(
+  paste(
+    "/Users/stefgr/Dropbox/Apps/Overleaf/Msc_Thesis/figures/",
+    format(Sys.Date(), "%Y%m%d"),"_",
+    "range_sharing",
+    sep = ""
+  ),
+  "png",
+  sep = "."
+),dpi=150,width = 29.7,height = 21,units="cm")
 
-test<- all_overlaps_sf %>%
+### Range volume shared
+range_sharing<- all_overlaps_sf %>%
   mutate(period = fct_relevel(period, 
             "before 2012", "2012 until 2016", "2016 until August 2018", 
             "Since August 2018", "total research period")) %>%
-  filter(algorithm=="brb") %>% 
-  filter(hminfac%in%c(1,NA)) %>% # filter only brb with 1 --> reduce redundancy
+  filter(algorithm=="kde") %>% 
+  filter(period=="total research period") %>% 
+  filter(hminfac%in%c(0.8,NA)) %>% # filter only brb with 1 --> reduce redundancy
   filter(bndwthm%in%c("HBCV",NA)) %>% # filter only kde with hbcv method
-  filter(modelbase%in%c("pooled",NA)) %>%  # filter only ctmm with pooled method
-  filter(period=="2012 until 2016") %>% 
-  filter(focal=="cissy")
+  filter(modelbase%in%c("pooled",NA)) %>% # filter only ctmm with pooled method
+  ggplot(aes(overlap_VI,period))+
+  geom_point(aes(color=hrprcnt,alpha=0.3),size=4)+
+  labs(x="Utilization Distribution Overlap Index",y=element_blank(),color="HR [%]") +
+  scale_fill_viridis()+
+  facet_grid(focal.1 ~ focal)+
+  theme(legend.position = "none")+
+  geom_rect(data = subset(all_overlaps_sf, 
+                          focal %in% c("cissy","cissy","cissy","lilly","lilly","lilly","lisa","lisa","lisa","sarabi","sarabi","sarabi") & 
+                          focal.1 %in% c("lilly","lisa","sarabi","cissy","lisa","sarabi","cissy","lilly","sarabi","cissy","lilly","lisa")), 
+                          colour = "LightSkyBlue",aes(xmin =-Inf, xmax = Inf, ymin = -Inf, ymax = Inf,alpha=0.01),fill=NA,
+             inherit.aes = FALSE,size=1)+
+  geom_rect(data = subset(all_overlaps_sf, 
+                          focal %in% c("ellie","ellie","ellie","friska","friska","friska","raffi","raffi","raffi","yulia","yulia","yulia") & 
+                          focal.1 %in% c("friska","raffi","yulia","ellie","raffi","yulia","ellie","friska","yulia","ellie","friska","raffi")), 
+                          colour = "IndianRed",aes(xmin =-Inf, xmax = Inf, ymin = -Inf, ymax = Inf,alpha=0.01),size=0.8,fill=NA,
+             inherit.aes = FALSE)
+range_sharing
+g <- ggplot_gtable(ggplot_build(range_sharing))
+strip_both <- which(grepl('strip-', g$layout$name))
+fills <- c("deepskyblue2","IndianRed","IndianRed","deepskyblue2","deepskyblue2","IndianRed","deepskyblue2","Gainsboro","Gainsboro","IndianRed","deepskyblue2","IndianRed","IndianRed","deepskyblue2","deepskyblue2","IndianRed","deepskyblue2","Gainsboro","Gainsboro","IndianRed")
+k <- 1
+for (i in strip_both) {
+j <- which(grepl('rect', g$grobs[[i]]$grobs[[1]]$childrenOrder))
+g$grobs[[i]]$grobs[[1]]$children[[j]]$gp$fill <- fills[k]
+k <- k+1
+}
+grid.draw(g) # have to be called in console
+
+range_sharing %>% ggsave(filename = paste(
+  paste(
+    "/Users/stefgr/Dropbox/Apps/Overleaf/Msc_Thesis/figures/",
+    format(Sys.Date(), "%Y%m%d"),"_",
+    "range_sharing",
+    sep = ""
+  ),
+  "png",
+  sep = "."
+),dpi=150,width = 29.7,height = 21,units="cm")
+
+
+#### Overlap as boxplots
+
+range_sharing_perfocal<- all_overlaps_sf %>%
+  mutate(period = fct_relevel(period, 
+            "before 2012", "2012 until 2016", "2016 until August 2018", 
+            "Since August 2018", "total research period")) %>%
+  
+  filter(algorithm=="kde") %>% 
+  filter(period=="total research period") %>% 
+  filter(hminfac%in%c(0.8,NA)) %>% # filter only brb with 1 --> reduce redundancy
+  filter(bndwthm%in%c("HBCV",NA)) %>% # filter only kde with hbcv method
+  filter(modelbase%in%c("pooled",NA)) %>% # filter only ctmm with pooled method
+  left_join(temp_matriline,by=c("focal"="focal")) %>% 
+  left_join(temp_matriline,by=c("focal.1"="focal")) %>% 
+  mutate(related=ifelse(matriline.x==matriline.y,"related","unrelated")) %>% 
+  filter(!is.na(related))
+range_sharing_perfocal<- range_sharing_perfocal %>%
+  ggplot(aes(x=overlap_UDOI,y=related,fill=related))+
+  geom_boxplot(size=1)+
+  facet_grid(focal ~ .)+
+  #theme(axis.title.y=element_blank(),
+        #axis.text.y=element_blank(),
+        #axis.ticks.y=element_blank())+
+  labs(x="UDOI")+
+  theme(legend.position = "none")
+range_sharing_perfocal
+
+range_sharing_perfocal %>% ggsave(filename = paste(
+  paste(
+    "/Users/stefgr/Dropbox/Apps/Overleaf/Msc_Thesis/figures/",
+    format(Sys.Date(), "%Y%m%d"),"_",
+    "range_sharing_perfocal",
+    sep = ""
+  ),
+  "png",
+  sep = "."
+),dpi=150,width = 29.7,height = 21,units="cm")
+
 
 
 ### Testing make overlap dynamics visible
-all_overlaps_50_1HBCVPOOLED <- all_overlaps_sf %>%
-  mutate(period = fct_relevel(period, 
-            "before 2012", "2012 until 2016", "2016 until August 2018", 
-            "Since August 2018", "total research period")) %>%
-  #filter(algorithm=="brb") %>% 
-  filter(hminfac%in%c(1,NA)) %>% # filter only brb with 1 --> reduce redundancy
-  filter(bndwthm%in%c("HBCV",NA)) %>% # filter only kde with hbcv method
-  filter(modelbase%in%c("pooled",NA)) %>%  # filter only ctmm with pooled method
-  filter(algorithm=="brb") %>% 
-  filter(hrprcnt=="50%") %>% 
-  dplyr::select(focal,overlap,focal.1,period)%>% 
-  #mutate(focal.1=paste0("overlapping "," ",focal.1)) %>% 
-  st_drop_geometry() %>% 
-  spread(focal.1,overlap) %>% 
-  filter(period=="2012 until 2016") %>% dplyr::select(-period)
-all_overlaps_50_1HBCVPOOLED[is.na(all_overlaps_50_1HBCVPOOLED)] <- 0
+share_overlaps <- all_overlaps %>% 
+  filter(hrprcnt%in%c("95%")) %>% 
+  filter(algorithm%in%c("brb")) %>% 
+  filter(period%in%c("total research period")) %>% 
+  dplyr::select(focal,focal.1,value=overlap_HRshared)%>% 
+  mutate(result="overlaps")
 
-rownames(all_overlaps_50_1HBCVPOOLED) <- all_overlaps_50_1HBCVPOOLED$focal
-
-all_overlaps_50_1HBCVPOOLED <- all_overlaps_50_1HBCVPOOLED %>% dplyr::select(-focal)
-# Load the circlize library
-library(circlize)
- 
-# Make the circular plot
-
-grid.col <- c(cissy = "#006d2c", ellie = "#045a8d", friska = "#3690c0",
-    lilly = "#41ae76", lisa = "#99d8c9", raffi = "#525252", sarabi = "#e5f5f9", tiara = "#969696", trident = "#d9d9d9",yulia="#a6bddb")
-
-SUAQ_rangepoints_11all20_loc_females_10 %>% group_by(focal,SUAQ_orangutans.matriline) %>% summarise() %>% view()
-
-sankeyNetwork(all_overlaps_50_1HBCVPOOLED, transparency = 0.25,
-  grid.col = c("red", "blue", "purple","pink", "orange", "green", "steelblue1"),)
-
-sankeyNetwork(Links = all_overlaps_50_1HBCVPOOLED, Nodes = nodes,
-                     Source = "IDsource", Target = "IDtarget")
-
-numbers <- sample(c(1:1000), 100, replace = T)
-data <- matrix( numbers, ncol=5)
-rownames(data) <- paste0("orig-", seq(1,20))
-colnames(data) <- paste0("dest-", seq(1,5))
-
- 
-# Make the circular plot
-# Load dataset from github
-data <- read.table("https://raw.githubusercontent.com/holtzy/data_to_viz/master/Example_dataset/13_AdjacencyDirectedWeighted.csv", header=TRUE)
 # Package
 library(networkD3)
 
@@ -4697,38 +4938,148 @@ nodes <- data.frame(name=c(as.character(data_long$source), as.character(data_lon
 data_long$IDsource=match(data_long$source, nodes$name)-1 
 data_long$IDtarget=match(data_long$target, nodes$name)-1
 
+# prepare colour scale
+ColourScal ='d3.scaleOrdinal() .range(["#FDE725FF","#B4DE2CFF","#6DCD59FF","#35B779FF","#1F9E89FF","#26828EFF","#31688EFF","#3E4A89FF","#482878FF","#440154FF"])'
+
+# Make the Network
+sankeyNetwork(Links = data_long, Nodes = nodes,
+                     Source = "IDsource", Target = "IDtarget",
+                     Value = "value", NodeID = "name", 
+                     sinksRight=FALSE, colourScale=ColourScal, nodeWidth=40, fontSize=13, nodePadding=20)
 ```
 
 ```{r Homerange - VISUALS - HR sizes,echo=FALSE, message=FALSE,comment=FALSE, warning=FALSE}
 #### Homerange sizes overview
-plot_all50_area_perfemale<- all_homeranges_sf %>% filter(hrprcnt=="50%") %>% 
-  ggplot( aes(x=focal, y=area, fill=algorithm)) +
-    geom_boxplot() +
-    scale_fill_viridis(discrete = TRUE, alpha=0.6) +
-    geom_jitter(color="black", size=0.4, alpha=0.3) +
+plot_all95_area_perfemale<- all_homeranges_sf_selected %>% 
+  filter(hrprcnt=="95%") %>% 
+  filter(period=="total research period") %>% 
+  mutate(focal_name=paste0(focal," (n=",n_fllws,")")) %>% 
+  ggplot( aes(x=focal, y=area, colour=algorithm)) +
+    geom_point(size=3, alpha=1) +
+    geom_boxplot(data=all_homeranges_sf_selected[all_homeranges_sf_selected$hrprcnt=="95%",],mapping=aes(x=focal, y=area),color = "black",width=0.3,alpha=0.1)+
+    scale_fill_viridis(discrete = TRUE) +
+    #geom_jitter(color="black", size=0.4, alpha=0.3) +
     theme_ipsum() +
     theme(
       #legend.position="none",
       plot.title = element_text(size=18),
       axis.title.x = element_blank()
     ) +
-    ggtitle(expression("Core home range areas: KDE"^"50%"*"")) +
-    ylab(expression("area [km"^2*"]"))
-plot_all50_area_perfemale
+    ggtitle(expression("home range areas"^"95%"*"")) +
+    ylab(expression("area [km"^2*"]"))+
+  labs(colour=expression("algorithm"^"total period"*""),alpha="all periods boxplot")
+plot_all95_area_perfemale
 
 
-plot_all50_area_perfemale %>% ggsave(filename = paste(
+plot_all95_area_perfemale %>% ggsave(filename = paste(
   paste(
     "/Users/stefgr/Dropbox/Apps/Overleaf/Msc_Thesis/figures/",
     format(Sys.Date(), "%Y%m%d"),"_",
-    "plot_50range_BRB_KDE_MCP_area_perfemale",
+    "plot_95range_BRB_KDE_MCP_area_totalperiod_perfemale",
     sep = ""
   ),
   "png",
   sep = "."
-),dpi=150,width = 29.7,height = 21,units="cm")
+),dpi=150,units="cm")
+
+#### Table of home ranges and their correspondent parametrization
+table_HR50 <- all_homeranges_50 %>% dplyr::select(focal,n_fllws,hrprcnt,algorithm,bndwthm,tmax,tau,lmin,model,modeltype,hminRef,area,dominance,agecat,matriline,)
+
+#### Homerange sizes overview
+overview_homerange50 <- all_homeranges_selected %>% 
+  filter(hrprcnt%in%c("50%")) %>% 
+  filter(algorithm%in%c("brb")) %>% 
+  filter(period%in%c("total research period"))%>% 
+  dplyr::select(focal,value=area) %>% 
+  mutate(result="home range: BRB 50% [km^2]")
+overview_homerange95 <- all_homeranges_selected %>% 
+  filter(hrprcnt%in%c("95%")) %>% 
+  filter(algorithm%in%c("brb")) %>% 
+  filter(period%in%c("total research period"))%>% 
+  dplyr::select(focal,value=area) %>% 
+  mutate(result="home range: BRB 95% [km^2]")
+overview_overlaps_related <- all_overlaps %>% 
+  filter(hrprcnt%in%c("95%")) %>% 
+  filter(algorithm%in%c("brb")) %>% 
+  filter(period%in%c("total research period")) %>% 
+  dplyr::select(focal,focal.1,value=overlap_HRshared)%>% 
+  left_join(temp_matriline,by=c("focal"="focal")) %>% 
+  left_join(temp_matriline,by=c("focal.1"="focal")) %>% 
+  mutate(related=ifelse(matriline.x==matriline.y,"related","unrelated")) %>% dplyr::select(focal,focal.1,value,related) %>% 
+  mutate(result="average overlaps related [UDOI]") %>% 
+  filter(related=="related") %>% 
+  group_by(focal,result) %>% 
+  summarise(value=mean(value,na.rm=TRUE))
+overview_overlaps_unrelated <- all_overlaps %>% 
+  filter(hrprcnt%in%c("95%")) %>% 
+  filter(algorithm%in%c("brb")) %>% 
+  filter(period%in%c("total research period")) %>% 
+  dplyr::select(focal,focal.1,value=overlap_HRshared)%>% 
+  left_join(temp_matriline,by=c("focal"="focal")) %>% 
+  left_join(temp_matriline,by=c("focal.1"="focal")) %>% 
+  mutate(related=ifelse(matriline.x==matriline.y,"related","unrelated")) %>% dplyr::select(focal,focal.1,value,related) %>% 
+  mutate(result="average overlaps unrelated [UDOI]") %>% 
+  filter(related=="unrelated") %>% 
+  group_by(focal,result) %>% summarise(value=mean(value,na.rm=TRUE))
+overview_djl <- DJL_follows %>% 
+  dplyr::select(focal,value=DJL) %>% 
+  mutate(result="DJL [m]") %>% 
+  filter(focal %in%selected_females) %>% 
+  group_by(focal,result) %>% 
+  summarise(value=mean(value,na.rm=TRUE))
+overview_RR <- DJL_follows %>% 
+  dplyr::select(focal,value=RR) %>% 
+  mutate(result="SI [0-1]") %>% 
+  dplyr::filter(focal %in%selected_females)%>% 
+  group_by(focal,result) %>% 
+  summarise(value=mean(value,na.rm=TRUE))
+overview_SIN <- DJL_follows %>% 
+  dplyr::select(focal,value=trj_sinuosity) %>% 
+  mutate(result="SIN [0-1]")%>% 
+  dplyr::filter(focal %in%selected_females)%>% 
+  group_by(focal,result) %>% 
+  summarise(value=mean(value,na.rm=TRUE))
 
 
+
+overview<- overview_homerange50 %>% 
+  rbind(overview_homerange95) %>% 
+  rbind(overview_overlaps_related) %>% 
+  rbind(overview_overlaps_unrelated) %>% 
+  rbind(overview_djl) %>% 
+  rbind(overview_RR) %>% 
+  rbind(overview_SIN) %>% 
+  left_join(specs_orangutan_tot_num_of_gps_NN,by=c("focal"="focal"))
+
+overview$result <- factor(overview$result,c( 
+            "DJL [m]" ,"SI [0-1]","SIN [0-1]","home range: BRB 95% [km^2]","home range: BRB 50% [km^2]","average overlaps related [UDOI]","average overlaps unrelated [UDOI]"))
+p_overview <- overview %>%
+  #filter(focal%in%c("cissy","lisa","friska","ellie")) %>% 
+  group_by(result) %>%
+  mutate(color_value=normalize(value)) %>% ungroup() %>% 
+  mutate(focal=as.factor(paste0(focal," (n = ",n_follows,")"))) %>% 
+  ggplot( aes(x=focal, y=value,fill=color_value)) +
+  geom_bar(stat = "identity")+
+  scale_fill_viridis(discrete = FALSE, alpha=1,option="rocket") +
+    theme_ipsum()+
+  theme(
+      legend.position="none",
+      plot.title = element_text(size=18),
+      axis.title.x = element_blank()
+    ) +
+  facet_wrap(.~result,nrow=7,scale="free")
+p_overview
+
+ggsave(filename = paste(
+  paste(
+    "/Users/stefgr/Dropbox/Apps/Overleaf/Msc_Thesis/figures/",
+    format(Sys.Date(), "%Y%m%d"),
+    "_plot_overview_focal_all",
+    sep = ""
+  ),
+  "png",
+  sep = "."
+), plot = p_overview,width = 30,height =40,units="cm")
 
 #### Analyze ??: distribution of weather?
 plot_anypoints <- SUAQ_waypoints_11all20_loc[order(SUAQ_waypoints_11all20_loc$manualDatetime , decreasing = FALSE ),] %>%
@@ -4835,10 +5186,35 @@ brb_selected_periods %>% filter(hminfac==1) %>% ggplot() +
   labs(y=expression("Homerange 95% [km"^2*"]"))
 dev.off()
 
+
+### Visualize HR per period compared to each other
+view(all_homeranges_selected)
+sd(all_homeranges_selected[(all_homeranges_selected$hrprcnt=="95%")&all_homeranges_selected$period=="total research period",]$area)
+all_homeranges_50_sf$period <- factor(all_homeranges_50_sf$period, levels = c("before 2012", "2012 until 2016", "left", "2016 until August 2018", "Since August 2018","total research period"))
+cr<- all_homeranges_95_sf %>%
+  #filter(focal%in%c("cissy","lisa","ellie","friska")) %>% 
+  filter(algorithm=="brb") %>% 
+  ggplot()+geom_sf(aes(colour=focal),fill=NA)+facet_wrap(.~period)+
+  ggtitle("Home ranges (BRB hmin factor 0.8)")
+cr
+cr %>% ggsave(filename = paste(
+  paste(
+    "/Users/stefgr/Dropbox/Apps/Overleaf/Msc_Thesis/figures/",
+    format(Sys.Date(), "%Y%m%d"),"_",
+    "hr_brb_08",
+    sep = ""
+  ),
+  "png",
+  sep = "."
+),dpi=600,width = 29.7,height = 21,units="cm")
+
 ```
 
 # Statistics
 ```{r Homerange - Statistics, Explanatory variables,echo=FALSE, message=FALSE,comment=FALSE, warning=FALSE}
+### Simple descriptive statistics
+
+
 ### Matriline
 all_homeranges_50_naomit <- all_homeranges_50 %>% dplyr::select(area,matriline,period,focal,n_gps,n_fllws,algorithm) %>%  na.omit()
 all_homeranges_95_naomit <- all_homeranges_95 %>% dplyr::select(area,matriline,period,focal,n_gps,n_fllws,algorithm) %>% na.omit()
@@ -4978,6 +5354,9 @@ coefs <- data.frame(coef(summary(lmer_numOfPoints95)))
 # use normal distribution to approximate p-value
 coefs$p.z <- 2 * (1 - pnorm(abs(coefs$t.value)))
 coefs
+
+
+
 ```
 
 ```{r Trees in Homerange - Statistics, Explanatory variables,echo=FALSE, message=FALSE,comment=FALSE, warning=FALSE}

@@ -522,6 +522,7 @@ DJL_follows <-   DJL_follows %>%
 DJL_follows_noNN <- SUAQ_rangepoints_11all20_loc %>%
   group_by(
     follow,
+    followtype,
     focal,
     ageFromDOB,
     ClassFocal,
@@ -546,7 +547,7 @@ DJL_follows_noNN <- SUAQ_rangepoints_11all20_loc %>%
   summarise(DJL = sum(as.numeric(manual_distTolast), na.rm = TRUE), count =
               n(), turningAngleSum=sum(as.numeric(turningAngle), na.rm = TRUE), meanTimelag=mean(timelag_lead,na.rm=TRUE), medianTimelag=median(timelag_lead,na.rm=TRUE),original_followlength=mean(SUAQ_followlog.LengthFollow,na.rm=TRUE),gps_followlength=sum(timelag,na.rm=TRUE)) %>% mutate(speed=(DJL/gps_followlength)*3.6) %>%  ungroup() 
 
-colnames(DJL_follows_noNN) <- c("follow","focal","ageFromDOB","ClassFocal","rain_eve","watlevel_mo","walevel_eve","rain_mo","avg_temp_tot","max_temp_average","min_temp_average","temp_max_mo","temp_min_mo","temp_max_eve","temp_min_eve","tot_rain_before","mmax_temp_before","fai","ageOfCurrentOffspring","monthYearDate","numOfPoints","DJL","count","turningAngleSum","meanTimelag","medianTimelag","original_followlength","gps_followlength","speed")
+colnames(DJL_follows_noNN) <- c("follow","followtype","focal","ageFromDOB","ClassFocal","rain_eve","watlevel_mo","walevel_eve","rain_mo","avg_temp_tot","max_temp_average","min_temp_average","temp_max_mo","temp_min_mo","temp_max_eve","temp_min_eve","tot_rain_before","mmax_temp_before","fai","ageOfCurrentOffspring","monthYearDate","numOfPoints","DJL","count","turningAngleSum","meanTimelag","medianTimelag","original_followlength","gps_followlength","speed")
 
 TDD_follows_noNN <- SUAQ_rangepoints_11all20_loc[order(SUAQ_rangepoints_11all20_loc$manualDatetime , decreasing = TRUE ),] %>% 
   group_by(follow) %>% 
@@ -563,7 +564,60 @@ DJL_follows_noNN <- DJL_follows_noNN %>%
   mutate(monthname=month.name[month])%>% 
   mutate(rainyseason=ifelse(month %in% c(10,11,12),"rainy","normal"))
 
+
+write_csv(DJL_follows_noNN, path = paste(
+  paste(
+    "/Users/stefgr/Nextcloud/UZH/12_Semester/20200313_Masterthesis/R/data/Processed_data/",
+    "DJL_follows_all",
+    sep = ""
+  ),
+  "csv",
+  sep = "."
+))
+
 ```
+
+```{r Sinuosity calculation ,echo=FALSE, message=FALSE,comment=FALSE, warning=FALSE}
+##### MSSI function see: 
+SUAQ_rangepoints_11all20_loc_SIN <- SUAQ_rangepoints_11all20_loc
+follows <- SUAQ_rangepoints_11all20_loc_SIN %>% group_by(follow) %>% summarise()
+SUAQ_sinuosity <- data.frame()
+temp_ClassFocal<- as.vector(levels(as.factor(SUAQ_rangepoints_11all20_loc_SIN$ClassFocal)))
+
+for(i in as_vector(follows)){
+    data<- SUAQ_rangepoints_11all20_loc_SIN %>% filter(follow%in%c(i)) 
+    print(i)
+    if(nrow(data)>1){
+      data_follow_simple <- data %>% dplyr::select(x=E,y=N,manualDatetime) %>% 
+      mutate(time=TrajConvertTime(strftime(manualDatetime, format="%H:%M:%S"), sep = ":", factors = c(60 * 60, 60, 1))) %>% 
+      ungroup() %>%  
+      dplyr::select(-manualDatetime)
+      trj <- TrajFromCoords(data_follow_simple, xCol = "x",yCol = "y")
+      trj_sinuosity <- TrajSinuosity2(trj)
+      #trj_emax <- TrajEmax(trj)
+      trj_TDD <- TrajDistance(trj)
+      trj_EMAX <- TrajEmax(trj)
+      trj_DJL <- TrajLength(trj)
+      trj_MeanTurningA <- TrajMeanVectorOfTurningAngles(trj) # in radians
+      trj_expNSD <- TrajExpectedSquareDisplacement(trj)
+      #trj_MSSI <-  calculate_MSSI(trj)
+      print(paste0(i,": ",trj_sinuosity))
+      SUAQ_sinuosity <- SUAQ_sinuosity %>% rbind(c(i,as.numeric(c(trj_sinuosity,trj_TDD,trj_DJL,trj_MeanTurningA,trj_expNSD,trj_EMAX))))
+      }
+  }
+
+colnames(SUAQ_sinuosity) <- c("follow","trj_sinuosity","trj_distance","trj_DJL","trj_MeanTurningA","trj_expNSD","trj_EMAX")
+SUAQ_sinuosity %>% ggplot(aes(trj_sinuosity))+geom_histogram(bins = 100)
+
+DJL_follows <-  DJL_follows %>% left_join(SUAQ_sinuosity,by=c("follow"="follow"))
+
+DJL_follows <-   DJL_follows %>% 
+  mutate(month=as.factor(month(lubridate::ym(monthYearDate))),fruittreecount_normalized=fruittreecount/DJL) %>% 
+  mutate(monthname=month.name[month])
+
+DJL_follows_nozerotree <- DJL_follows %>% filter(fruittreecount>0)
+```
+
 
 ## First visuals SUAQ
 ```{r Weather & basic Visuals and analysis,echo=FALSE, message=FALSE,comment=FALSE, warning=FALSE}
@@ -1589,47 +1643,6 @@ texreg(list(glm_SIN_FTD_empty,glm_SIN_FTD_full,glm_SIN_FTD_mothers_empty,glm_SIN
 
 ```
 
-```{r Sinuosity calculation ,echo=FALSE, message=FALSE,comment=FALSE, warning=FALSE}
-##### MSSI function see: 
-SUAQ_rangepoints_11all20_loc_SIN <- SUAQ_rangepoints_11all20_loc
-follows <- SUAQ_rangepoints_11all20_loc_SIN %>% group_by(follow) %>% summarise()
-SUAQ_sinuosity <- data.frame()
-temp_ClassFocal<- as.vector(levels(as.factor(SUAQ_rangepoints_11all20_loc_SIN$ClassFocal)))
-
-for(i in as_vector(follows)){
-    data<- SUAQ_rangepoints_11all20_loc_SIN %>% filter(follow%in%c(i)) 
-    print(i)
-    if(nrow(data)>1){
-      data_follow_simple <- data %>% dplyr::select(x=E,y=N,manualDatetime) %>% 
-      mutate(time=TrajConvertTime(strftime(manualDatetime, format="%H:%M:%S"), sep = ":", factors = c(60 * 60, 60, 1))) %>% 
-      ungroup() %>%  
-      dplyr::select(-manualDatetime)
-      trj <- TrajFromCoords(data_follow_simple, xCol = "x",yCol = "y")
-      trj_sinuosity <- TrajSinuosity2(trj)
-      #trj_emax <- TrajEmax(trj)
-      trj_TDD <- TrajDistance(trj)
-      trj_EMAX <- TrajEmax(trj)
-      trj_DJL <- TrajLength(trj)
-      trj_MeanTurningA <- TrajMeanVectorOfTurningAngles(trj) # in radians
-      trj_expNSD <- TrajExpectedSquareDisplacement(trj)
-      #trj_MSSI <-  calculate_MSSI(trj)
-      print(paste0(i,": ",trj_sinuosity))
-      SUAQ_sinuosity <- SUAQ_sinuosity %>% rbind(c(i,as.numeric(c(trj_sinuosity,trj_TDD,trj_DJL,trj_MeanTurningA,trj_expNSD,trj_EMAX))))
-      }
-  }
-
-colnames(SUAQ_sinuosity) <- c("follow","trj_sinuosity","trj_distance","trj_DJL","trj_MeanTurningA","trj_expNSD","trj_EMAX")
-SUAQ_sinuosity %>% ggplot(aes(trj_sinuosity))+geom_histogram(bins = 100)
-
-DJL_follows <-  DJL_follows %>% left_join(SUAQ_sinuosity,by=c("follow"="follow"))
-
-DJL_follows <-   DJL_follows %>% 
-  mutate(month=as.factor(month(lubridate::ym(monthYearDate))),fruittreecount_normalized=fruittreecount/DJL) %>% 
-  mutate(monthname=month.name[month])
-
-DJL_follows_nozerotree <- DJL_follows %>% filter(fruittreecount>0)
-```
-
 ```{r visuals of DJL and explanatory variables ,echo=FALSE, message=FALSE,comment=FALSE, warning=FALSE}
 ##### Plot female DJL
 DJL_follows_females_10<- SUAQ_rangepoints_11all20_loc_females_12 %>% 
@@ -1683,7 +1696,7 @@ plot_DJLxClassFocal
 plot_RRxClassFocal<- DJL_follows %>%
   ggplot( aes(x=ClassFocal, y=RR, fill=ClassFocal)) +
     geom_boxplot() +
-    scale_fill_viridis(discrete = TRUE, alpha=0.6) +
+    scale_fill_viridis(discrete  = TRUE, alpha=0.6) +
     geom_jitter(color="black", size=0.4, alpha=0.3) +
     theme_ipsum() +
     theme(
