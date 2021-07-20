@@ -3882,6 +3882,13 @@ colnames<- as.vector(colnames$x[!colnames$x %in% c("geometry")])
 colnames <- c(colnames,c("geometry"))
 colnames(all_homeranges_sf) <- colnames
 ### Create a non sf object aswell
+DJL_follows<- read_csv("data/Processed_data/DJL_follows.csv")
+overview_djl <- DJL_follows %>% 
+  dplyr::select(focal,DJL,trj_sinuosity,RR,ageOfCurrentOffspring) %>% 
+  filter(focal %in%selected_females) %>% 
+  group_by(focal) %>% 
+  summarise(DJL_mean=mean(DJL,na.rm=TRUE),SIN_mean=mean(trj_sinuosity,na.rm=TRUE),SI_mean=mean(RR,na.rm=TRUE),ageOfCurrentOffspring_mean=mean(ageOfCurrentOffspring,na.rm=TRUE))
+all_homeranges_sf <- all_homeranges_sf %>% left_join(overview_djl,by=c("focal"="focal"))
 all_homeranges_sf_selected <- all_homeranges_sf %>% filter(bndwthm %in% c(NA, "HSCV")) %>%filter(hminfac %in% c(NA, "0.8")) %>%filter(modelbase %in% c(NA,"unpooled"))
 all_homeranges <- all_homeranges_sf %>% st_drop_geometry()
 all_homeranges_selected <- all_homeranges %>% filter(bndwthm %in% c(NA, "HSCV")) %>%filter(hminfac %in% c(NA, "0.8")) %>%filter(modelbase %in% c(NA,"unpooled"))
@@ -3912,6 +3919,63 @@ all_overlaps_50 <- all_overlaps_50 %>% left_join(explanatoryvars, by=c("focal.1"
 all_overlaps_95 <- all_overlaps_95 %>% left_join(explanatoryvars, by=c("focal.1"="focal1")) %>% filter(hrprcnt=="95%")
 all_overlaps_50 <- all_overlaps_50 %>% mutate(dominancediff=abs(dominance1-dominance),related=ifelse(matriline1==matriline,TRUE,FALSE),agediff=abs(agecat1-agecat))
 all_overlaps_95 <- all_overlaps_95 %>% mutate(dominancediff=abs(dominance1-dominance),related=ifelse(matriline1==matriline,TRUE,FALSE),agediff=abs(agecat1-agecat))
+
+
+### Additional analysis data
+#### Homerange sizes overview
+overview_homerange50 <- all_homeranges_selected %>% 
+  filter(hrprcnt%in%c("50%")) %>% 
+  filter(algorithm%in%c("brb")) %>% 
+  filter(period%in%c("total research period"))%>% 
+  dplyr::select(focal,value=area) %>% 
+  mutate(result="home range: BRB 50% [km^2]")
+overview_homerange95 <- all_homeranges_selected %>% 
+  filter(hrprcnt%in%c("95%")) %>% 
+  filter(algorithm%in%c("brb")) %>% 
+  filter(period%in%c("total research period"))%>% 
+  dplyr::select(focal,value=area) %>% 
+  mutate(result="home range: BRB 95% [km^2]")
+overview_overlaps_related <- all_overlaps %>% 
+  filter(hrprcnt%in%c("95%")) %>% 
+  filter(algorithm%in%c("brb")) %>% 
+  filter(period%in%c("total research period")) %>% 
+  dplyr::select(focal,focal.1,value=overlap_HRshared)%>% 
+  left_join(temp_matriline,by=c("focal"="focal")) %>% 
+  left_join(temp_matriline,by=c("focal.1"="focal")) %>% 
+  mutate(related=ifelse(matriline.x==matriline.y,"related","unrelated")) %>% dplyr::select(focal,focal.1,value,related) %>% 
+  mutate(result="average overlaps related [UDOI]") %>% 
+  filter(related=="related") %>% 
+  group_by(focal,result) %>% 
+  summarise(value=mean(value,na.rm=TRUE))
+overview_overlaps_unrelated <- all_overlaps %>% 
+  filter(hrprcnt%in%c("95%")) %>% 
+  filter(algorithm%in%c("brb")) %>% 
+  filter(period%in%c("total research period")) %>% 
+  dplyr::select(focal,focal.1,value=overlap_HRshared)%>% 
+  left_join(temp_matriline,by=c("focal"="focal")) %>% 
+  left_join(temp_matriline,by=c("focal.1"="focal")) %>% 
+  mutate(related=ifelse(matriline.x==matriline.y,"related","unrelated")) %>% dplyr::select(focal,focal.1,value,related) %>% 
+  mutate(result="average overlaps unrelated [UDOI]") %>% 
+  filter(related=="unrelated") %>% 
+  group_by(focal,result) %>% summarise(value=mean(value,na.rm=TRUE))
+overview_djl <- DJL_follows %>% 
+  dplyr::select(focal,value=DJL) %>% 
+  mutate(result="DJL [m]") %>% 
+  filter(focal %in%selected_females) %>% 
+  group_by(focal,result) %>% 
+  summarise(value=mean(value,na.rm=TRUE))
+overview_RR <- DJL_follows %>% 
+  dplyr::select(focal,value=RR) %>% 
+  mutate(result="SI [0-1]") %>% 
+  dplyr::filter(focal %in%selected_females)%>% 
+  group_by(focal,result) %>% 
+  summarise(value=mean(value,na.rm=TRUE))
+overview_SIN <- DJL_follows %>% 
+  dplyr::select(focal,value=trj_sinuosity) %>% 
+  mutate(result="SIN [0-1]")%>% 
+  dplyr::filter(focal %in% selected_females)%>% 
+  group_by(focal,result) %>% 
+  summarise(value=mean(value,na.rm=TRUE))
 
 ```
 
@@ -4950,13 +5014,14 @@ sankeyNetwork(Links = data_long, Nodes = nodes,
 
 ```{r Homerange - VISUALS - HR sizes,echo=FALSE, message=FALSE,comment=FALSE, warning=FALSE}
 #### Homerange sizes overview
-plot_all95_area_perfemale<- all_homeranges_sf_selected %>% 
-  filter(hrprcnt=="95%") %>% 
+temp_HRallperiods<- all_homeranges_sf_selected[all_homeranges_sf_selected$hrprcnt=="50%",] %>% filter(period!="total research period") 
+plot_all50_area_perfemale<- all_homeranges_sf_selected %>% 
+  filter(hrprcnt=="50%") %>% 
   filter(period=="total research period") %>% 
   mutate(focal_name=paste0(focal," (n=",n_fllws,")")) %>% 
   ggplot( aes(x=focal, y=area, colour=algorithm)) +
     geom_point(size=3, alpha=1) +
-    geom_boxplot(data=all_homeranges_sf_selected[all_homeranges_sf_selected$hrprcnt=="95%",],mapping=aes(x=focal, y=area),color = "black",width=0.3,alpha=0.1)+
+    geom_boxplot(data=temp_HRallperiods,mapping=aes(x=focal, y=area),color = "black",width=0.3,alpha=0.1)+
     scale_fill_viridis(discrete = TRUE) +
     #geom_jitter(color="black", size=0.4, alpha=0.3) +
     theme_ipsum() +
@@ -4965,17 +5030,17 @@ plot_all95_area_perfemale<- all_homeranges_sf_selected %>%
       plot.title = element_text(size=18),
       axis.title.x = element_blank()
     ) +
-    ggtitle(expression("home range areas"^"95%"*"")) +
+    ggtitle(expression("core range areas"^"50%"*"")) +
     ylab(expression("area [km"^2*"]"))+
   labs(colour=expression("algorithm"^"total period"*""),alpha="all periods boxplot")
-plot_all95_area_perfemale
+plot_all50_area_perfemale
 
 
-plot_all95_area_perfemale %>% ggsave(filename = paste(
+plot_all50_area_perfemale %>% ggsave(filename = paste(
   paste(
     "/Users/stefgr/Dropbox/Apps/Overleaf/Msc_Thesis/figures/",
     format(Sys.Date(), "%Y%m%d"),"_",
-    "plot_95range_BRB_KDE_MCP_area_totalperiod_perfemale",
+    "plot_50range_BRB_KDE_MCP_area_totalperiod_perfemale",
     sep = ""
   ),
   "png",
@@ -4985,60 +5050,7 @@ plot_all95_area_perfemale %>% ggsave(filename = paste(
 #### Table of home ranges and their correspondent parametrization
 table_HR50 <- all_homeranges_50 %>% dplyr::select(focal,n_fllws,hrprcnt,algorithm,bndwthm,tmax,tau,lmin,model,modeltype,hminRef,area,dominance,agecat,matriline,)
 
-#### Homerange sizes overview
-overview_homerange50 <- all_homeranges_selected %>% 
-  filter(hrprcnt%in%c("50%")) %>% 
-  filter(algorithm%in%c("brb")) %>% 
-  filter(period%in%c("total research period"))%>% 
-  dplyr::select(focal,value=area) %>% 
-  mutate(result="home range: BRB 50% [km^2]")
-overview_homerange95 <- all_homeranges_selected %>% 
-  filter(hrprcnt%in%c("95%")) %>% 
-  filter(algorithm%in%c("brb")) %>% 
-  filter(period%in%c("total research period"))%>% 
-  dplyr::select(focal,value=area) %>% 
-  mutate(result="home range: BRB 95% [km^2]")
-overview_overlaps_related <- all_overlaps %>% 
-  filter(hrprcnt%in%c("95%")) %>% 
-  filter(algorithm%in%c("brb")) %>% 
-  filter(period%in%c("total research period")) %>% 
-  dplyr::select(focal,focal.1,value=overlap_HRshared)%>% 
-  left_join(temp_matriline,by=c("focal"="focal")) %>% 
-  left_join(temp_matriline,by=c("focal.1"="focal")) %>% 
-  mutate(related=ifelse(matriline.x==matriline.y,"related","unrelated")) %>% dplyr::select(focal,focal.1,value,related) %>% 
-  mutate(result="average overlaps related [UDOI]") %>% 
-  filter(related=="related") %>% 
-  group_by(focal,result) %>% 
-  summarise(value=mean(value,na.rm=TRUE))
-overview_overlaps_unrelated <- all_overlaps %>% 
-  filter(hrprcnt%in%c("95%")) %>% 
-  filter(algorithm%in%c("brb")) %>% 
-  filter(period%in%c("total research period")) %>% 
-  dplyr::select(focal,focal.1,value=overlap_HRshared)%>% 
-  left_join(temp_matriline,by=c("focal"="focal")) %>% 
-  left_join(temp_matriline,by=c("focal.1"="focal")) %>% 
-  mutate(related=ifelse(matriline.x==matriline.y,"related","unrelated")) %>% dplyr::select(focal,focal.1,value,related) %>% 
-  mutate(result="average overlaps unrelated [UDOI]") %>% 
-  filter(related=="unrelated") %>% 
-  group_by(focal,result) %>% summarise(value=mean(value,na.rm=TRUE))
-overview_djl <- DJL_follows %>% 
-  dplyr::select(focal,value=DJL) %>% 
-  mutate(result="DJL [m]") %>% 
-  filter(focal %in%selected_females) %>% 
-  group_by(focal,result) %>% 
-  summarise(value=mean(value,na.rm=TRUE))
-overview_RR <- DJL_follows %>% 
-  dplyr::select(focal,value=RR) %>% 
-  mutate(result="SI [0-1]") %>% 
-  dplyr::filter(focal %in%selected_females)%>% 
-  group_by(focal,result) %>% 
-  summarise(value=mean(value,na.rm=TRUE))
-overview_SIN <- DJL_follows %>% 
-  dplyr::select(focal,value=trj_sinuosity) %>% 
-  mutate(result="SIN [0-1]")%>% 
-  dplyr::filter(focal %in%selected_females)%>% 
-  group_by(focal,result) %>% 
-  summarise(value=mean(value,na.rm=TRUE))
+
 
 
 
@@ -5213,6 +5225,14 @@ cr %>% ggsave(filename = paste(
 # Statistics
 ```{r Homerange - Statistics, Explanatory variables,echo=FALSE, message=FALSE,comment=FALSE, warning=FALSE}
 ### Simple descriptive statistics
+summary(as.numeric(all_homeranges_50[all_homeranges_50$period=="total research period",]$area))
+view(all_homeranges_50[all_homeranges_50$period=="total research period",])
+
+
+
+### Simple table outputs for thesis
+#-latex output
+print(xtable(bandwiths, type = "latex",caption=c("Overview of derived bandwidths for different bandwidth estimators")), include.rownames = FALSE, booktabs = TRUE, file = "/Users/stefgr/Dropbox/Apps/Overleaf/Msc_Thesis/figures/tables/table_overview_bandwidth.tex")
 
 
 ### Matriline
@@ -5230,8 +5250,9 @@ all_homeranges_50 %>% ggplot(aes(n_gps,area,colour=period))+
 test_samplesize <- lm(area ~ n_gps+n_fllws,all_homeranges_50_naomit,REML=FALSE)
 anova(test_samplesize) # n-gps has higher explanatory power
 #### core area
-lmer_numOfPoints50 <- lmer(area ~ matriline+(1 | focal)+(1| n_gps)+(1| algorithm),all_homeranges_50_naomit,REML=FALSE)
-anova(lmer_numOfPoints50,hr_all_nullmodell_50)
+lmer_numOfPoints50_matriline <- lmer(area ~ matriline+n_fllws+(1|focal)+(1| algorithm),all_homeranges_50_naomit,REML=FALSE)
+lmer_numOfPoints50
+summary(lmer_numOfPoints50)
 ##### Create P values for lm
 coefs <- data.frame(coef(summary(lmer_numOfPoints50)))
 # use normal distribution to approximate p-value
@@ -5299,6 +5320,8 @@ coefs <- data.frame(coef(summary(lmer_numOfPoints95)))
 # use normal distribution to approximate p-value
 coefs$p.z <- 2 * (1 - pnorm(abs(coefs$t.value)))
 coefs
+
+
 # TREES
 ### Dominance
 all_tree_naomit_50 <- all_homeranges_50 %>% dplyr::select(fruittree_normalized,area,dominance,period,focal,n_gps,n_fllws,algorithm) %>%  na.omit() 
@@ -5319,7 +5342,7 @@ coefs <- data.frame(coef(summary(lmer_numOfPoints50)))
 # use normal distribution to approximate p-value
 coefs$p.z <- 2 * (1 - pnorm(abs(coefs$t.value)))
 coefs
-#### core area
+#### home area
 lmer_numOfPoints95 <- lmer(area ~ dominance+(1 | focal)+(1| n_gps)+(1| algorithm),all_homeranges_95_naomit,REML=FALSE)
 anova(lmer_numOfPoints95,hr_all_nullmodell_95)
 ##### Create P values for lm
@@ -5327,6 +5350,7 @@ coefs <- data.frame(coef(summary(lmer_numOfPoints95)))
 # use normal distribution to approximate p-value
 coefs$p.z <- 2 * (1 - pnorm(abs(coefs$t.value)))
 coefs
+
 ### Dominance
 all_homeranges_50_naomit <- all_homeranges_50 %>% dplyr::select(area,SUAQ_orangutans.dominancecat,period,focal,n_gps,n_fllws,algorithm) %>%  na.omit() 
 all_homeranges_95_naomit <- all_homeranges_95 %>% dplyr::select(area,SUAQ_orangutans.dominancecat,period,focal,n_gps,n_fllws,algorithm) %>% na.omit()
@@ -5356,7 +5380,29 @@ coefs$p.z <- 2 * (1 - pnorm(abs(coefs$t.value)))
 coefs
 
 
+###### FINAL STATISTICS
 
+### LMMs home range
+
+all_homeranges_50_naomit <- all_homeranges_50 %>% left_join(overview_djl,by=c("focal"="focal")) %>% 
+  left_join(overview_SIN,by=c("focal"="focal")) %>% 
+  left_join(overview_RR,by=c("focal"="focal"))
+
+all_homeranges_50_naomit <-dplyr::select(area,matriline,agecat,dominance,period,focal,n_gps,n_fllws,algorithm) %>%  na.omit()
+all_homeranges_95_naomit <- all_homeranges_95 %>% dplyr::select(area,matriline,agecat,dominance,matriline,period,focal,n_gps,n_fllws,algorithm) %>% na.omit()
+hr_all_nullmodell_95 <- lmer(area ~ (1 | focal) + (1| algorithm),all_homeranges_95_naomit,REML=FALSE)
+hr_all_nullmodell_50 <- lmer(area ~ (1 | focal) + (1| algorithm),all_homeranges_50_naomit,REML=FALSE)
+
+### Simple descriptive statistics
+test_data<- all_homeranges_50_naomit %>% group_by(focal,agecat,dominance) %>% summarise()
+test<- kruskal.test(agecat ~ dominance,data=test_data)
+test
+
+### Core range
+lmm_cr_full <- lmer(area ~ matriline+agecat+n_fllws+(1 | focal) + (1| algorithm),all_homeranges_50_naomit,REML=FALSE)
+anova(hr_all_nullmodell_50,lmm_cr_full)
+summary(lmm_cr_full)
+vif.mer(lmm_cr_full)
 ```
 
 ```{r Trees in Homerange - Statistics, Explanatory variables,echo=FALSE, message=FALSE,comment=FALSE, warning=FALSE}

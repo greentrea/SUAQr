@@ -565,6 +565,7 @@ DJL_follows_noNN <- DJL_follows_noNN %>%
   mutate(rainyseason=ifelse(month %in% c(10,11,12),"rainy","normal"))
 
 
+
 write_csv(DJL_follows_noNN, path = paste(
   paste(
     "/Users/stefgr/Nextcloud/UZH/12_Semester/20200313_Masterthesis/R/data/Processed_data/",
@@ -616,6 +617,16 @@ DJL_follows <-   DJL_follows %>%
   mutate(monthname=month.name[month])
 
 DJL_follows_nozerotree <- DJL_follows %>% filter(fruittreecount>0)
+
+write_csv(DJL_follows, path = paste(
+  paste(
+    "/Users/stefgr/Nextcloud/UZH/12_Semester/20200313_Masterthesis/R/data/Processed_data/",
+    "DJL_follows",
+    sep = ""
+  ),
+  "csv",
+  sep = "."
+))
 ```
 
 
