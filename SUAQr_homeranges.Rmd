@@ -45,6 +45,7 @@ packages_checker(
     'dplyr',
     'tidyr',
     'tidyverse',
+    'stargazer',
     'sf', # Simple feature --> super spatial data handling structure
     'raster', # For raster data
     'rgdal',
@@ -85,8 +86,10 @@ fancy_scientific <- function(l) {
      # return this as an expression
      parse(text=l)
 }
-
-
+Mode <- function(x) {
+  ux <- unique(x)
+  ux[which.max(tabulate(match(x, ux)))]
+}
 clockS = function(t){hour(t)*3600+minute(t)*60+second(t)}
 st_kde <- function(points,cellsize, bandwith, extent = NULL){
   require(MASS)
@@ -119,7 +122,10 @@ clockS = function(t){hour(t)*3600+minute(t)*60+second(t)}
 euclid <- function(x1,y1,x2,y2){
   return(sqrt((x1-x2)^2+(y1-y2)^2))
 }
-
+calculate_mode <- function(x) {
+  uniqx <- unique(na.omit(x))
+  uniqx[which.max(tabulate(match(x, uniqx)))]
+}
 turning_angle <- function(x,y,lead_lag = 1){ 
   if(length(x) < 3){return(NA)}
   if(length(x) != length(y)){stop("x and y must be of the same length")}
@@ -359,6 +365,7 @@ normalize <- function(x){
 #### SUAQ homerange analysis
 
 ```{r GPS Loader,echo=FALSE, message=FALSE,comment=FALSE, warning=FALSE}
+
 ### Load Project variables ### 
 ##### waypoints ##### "data/Processed_data/SUAQ_waypoints_11all20.csv"
 ##### ATTENTION: read_csv guesses a columns type as boolean if first 1200 entries are NA
@@ -3359,7 +3366,7 @@ ctmm_allperiods_sf <- SUAQ_ctmm_homeranges_unpooled %>% rbind(SUAQ_ctmm_homerang
 
 #### Homerange sizes overview
 lastdate<- "20210611"
-scnddate <- "20210706"
+scnddate <- "20210706_globalHminref"
 kde_allperiods_sf<- st_read(dsn=paste0("output/Homeranges/KDE/periods/",lastdate,"/kde_values_allperiods.shp")) %>% 
   mutate(algorithm="kde") %>% st_set_crs(23867)
 brb_allperiods_sf<- st_read(dsn=paste0("output/Homeranges/BRB/periods/",scnddate,"/brb_values_allperiods.shp")) %>% 
@@ -3873,15 +3880,23 @@ colnames<- as.vector(colnames$x[!colnames$x %in% c("geometry")])
 colnames <- c(colnames,c("geometry"))
 colnames(all_overlaps_sf) <- colnames
 all_overlaps <- all_overlaps_sf %>% st_drop_geometry() %>% filter(bndwthm %in% c(NA, "HSCV")) %>% filter(period %in% c("total research period")) %>% filter(hminfac %in% c(NA,1))%>% filter(modelbase %in% c(NA,"unpooled")) ## overlaps for hminfac 0.8 are not yet calculated but it takes too much time
+all_overlaps_allperiods <-  all_overlaps_sf  %>% filter(bndwthm %in% c(NA, "HSCV")) %>% filter(hminfac %in% c(NA,1))%>% filter(modelbase %in% c(NA,"unpooled")) %>% st_drop_geometry()
+all_overlaps_sf <- all_overlaps_sf  %>% filter(bndwthm %in% c(NA, "HSCV")) %>% filter(period %in% c("total research period")) %>% filter(hminfac %in% c(NA,1))%>% filter(modelbase %in% c(NA,"unpooled")) ## overlaps for hminfac 0.8 are not yet calculated but it takes too much time
+
 
 # Load results from homerange creation and results of trees in homeranges
 all_homeranges_sf<- st_read(dsn="/Users/stefgr/Nextcloud/UZH/12_Semester/20200313_Masterthesis/R/data/Processed_data/all_homeranges_sf.shp")
-all_homeranges_sf <- all_homeranges_sf%>%  mutate(algrthm=ifelse(algrthm=="ctmm","akde",algrthm))
+all_homeranges_sf <- all_homeranges_sf%>% ungroup() %>%
+  mutate(algrthm=ifelse(algrthm=="ctmm","akde",algrthm)) %>% 
+  mutate(n_fllws=ifelse(algrthm=="akde",Mode(all_homeranges_sf[((all_homeranges_sf$hrprcnt==hrprcnt)&(all_homeranges_sf$period==period)&&(all_homeranges_sf$focal==focal)),]$n_fllws),n_fllws),
+         n_gps=ifelse(algrthm=="akde",Mode(all_homeranges_sf[((all_homeranges_sf$hrprcnt==hrprcnt)&(all_homeranges_sf$period==period)&(all_homeranges_sf$focal==focal)),]$n_gps),n_gps)) # add number of follows and gps for akde algorithm
 colnames<- read.csv("/Users/stefgr/Nextcloud/UZH/12_Semester/20200313_Masterthesis/R/data/Processed_data/all_homeranges_sf_colnames.csv")
 colnames<- as.vector(colnames$x[!colnames$x %in% c("geometry")])
 colnames <- c(colnames,c("geometry"))
 colnames(all_homeranges_sf) <- colnames
 ### Create a non sf object aswell
+explanatoryvars <- SUAQ_rangepoints_11all20_loc_females_10[,c("focal","SUAQ_orangutans.matriline", "SUAQ_orangutans.agecategory","SUAQ_orangutans.dominancecat")] %>% group_by(focal,SUAQ_orangutans.matriline,SUAQ_orangutans.agecategory,SUAQ_orangutans.dominancecat) %>% summarise()
+colnames(explanatoryvars) <- c("focal","matriline","agecat","dominance")
 DJL_follows<- read_csv("data/Processed_data/DJL_follows.csv")
 overview_djl <- DJL_follows %>% 
   dplyr::select(focal,DJL,trj_sinuosity,RR,ageOfCurrentOffspring) %>% 
@@ -3890,19 +3905,17 @@ overview_djl <- DJL_follows %>%
   summarise(DJL_mean=mean(DJL,na.rm=TRUE),SIN_mean=mean(trj_sinuosity,na.rm=TRUE),SI_mean=mean(RR,na.rm=TRUE),ageOfCurrentOffspring_mean=mean(ageOfCurrentOffspring,na.rm=TRUE))
 all_homeranges_sf <- all_homeranges_sf %>% left_join(overview_djl,by=c("focal"="focal"))
 all_homeranges_sf_selected <- all_homeranges_sf %>% filter(bndwthm %in% c(NA, "HSCV")) %>%filter(hminfac %in% c(NA, "0.8")) %>%filter(modelbase %in% c(NA,"unpooled"))
-all_homeranges <- all_homeranges_sf %>% st_drop_geometry()
+all_homeranges <- all_homeranges_sf %>% st_drop_geometry() %>% left_join(explanatoryvars, by=c("focal"="focal"))
 all_homeranges_selected <- all_homeranges %>% filter(bndwthm %in% c(NA, "HSCV")) %>%filter(hminfac %in% c(NA, "0.8")) %>%filter(modelbase %in% c(NA,"unpooled"))
   
 ### Create Homerange dataframe with additional variables
-explanatoryvars <- SUAQ_rangepoints_11all20_loc_females_10[,c("focal","SUAQ_orangutans.matriline", "SUAQ_orangutans.agecategory","SUAQ_orangutans.dominancecat")] %>% group_by(focal,SUAQ_orangutans.matriline,SUAQ_orangutans.agecategory,SUAQ_orangutans.dominancecat) %>% summarise()
-colnames(explanatoryvars) <- c("focal","matriline","agecat","dominance")
 all_homeranges_50 <- all_homeranges_sf_selected %>% st_drop_geometry() %>%  left_join(explanatoryvars, by=c("focal"="focal")) %>% filter(hrprcnt=="50%")
 all_homeranges_95 <- all_homeranges_sf_selected %>% st_drop_geometry() %>% left_join(explanatoryvars, by=c("focal"="focal")) %>% filter(hrprcnt=="95%")
 all_homeranges_50_sf <- all_homeranges_sf_selected %>% filter(hrprcnt=="50%")
 all_homeranges_95_sf <- all_homeranges_sf_selected   %>% filter(hrprcnt=="95%")
 
 ### additional information
-temp_matriline<- SUAQ_orangutans %>% group_by(focal=SUAQ_orangutans.orangutanname,matriline=SUAQ_orangutans.matriline) %>% summarise() %>% dplyr::select(focal,matriline) %>% 
+temp_matriline<- SUAQ_orangutans %>% mutate(SUAQ_orangutans.dominancecat=ifelse(SUAQ_orangutans.orangutanname=="tiara",3,SUAQ_orangutans.dominancecat)) %>%  group_by(focal=SUAQ_orangutans.orangutanname,matriline=SUAQ_orangutans.matriline) %>% summarise() %>% dplyr::select(focal,matriline) %>% 
   mutate(matriline=ifelse(focal=="tiara",3,matriline)) %>% 
   mutate(matriline=ifelse(focal=="trident",3,matriline))
 
@@ -3913,12 +3926,22 @@ explanatoryvars <- SUAQ_rangepoints_11all20_loc_females_10[,c("focal","SUAQ_oran
 colnames(explanatoryvars) <- c("focal","matriline","agecat","dominance")
 
 all_overlaps_50 <- all_overlaps %>% left_join(explanatoryvars, by=c("focal"="focal")) %>% filter(hrprcnt=="50%")
+all_overlaps_allperiods_50 <- all_overlaps_allperiods %>% left_join(explanatoryvars, by=c("focal"="focal")) %>% filter(hrprcnt=="50%")
+all_overlaps_50_sf <- all_overlaps_sf %>% left_join(explanatoryvars, by=c("focal"="focal")) %>% filter(hrprcnt=="50%")
+
 all_overlaps_95 <- all_overlaps %>% left_join(explanatoryvars, by=c("focal"="focal")) %>% filter(hrprcnt=="95%")
+all_overlaps_allperiods_95 <- all_overlaps_allperiods %>% left_join(explanatoryvars, by=c("focal"="focal")) %>% filter(hrprcnt=="95%")
+all_overlaps_95_sf <- all_overlaps_sf %>% left_join(explanatoryvars, by=c("focal"="focal")) %>% filter(hrprcnt=="95%")
+
 colnames(explanatoryvars) <- c("focal1","matriline1","agecat1","dominance1")
 all_overlaps_50 <- all_overlaps_50 %>% left_join(explanatoryvars, by=c("focal.1"="focal1")) %>% filter(hrprcnt=="50%")
+all_overlaps_allperiods_50 <- all_overlaps_allperiods_50 %>% left_join(explanatoryvars, by=c("focal.1"="focal1")) %>% filter(hrprcnt=="50%")
+all_overlaps_allperiods_95 <- all_overlaps_allperiods_95 %>% left_join(explanatoryvars, by=c("focal.1"="focal1")) %>% filter(hrprcnt=="95%")
 all_overlaps_95 <- all_overlaps_95 %>% left_join(explanatoryvars, by=c("focal.1"="focal1")) %>% filter(hrprcnt=="95%")
 all_overlaps_50 <- all_overlaps_50 %>% mutate(dominancediff=abs(dominance1-dominance),related=ifelse(matriline1==matriline,TRUE,FALSE),agediff=abs(agecat1-agecat))
+all_overlaps_allperiods_50 <- all_overlaps_allperiods_50 %>% mutate(dominancediff=abs(dominance1-dominance),related=ifelse(matriline1==matriline,TRUE,FALSE),agediff=abs(agecat1-agecat))
 all_overlaps_95 <- all_overlaps_95 %>% mutate(dominancediff=abs(dominance1-dominance),related=ifelse(matriline1==matriline,TRUE,FALSE),agediff=abs(agecat1-agecat))
+all_overlaps_allperiods_95 <- all_overlaps_allperiods_95 %>% mutate(dominancediff=abs(dominance1-dominance),related=ifelse(matriline1==matriline,TRUE,FALSE),agediff=abs(agecat1-agecat))
 
 
 ### Additional analysis data
@@ -4777,10 +4800,10 @@ all_homeranges_sf %>%
   scale_fill_viridis()
 
 ### Fruittreeindex
-fruittrees_brb_08<- all_homeranges_sf %>%filter(algorithm=="brb") %>% 
+fruittrees_brb_08<- all_homeranges_sf %>%filter(algorithm=="brb") %>% filter(period=="total research period") %>% 
   filter(hminfac==0.8) %>%  
-  ggplot(aes(focal,first_nn_average))+
-  geom_point(aes(color=hrprcnt),size=3)+
+  ggplot(aes(focal,fruittree_normalized))+
+  geom_jitter(aes(color=hrprcnt),size=3,shape=8,width=0,height = 0.001)+
   geom_smooth()+
   labs(x="focal",y=expression("normalized trees [tree/tot gps effort]"),color="HR [%]") +
   scale_fill_viridis()
@@ -4794,9 +4817,11 @@ fruittrees_brb_08 %>% ggsave(filename = paste(
   ),
   "png",
   sep = "."
-),dpi=150,width = 29.7,height = 21,units="cm")
+),dpi=150,width = 12.5,height = 10,units="cm")
 
 ##### Home range ratio to core range
+test<- all_homeranges[(all_homeranges$hrprcnt=="100%"),] %>% filter(period=="total research period")
+sd(test$area)
 temp_hrtoadd<- all_homeranges_95[,c(1,3,7:9,16,28)] %>% rename("area_95"="area")
 
 specs_homeranges <- all_homeranges_50 %>% ungroup() %>% 
@@ -4986,30 +5011,109 @@ share_overlaps <- all_overlaps %>%
 
 # Package
 library(networkD3)
+all_overlaps_50_naomit <- all_overlaps_95%>% filter(algorithm=="brb") %>% filter(period=="total research period") %>%  
+dplyr::select(n_fllws,overlap_relative,focal,focal.1,related,algorithm) %>% na.omit() %>% ungroup()
 
 # I need a long format
-data_long <- data %>%
-  rownames_to_column %>%
-  gather(key = 'key', value = 'value', -rowname) %>%
-  filter(value > 0)
-colnames(data_long) <- c("source", "target", "value")
+data_long<- all_overlaps_50_naomit  %>%  dplyr::select(focal,focal.1,overlap_relative,related)
+colnames(data_long) <- c("source", "target", "value","related")
+data_long$source <- factor(data_long$source, levels = c("cissy","lilly","lisa","sarabi","ellie","friska","raffi","yulia","tiara","trident"))
+data_long$target <- factor(data_long$target, levels = c("cissy","lilly","lisa","sarabi","ellie","friska","raffi","yulia","tiara","trident"))
 data_long$target <- paste(data_long$target, " ", sep="")
 
 # From these flows we need to create a node data frame: it lists every entities involved in the flow
 nodes <- data.frame(name=c(as.character(data_long$source), as.character(data_long$target)) %>% unique())
- 
+
 # With networkD3, connection must be provided using id, not using real name like in the links dataframe.. So we need to reformat it.
+
 data_long$IDsource=match(data_long$source, nodes$name)-1 
 data_long$IDtarget=match(data_long$target, nodes$name)-1
 
-# prepare colour scale
-ColourScal ='d3.scaleOrdinal() .range(["#FDE725FF","#B4DE2CFF","#6DCD59FF","#35B779FF","#1F9E89FF","#26828EFF","#31688EFF","#3E4A89FF","#482878FF","#440154FF"])'
 
+nodes$group <- as.factor(c("2","2","1","1","2","1","3","3","2","1","1","2","2","1","1","2","1","3","3","2"))
+nodes$group <- as.factor(c("2","2","1","1","2","1","3","3","2","1"))
+
+ 
+# Give a color for each group:
+# Add a 'group' column to each connection:
+data_long$group <-  as.factor(data_long$related)
+ 
+# Give a color for each group:
+my_color <- 'd3.scaleOrdinal() .domain(["1", "2", "3","TRUE","FALSE"]) .range(["#69b3a2", "steelblue", "grey","green","darkred"])'
+ 
 # Make the Network
-sankeyNetwork(Links = data_long, Nodes = nodes,
-                     Source = "IDsource", Target = "IDtarget",
-                     Value = "value", NodeID = "name", 
-                     sinksRight=FALSE, colourScale=ColourScal, nodeWidth=40, fontSize=13, nodePadding=20)
+sankey<- sankeyNetwork(Links = data_long, Nodes = nodes, Source = "IDsource", Target = "IDtarget", 
+                   Value = "value", NodeID = "name", 
+                   colourScale=my_color, LinkGroup="group", NodeGroup="group",nodeWidth=40, fontSize=17,fontFamily="Arial", nodePadding=20)
+
+
+# render with js
+sankey_rendered <- htmlwidgets::onRender(sankey,
+  'function(el, x) {
+    d3.selectAll(".node text")
+        .style("fill", "white");
+  }'
+)
+
+sankey_rendered
+
+
+### Chord diagram
+all_overlaps_95$focal <- factor(all_overlaps_95$focal,levels = c("cissy", "lisa", "lilly", "sarabi", "ellie", "friska", "raffi", "yulia", "tiara","trident"))
+all_overlaps_95$focal.1 <- factor(all_overlaps_95$focal.1,levels = c("cissy", "lisa", "lilly", "sarabi", "ellie", "friska", "raffi", "yulia", "tiara","trident"))
+all_overlaps_50_naomit <- all_overlaps_95 %>% filter(algorithm=="brb") %>% filter(period=="total research period") %>%  dplyr::select(overlap_HRshared,focal,focal.1) %>% na.omit() %>% ungroup() %>% spread(key=focal,value = overlap_HRshared)
+rownames(all_overlaps_50_naomit) <- all_overlaps_50_naomit$focal.1
+all_overlaps_50_naomit <- all_overlaps_50_naomit[,2:11]
+m <- as.matrix(all_overlaps_50_naomit)
+
+colors <- all_overlaps_95 %>% filter(algorithm=="brb") %>% filter(period=="total research period") %>%  
+dplyr::select(related,focal,focal.1)  %>% ungroup() %>% spread(key=focal,value = related)
+rownames(all_overlaps_50_naomit) <- all_overlaps_50_naomit$focal.1
+colors <- colors[,2:11]
+colors <- as.matrix(colors)
+colors[colors ==TRUE] <- "lightgreen"
+colors[colors ==FALSE] <- "lightpink"
+
+## For age or 
+# colors[is.na(colors)] <- "mistyrose2"
+# colors[colors ==0] <- "lightgoldenrod1"
+# colors[colors ==1] <- "lightgoldenrod2"
+# colors[colors ==2] <- "lightgoldenrod3"
+# colors[colors ==3] <- "lightgoldenrod4"
+# colors[colors ==4] <- "red"
+
+
+
+# A vector of 4 colors for 4 groups
+chordDiagram(m, grid.col = c("darkslategray3", "darkslategray3", "darkslategray3","darkslategray3", "salmon2", "salmon2", "salmon2","salmon2","grey","grey"),col=colors)
+
+# save the widget
+# library(htmlwidgets)
+# saveWidget(p, file=paste0( getwd(), "/HtmlWidget/chord_interactive.html"))
+
+
+### Visualize Overlaps per period compared to each other
+temp_trees<- SUAQ_rangepoints_11all20_loc[SUAQ_rangepoints_11all20_loc$PtType=="tree",] %>% st_as_sf(coords = c("E","N"),crs = 23867)
+all_overlaps_50_sf$period <- factor(all_overlaps_50_sf$period, levels = c("before 2012", "2012 until 2016", "left", "2016 until August 2018", "Since August 2018","total research period"))
+cr<- all_overlaps_50_sf %>% filter(period=="total research period") %>% 
+  #filter(focal%in%c("cissy","lisa","ellie","friska")) %>% 
+  filter(algorithm=="brb") %>% 
+  ggplot()+geom_sf(aes(colour=focal,fill="grey",alpha=0.01),alpha=0.03)+facet_wrap(.~period)+
+  geom_sf(data=temp_trees,size=0.1)+
+  ggtitle("Home ranges (BRB hmin factor 0.8)")
+cr
+cr %>% ggsave(filename = paste(
+  paste(
+    "/Users/stefgr/Dropbox/Apps/Overleaf/Msc_Thesis/figures/",
+    format(Sys.Date(), "%Y%m%d"),"_",
+    "cr_brb_08_totalperiod",
+    sep = ""
+  ),
+  "png",
+  sep = "."
+),dpi=600,width = 29.7,height = 21,units="cm")
+
+
 ```
 
 ```{r Homerange - VISUALS - HR sizes,echo=FALSE, message=FALSE,comment=FALSE, warning=FALSE}
@@ -5203,8 +5307,8 @@ dev.off()
 view(all_homeranges_selected)
 sd(all_homeranges_selected[(all_homeranges_selected$hrprcnt=="95%")&all_homeranges_selected$period=="total research period",]$area)
 all_homeranges_50_sf$period <- factor(all_homeranges_50_sf$period, levels = c("before 2012", "2012 until 2016", "left", "2016 until August 2018", "Since August 2018","total research period"))
-cr<- all_homeranges_95_sf %>%
-  #filter(focal%in%c("cissy","lisa","ellie","friska")) %>% 
+cr<- all_homeranges_50_sf %>% filter(period=="total research period") %>% 
+  filter(focal%in%c("cissy","lisa","ellie","friska")) %>% 
   filter(algorithm=="brb") %>% 
   ggplot()+geom_sf(aes(colour=focal),fill=NA)+facet_wrap(.~period)+
   ggtitle("Home ranges (BRB hmin factor 0.8)")
@@ -5213,19 +5317,27 @@ cr %>% ggsave(filename = paste(
   paste(
     "/Users/stefgr/Dropbox/Apps/Overleaf/Msc_Thesis/figures/",
     format(Sys.Date(), "%Y%m%d"),"_",
-    "hr_brb_08",
+    "cr_brb_08_totalperiod_four",
     sep = ""
   ),
   "png",
   sep = "."
 ),dpi=600,width = 29.7,height = 21,units="cm")
 
+#### Table of all HR and estimator
+table_HR <- all_homeranges_selected %>% filter(period=="total research period") %>% filter(hrprcnt %in% c("50%","95%")) %>% mutate(area=round(area,2),AUC=round(AUC,3),Comp_compactness=round(Comp_compactness,2),Comp_holearea=round(Comp_holearea,2),fruittree_normalized=round(fruittree_normalized,3)) %>% 
+  dplyr::select(focal,matriline,agecat,dominance,"nF"=n_fllws,"nGPS"=n_gps,"HR"=hrprcnt,"Algo"=algorithm,area,"n Tree"=number_of_trees,"norm Tree"=fruittree_normalized,AUC,"Compact."=Comp_compactness,"Holes"=Comp_holes,"nPoly"=Comp_polycount,"area holes"=Comp_holearea) %>% gather()
+  
+
+
+print(xtable(bandwiths, type = "latex",caption=c("Overview of derived bandwidths for different bandwidth estimators")), include.rownames = FALSE, booktabs = TRUE, file = "/Users/stefgr/Dropbox/Apps/Overleaf/Msc_Thesis/figures/tables/table_overview_bandwidth.tex")
+
 ```
 
 # Statistics
 ```{r Homerange - Statistics, Explanatory variables,echo=FALSE, message=FALSE,comment=FALSE, warning=FALSE}
 ### Simple descriptive statistics
-summary(as.numeric(all_homeranges_50[all_homeranges_50$period=="total research period",]$area))
+sd(as.numeric(all_homeranges_50[all_homeranges_50$period=="total research period",]$area))
 view(all_homeranges_50[all_homeranges_50$period=="total research period",])
 
 
@@ -5381,28 +5493,203 @@ coefs
 
 
 ###### FINAL STATISTICS
+### SCATTERS
+plot_FRUITREExAREA_HR50<-
+  all_homeranges_50 %>% ggplot(aes(area,fruittree_normalized)) +
+  #scale_y_log10(labels=fancy_scientific) +
+  geom_point(binwidth = 1) + 
+  labs(y = "normalized fruit trees", x = expression("core range [km"^2*"]"))+
+  geom_smooth(method="lm")+
+  facet_wrap(.~period)
+  
+plot_FRUITREExAREA_HR50
+
+plot_MATRILINExAREA_HR50 %>% ggsave(filename = paste(
+  paste(
+    "/Users/stefgr/Dropbox/Apps/Overleaf/Msc_Thesis/figures/",
+    format(Sys.Date(), "%Y%m%d"),"_",
+    "plot_MATRILINExAREA_HR50",
+    sep = ""
+  ),
+  "png",
+  sep = "."
+),dpi=300)
+
+plot_FRUITREExAREA_HR95<-
+  all_homeranges_95 %>% ggplot(aes(area,fruittree_normalized)) +
+  #scale_y_log10(labels=fancy_scientific) +
+  geom_point(binwidth = 1) + labs(y = "normalized fruit trees", x = expression("home range [km"^2*"]"))+
+  geom_smooth(method="lm")+
+  facet_wrap(.~period)
+plot_FRUITREExAREA_HR95
+
+plot_MATRILINExAREA_HR95 %>% ggsave(filename = paste(
+  paste(
+    "/Users/stefgr/Dropbox/Apps/Overleaf/Msc_Thesis/figures/",
+    format(Sys.Date(), "%Y%m%d"),"_",
+    "plot_MATRILINExAREA_HR95",
+    sep = ""
+  ),
+  "png",
+  sep = "."
+),dpi=300)
+
+plot_MATRILINExAREA_HR95<-
+  all_homeranges_95 %>% ggplot(aes(matriline,area,group=matriline)) +
+  #scale_y_log10(labels=fancy_scientific) +
+  geom_boxplot(binwidth = 1) + labs(y = expression("home range [km"^2*"]"),x = "matriline")+
+  geom_smooth(method="lm")
+plot_MATRILINExAREA_HR95
+
+plot_MATRILINExAREA_HR50<-
+  all_homeranges_50 %>% ggplot(aes(matriline,area,group=matriline)) +
+  #scale_y_log10(labels=fancy_scientific) +
+  geom_boxplot(binwidth = 1) + 
+  labs(y = expression("home range [km"^2*"]",x = "matriline"))+
+  geom_smooth(method="lm")
+plot_MATRILINExAREA_HR50
+
+plot_DOMINANCExAREA_HR50<-
+  all_homeranges_50 %>%
+  ggplot(aes(dominance,area,group=dominance)) +
+  #scale_y_log10(labels=fancy_scientific) +
+  labs(x = "dominance category [1-4]", y = expression("core range [km"^2*"]"))+
+  geom_boxplot()+
+  geom_jitter(aes(colour=focal))+
+  facet_wrap(algorithm~.)
+plot_DOMINANCExAREA_HR50
+
+plot_DOMINANCExAREA_HR95<-
+  all_homeranges_95 %>%
+  ggplot(aes(dominance,area,group=dominance)) +
+  #scale_y_log10(labels=fancy_scientific) +
+  labs(x = "dominance category [1-4]", y = expression("home range [km"^2*"]"))+
+  geom_boxplot()+
+  geom_jitter(aes(colour=focal))+
+  facet_wrap(algorithm~.)
+plot_DOMINANCExAREA_HR95
+
+plot_NFOLLOWSxAREA_HR50<-
+  all_homeranges_50 %>%
+  ggplot(aes(n_fllws,area)) +
+  #scale_y_log10(labels=fancy_scientific) +
+  labs(x = "number of follows", y = expression("home range [km"^2*"]"))+
+  geom_jitter(aes(colour=focal))+
+  facet_wrap(algorithm~.)
+plot_NFOLLOWSxAREA_HR50
+
+plot_NFOLLOWSxAREA_HR50<-
+  all_homeranges_50 %>%
+  ggplot(aes(n_fllws,area)) +
+  #scale_y_log10(labels=fancy_scientific) +
+  labs(x = "number of follows", y = expression("home range [km"^2*"]"))+
+  geom_jitter(aes(colour=focal))+
+  facet_wrap(algorithm~.)
+plot_NFOLLOWSxAREA_HR50
 
 ### LMMs home range
+all_homeranges_50_naomit <-all_homeranges_50 %>% filter(period=="total research period") %>%  dplyr::select(area,agecat,dominance,matriline,period,focal,n_gps,n_fllws,algorithm,DJL_mean,SI_mean,SIN_mean,fruittree_normalized) %>% filter(matriline!=3) %>%  na.omit()
+all_homeranges_50_naomit_kde <- all_homeranges_50_naomit %>%filter(algorithm=="kde")
+all_homeranges_50_naomit_brb <- all_homeranges_50_naomit %>%filter(algorithm=="brb")
+all_homeranges_50_naomit_akde <- all_homeranges_50_naomit %>%filter(algorithm=="akde")
+all_homeranges_50_naomit_mcp <- all_homeranges_50_naomit %>%filter(algorithm=="mcp")
 
-all_homeranges_50_naomit <- all_homeranges_50 %>% left_join(overview_djl,by=c("focal"="focal")) %>% 
-  left_join(overview_SIN,by=c("focal"="focal")) %>% 
-  left_join(overview_RR,by=c("focal"="focal"))
+all_homeranges_95_naomit <- all_homeranges_95 %>% filter(period=="total research period") %>%  dplyr::select(area,agecat,dominance,matriline,period,focal,n_gps,n_fllws,algorithm,DJL_mean,SI_mean,SIN_mean,fruittree_normalized) %>% na.omit()
 
-all_homeranges_50_naomit <-dplyr::select(area,matriline,agecat,dominance,period,focal,n_gps,n_fllws,algorithm) %>%  na.omit()
-all_homeranges_95_naomit <- all_homeranges_95 %>% dplyr::select(area,matriline,agecat,dominance,matriline,period,focal,n_gps,n_fllws,algorithm) %>% na.omit()
-hr_all_nullmodell_95 <- lmer(area ~ (1 | focal) + (1| algorithm),all_homeranges_95_naomit,REML=FALSE)
-hr_all_nullmodell_50 <- lmer(area ~ (1 | focal) + (1| algorithm),all_homeranges_50_naomit,REML=FALSE)
+### Core range
+hr_all_nullmodell_50_focal <- lmer(area ~ (1 | focal),all_homeranges_50_naomit)
+r.squaredGLMM(hr_all_nullmodell_50_focal)
+hr_all_nullmodell_50_algo <- lmer(area ~ (1| algorithm),all_homeranges_50_naomit)
+r.squaredGLMM(hr_all_nullmodell_50_algo)
+
+
+hr_all_nullmodell_50 <- lmer(area ~ (1 | focal) + (1| algorithm),all_homeranges_50_naomit)
+
+summary(hr_all_nullmodell_50)
+anova(hr_all_nullmodell_50_focal,hr_all_nullmodell_50_algo,hr_all_nullmodell_50)
+r.squaredGLMM(hr_all_nullmodell_50)
 
 ### Simple descriptive statistics
 test_data<- all_homeranges_50_naomit %>% group_by(focal,agecat,dominance) %>% summarise()
 test<- kruskal.test(agecat ~ dominance,data=test_data)
 test
 
-### Core range
-lmm_cr_full <- lmer(area ~ matriline+agecat+n_fllws+(1 | focal) + (1| algorithm),all_homeranges_50_naomit,REML=FALSE)
-anova(hr_all_nullmodell_50,lmm_cr_full)
-summary(lmm_cr_full)
-vif.mer(lmm_cr_full)
+# lm for each algorithm
+lmm_cr_full_HR50_kde <- lm(area ~dominance+fruittree_normalized+n_fllws+DJL_mean+(1 | focal) ,all_homeranges_50_naomit,REML=FALSE)
+lmm_cr_full_HR50_brb <- lm(area ~dominance+fruittree_normalized+n_fllws+DJL_mean+(1 | focal),all_homeranges_50_naomit,REML=FALSE)
+lmm_cr_full_HR50_akde <- lm(area ~dominance+fruittree_normalized+n_fllws+DJL_mean+(1 | focal),all_homeranges_50_naomit,REML=FALSE)
+lmm_cr_full_HR50_mcp <- lm(area ~dominance+fruittree_normalized+n_fllws+DJL_mean+(1 | focal),all_homeranges_50_naomit,REML=FALSE)
+
+lmm_cr_full_HR50 <- lmer(area ~dominance+fruittree_normalized+n_fllws+DJL_mean+(1 | focal) + (1| algorithm),all_homeranges_50_naomit,REML=FALSE)
+anova(hr_all_nullmodell_50,lmm_cr_full_HR50)
+summary(lmm_cr_full_HR50)
+vif.mer(lmm_cr_full_HR50)
+r.squaredGLMM(lmm_cr_full_HR50)
+?r.squaredGLMM
+#### Quick automatic selection
+step_result_backward<- step(lmm_cr_full_HR50)
+glm_HR50_selected_backward<- get_model(step_result_backward,direction="backward")
+summary(glm_HR50_selected_backward)
+vif.mer(glm_HR50_selected_backward)
+r.squaredGLMM(glm_HR50_selected_backward)
+
+##### 95% Homerange
+hr_all_nullmodell_95 <- lmer(area ~ (1 | focal) + (1| algorithm),all_homeranges_95_naomit)
+summary(hr_all_nullmodell_95)
+r.squaredGLMM(hr_all_nullmodell_95)
+
+hr_all_nullmodell_95_focal <- lmer(area ~ (1 | focal),all_homeranges_95_naomit)
+r.squaredGLMM(hr_all_nullmodell_95_focal)
+hr_all_nullmodell_95_algo <- lmer(area ~ (1| algorithm),all_homeranges_95_naomit)
+r.squaredGLMM(hr_all_nullmodell_95_algo)
+
+
+
+hr_all_nullmodell_95 <- lmer(area ~ (1 | focal) + (1| algorithm),all_homeranges_95_naomit)
+anova(hr_all_nullmodell_95_focal,hr_all_nullmodell_95_algo,hr_all_nullmodell_95)
+summary(hr_all_nullmodell_95)
+r.squaredGLMM(hr_all_nullmodell_95)
+
+### Simple descriptive statistics
+lmm_cr_full_HR95 <- lmer(area ~ dominance+fruittree_normalized+n_fllws+DJL_mean+(1 | focal) + (1| algorithm),all_homeranges_95_naomit,REML=FALSE)
+anova(hr_all_nullmodell_95,lmm_cr_full_HR95)
+summary(lmm_cr_full_HR95)
+vif.mer(lmm_cr_full_HR95)
+r.squaredGLMM(lmm_cr_full_HR95)
+?r.squaredGLMM
+#### Quick automatic selection
+step_result_backward<- step(lmm_cr_full_HR95)
+glm_HR95_selected_backward<- get_model(step_result_backward,direction="backward")
+summary(glm_HR95_selected_backward)
+vif.mer(glm_HR95_selected_backward)
+r.squaredGLMM(glm_HR95_selected_backward)
+
+###### OVERVIEW OF MODEL RESULTS
+screenreg(list(hr_all_nullmodell_50,lmm_cr_full_HR50,hr_all_nullmodell_95,lmm_cr_full_HR95),digits=4)
+
+
+summary(lmm_cr_full_HR50)
+sjPlot::tab_model(lmm_cr_full_HR95, digits=4,
+                  show.re.var= TRUE, 
+                  pred.labels =c("intercept", "dominance","fruit trees normalized", "n follows", "average DJL"),
+                  dv.labels= "Effects of internal and external factors on DJL")
+ranova(lmm_cr_full_HR50)
+view(as.data.frame(vif.mer(lmm_cr_full_HR50)))
+r.squaredGLMM(lmm_cr_full_HR50)
+anova(hr_all_nullmodell_50,lmm_cr_full_HR50)
+
+###### TEXTREG --> LATEX EXPORT
+texreg(list(hr_all_nullmodell_50,lmm_cr_full_HR50,hr_all_nullmodell_95,lmm_cr_full_HR95),
+       digits=4,
+          custom.model.names = c("Only random (CR)","Selected model (CR)","(Only random (HR 95%)","Selected model (HR 95%"),
+          custom.coef.names = c("intercept", "dominance","fruit trees normalized", "n follows", "average DJL"),
+          return.string=TRUE,
+          use.packages=FALSE,
+          single.row=TRUE,
+       stars = c(0.001, 0.01, 0.05, 0.1))
+
+
+
 ```
 
 ```{r Trees in Homerange - Statistics, Explanatory variables,echo=FALSE, message=FALSE,comment=FALSE, warning=FALSE}
@@ -5518,29 +5805,123 @@ coefs
 ```
 
 ```{r Homerange overlaps - Statistics, Explanatory variables,echo=FALSE, message=FALSE,comment=FALSE, warning=FALSE}
+### Descriptive overlaps
+all_overlaps_50_naomit <- all_overlaps_50 %>% filter(period=="total research period") %>%  
+dplyr::select(area,n_gps,overlap,overlap_relative,area_shared,overlap_jaccard,period,focal,focal.1,related,algorithm) %>% na.omit() %>% ungroup()
+all_overlaps_95_naomit <- all_overlaps_95 %>% dplyr::select(area,n_gps,overlap,area_shared,overlap_jaccard,overlap_BA,overlap_UDOI,overlap_VI,overlap_HRshared,related,period,focal,focal.1,algorithm) %>% na.omit() %>% ungroup()
+
+### Simple descriptive statistics 
+# Area shared
+specs_areashared_50<- all_overlaps_50_naomit %>% group_by(focal,algorithm,area_shared) %>% summarise(n())
+plot_specs_areashared_50<- specs_areashared_50 %>% ggplot(aes(focal,area_shared,colour=focal,shape=algorithm)) + 
+  geom_point(size=4) +
+  labs(y="area shared [%]",x="")
+plot_specs_areashared_50
+plot_specs_areashared_50 %>% ggsave(filename = paste(
+  paste(
+    "/Users/stefgr/Dropbox/Apps/Overleaf/Msc_Thesis/figures/",
+    format(Sys.Date(), "%Y%m%d"),"_",
+    "plot_specs_areashared_50",
+    sep = ""
+  ),
+  "png",
+  sep = "."
+),dpi=300,width = 10,height = 10,units="cm")
+specs_areashared_95<- all_overlaps_95_naomit %>% group_by(focal,algorithm,area_shared) %>% summarise(n())
+plot_specs_areashared_95<- specs_areashared_95 %>% ggplot(aes(focal,area_shared,colour=focal,shape=algorithm)) + 
+  geom_point(size=4) +
+  labs(y="area shared [%]",x="")+
+  theme(legend.position = "none")+
+  ylim(0.35,1)
+ plot_specs_areashared_95 %>% ggsave(filename = paste(
+  paste(
+    "/Users/stefgr/Dropbox/Apps/Overleaf/Msc_Thesis/figures/",
+    format(Sys.Date(), "%Y%m%d"),"_",
+    "plot_specs_areashared_95",
+    sep = ""
+  ),
+  "png",
+  sep = "."
+),dpi=300,width = 10,height = 10,units="cm")
+
+# Undirected overlaps
+specs_areashared_50_undirected<- all_overlaps_50_naomit %>% group_by(focal,algorithm,overlap_relative,overlap_jaccard) %>% summarise(n())
+plot_specs_areashared_50_undirected<- specs_areashared_50_undirected %>% 
+  ggplot(aes(focal,overlap_relative,overlap_jaccard,colour=focal,shape=algorithm)) + 
+  geom_point(size=4) +
+  labs(y="area shared [%]",x="")
+plot_specs_areashared_50
+plot_specs_areashared_50 %>% ggsave(filename = paste(
+  paste(
+    "/Users/stefgr/Dropbox/Apps/Overleaf/Msc_Thesis/figures/",
+    format(Sys.Date(), "%Y%m%d"),"_",
+    "plot_specs_areashared_50",
+    sep = ""
+  ),
+  "png",
+  sep = "."
+),dpi=300,width = 10,height = 10,units="cm")
+specs_areashared_95_undirected<- all_overlaps_95_naomit %>% group_by(focal,algorithm,area_shared) %>% summarise(n())
+plot_specs_areashared_95<- specs_areashared_95 %>% ggplot(aes(focal,area_shared,colour=focal,shape=algorithm)) + 
+  geom_point(size=4) +
+  labs(y="area shared [%]",x="")+
+  theme(legend.position = "none")+
+  ylim(0.35,1)
+ plot_specs_areashared_95 %>% ggsave(filename = paste(
+  paste(
+    "/Users/stefgr/Dropbox/Apps/Overleaf/Msc_Thesis/figures/",
+    format(Sys.Date(), "%Y%m%d"),"_",
+    "plot_specs_areashared_95",
+    sep = ""
+  ),
+  "png",
+  sep = "."
+),dpi=300,width = 10,height = 10,units="cm")
+
+ 
+### Comparison between estimators
+all_overlaps_95_naomit <- all_overlaps_95 %>% dplyr::select(area,n_gps,overlap,overlap_jaccard,overlap_BA,overlap_UDOI,overlap_VI,overlap_HRshared,related,period,focal,focal.1,algorithm) %>% na.omit() %>% ungroup() %>% gather("overlap_calculation","value",3:8)
+all_overlaps_95_selected <- all_overlaps_95 %>% dplyr::select(focal,focal.1,overlap,related,algorithm,overlap_jaccard,overlap_BA,overlap_UDOI,overlap_VI,overlap_HRshared) %>% na.omit() %>% ungroup() %>% rename(overlap=overlap,"Jaccard index"=overlap_jaccard,"BA index"=overlap_BA,"UDOI"=overlap_UDOI,VI=overlap_VI,"relative HR shared"=overlap_HRshared)
+all_overlaps_95_selected <- all_overlaps_95 %>% dplyr::select(overlap,overlap_jaccard,overlap_BA,overlap_UDOI,overlap_VI,overlap_HRshared) %>% na.omit() %>% ungroup() %>% rename(overlap=overlap,"Jaccard index"=overlap_jaccard,"BA index"=overlap_BA,"UDOI"=overlap_UDOI,VI=overlap_VI,"relative HR shared"=overlap_HRshared)
+
+plot_specs_overlapindices<- all_overlaps_95_naomit %>% ggplot(aes(focal,value)) + 
+  geom_boxplot() +
+  labs(y="value",x="overlap index used")+
+  theme(legend.position = "none")+
+  theme(axis.text.x = element_text(angle = 45, hjust = 1,size = 7))+
+  facet_wrap(period~overlap_calculation)
+plot_specs_overlapindices
+
+
+specs_correlation_overlapindices <- cor(all_overlaps_95_selected)
+print(xtable(specs_correlation_overlapindices, type = "latex",caption=c("Overview of derived bandwidths for different bandwidth estimators")), include.rownames = FALSE, booktabs = TRUE, file = "/Users/stefgr/Dropbox/Apps/Overleaf/Msc_Thesis/figures/tables/table_overview_overlapindices.tex")
+
+
 # Jaccard
 ## MATRILINE Explain jaccard overlap
-all_overlaps_50_naomit <- all_overlaps_50 %>% dplyr::select(area,n_gps,overlap,overlap_jaccard,related,period,focal,focal.1,algorithm) %>% na.omit() %>% ungroup()
-all_overlaps_95_naomit <- all_overlaps_95 %>% dplyr::select(area,n_gps,overlap,overlap_jaccard,related,period,focal,focal.1,algorithm) %>% na.omit() %>% ungroup()
+all_overlaps_50_naomit <- all_overlaps_50 %>%  dplyr::select(area,n_gps,overlap,overlap_jaccard,related,period,focal,focal.1,algorithm) %>% na.omit() %>% ungroup()
+all_overlaps_95_naomit <- all_overlaps_95 %>%  dplyr::select(area,n_gps,overlap,overlap_jaccard,overlap_UDOI,related,period,focal,focal.1,algorithm) %>% na.omit() %>% ungroup()
 lmer_overlap_all_nullmodell_95 <- lmer(overlap_jaccard ~ (1 | focal.1)+(1 | focal)+(1| n_gps)+(1|algorithm),all_overlaps_95_naomit,REML=FALSE)
+lmer_overlap_all_nullmodell_95 <- lmer(overlap_UDOI ~ (1 | focal.1)+(1 | focal)+(1| n_gps)+(1|algorithm),all_overlaps_95_naomit,REML=FALSE)
 lmer_overlap_all_nullmodell_50 <- lmer(overlap_jaccard ~ (1 | focal.1)+(1 | focal)+(1| n_gps)+(1| algorithm),all_overlaps_50_naomit,REML=FALSE)
 
 #### Core area
-lmer_jaccard_50 <- lmer(overlap_jaccard ~ related+(1 | focal.1)+(1 | focal)+(1| n_gps)+(1| algorithm),all_overlaps_50_naomit,REML=FALSE)
-anova(lmer_jaccard_50,lmer_overlap_all_nullmodell_50)
-anova(lmer_jaccard_50)
+lmer_jaccard_50_related <- lmer(overlap_jaccard ~ related+(1 | focal.1)+(1 | focal)+(1| n_gps)+(1| algorithm),all_overlaps_50_naomit,REML=FALSE)
+anova(lmer_jaccard_50_related,lmer_overlap_all_nullmodell_50)
+anova(lmer_jaccard_50_related)
 
 ##### Create P values for lm
-coefs <- data.frame(coef(summary(lmer_jaccard_50)))
+coefs <- data.frame(coef(summary(lmer_jaccard_50_related)))
 # use normal distribution to approximate p-value
 coefs$p.z <- 2 * (1 - pnorm(abs(coefs$t.value)))
 coefs
 
 #### 95% Area
-lmer_numOfPoints95 <- lmer(overlap_jaccard ~ related+(1 | focal.1)+(1 | focal)+(1| n_gps)+(1| algorithm),all_overlaps_95_naomit,REML=FALSE)
-anova(lmer_numOfPoints95,lmer_overlap_all_nullmodell_95)
+lmer_jaccard_95_related <- lmer(overlap_jaccard ~ related+(1 | focal.1)+(1 | focal)+(1| n_gps)+(1| algorithm),all_overlaps_95_naomit,REML=FALSE)
+anova(lmer_numOfPoints95_jaccard,lmer_jaccard_95_related)
+summary(lmer_numOfPoints95)
 ##### Create P values for lm
-coefs <- data.frame(coef(summary(lmer_numOfPoints95)))
+coefs <- data.frame(coef(summary(lmer_jaccard_95_related)))
 # use normal distribution to approximate p-value
 coefs$p.z <- 2 * (1 - pnorm(abs(coefs$t.value)))
 coefs
@@ -5715,6 +6096,150 @@ coefs
 
 
 
+########### FINAL Statistics ################
+# loading data all periods
+allp_overlaps_95_naomit_long <- all_overlaps_allperiods_95 %>% filter(algorithm%in%c("brb")) %>% dplyr::select(area,n_gps,overlap,overlap_jaccard,overlap_relative,related,agediff,dominancediff,period,focal,focal.1,algorithm,fruittree_normalized,fruittree_per_sqkm)%>% rename(overlap=overlap,"Jaccard index"=overlap_jaccard,"relative overlap"=overlap_relative) %>%  na.omit() %>% ungroup()  %>% gather("overlap_calculation","value",3:5)
+
+allp_overlaps_50_naomit_long <- all_overlaps_allperiods_50 %>% filter(algorithm%in%c("brb")) %>% dplyr::select(area,n_gps,overlap,overlap_jaccard,overlap_relative,related,agediff,dominancediff,overlap,period,focal,focal.1,algorithm,fruittree_normalized,fruittree_per_sqkm) %>% rename(overlap=overlap,"Jaccard index"=overlap_jaccard,"relative overlap"=overlap_relative) %>%  na.omit() %>% ungroup() %>% gather("overlap_calculation","value",3:5)
+
+allp_overlaps_50_naomit <- all_overlaps_allperiods_50 %>% dplyr::select(area,n_gps,period,related,agediff,dominancediff,overlap,overlap_relative,area_shared,overlap_jaccard,period,focal,focal.1,related,algorithm,fruittree_normalized,fruittree_per_sqkm) %>% na.omit() %>% ungroup()
+
+allp_overlaps_95_naomit <- all_overlaps_allperiods_95 %>%   dplyr::select(overlap,period,related,agediff,dominancediff,area_shared,overlap_jaccard,overlap_relative,related,period,focal,focal.1,algorithm,n_gps,fruittree_normalized,fruittree_per_sqkm) %>% na.omit() %>% ungroup()
+
+# loading data
+all_overlaps_95_naomit_long <- all_overlaps_95 %>%filter(period =="total research period") %>%  dplyr::select(area,n_gps,overlap,overlap_jaccard,overlap_BA,overlap_UDOI,overlap_VI,overlap_HRshared,related,agediff,dominancediff,overlap,period,focal,focal.1,algorithm,fruittree_normalized)  %>% ungroup() %>% rename(overlap=overlap,"Jaccard index"=overlap_jaccard,"BA index"=overlap_BA,"UDOI"=overlap_UDOI,VI=overlap_VI,"relative HR shared"=overlap_HRshared) %>% gather("overlap_calculation","value",3:8)
+
+all_overlaps_50_naomit_long <- all_overlaps_50 %>%filter(period=="total research period") %>%  dplyr::select(area,n_gps,overlap,overlap_jaccard,overlap_relative,related,agediff,dominancediff,overlap,period,focal,focal.1,algorithm,fruittree_normalized) %>% rename(overlap=overlap,"Jaccard index"=overlap_jaccard,"relative overlap"=overlap_relative) %>%  na.omit() %>% ungroup() %>% gather("overlap_calculation","value",3:5)
+
+all_overlaps_50_naomit <- all_overlaps_50 %>% filter(period=="total research period") %>%  filter(algorithm%in%c("brb","kde")) %>% dplyr::select(area,n_gps,related,agediff,dominancediff,overlap,overlap_relative,area_shared,overlap_jaccard,period,focal,focal.1,algorithm,fruittree_normalized) %>% na.omit() %>% ungroup()
+
+all_overlaps_95_naomit <- all_overlaps_95 %>% filter(period=="total research period") %>%  filter(algorithm%in%c("brb","kde")) %>%  dplyr::select(overlap,n_fllws,n_gps,agediff,dominancediff,area_shared,overlap_jaccard,overlap_relative,overlap_BA,overlap_UDOI,overlap_VI,overlap_HRshared,related,period,focal,focal.1,algorithm,fruittree_normalized) %>% na.omit() %>% ungroup()
+
+# visuals
+all_overlaps_95_naomit_long %>% ggplot(aes(as.factor(related),value,colour=n_gps))+
+  geom_boxplot()+
+  geom_jitter()+
+  facet_grid(algorithm~ overlap_calculation,scale="free")+
+  labs(colour="n GPS",x="")
+
+all_overlaps_95_naomit_long %>% 
+  ggplot(aes(as.factor(agediff),value,colour=n_gps))+
+  geom_boxplot()+
+  geom_jitter()+
+  labs(colour="n GPS",x="dominance difference")+
+  facet_grid(algorithm ~ overlap_calculation,scale="free")
+
+all_overlaps_50_naomit_long %>% ggplot(aes(as.factor(related),value,colour=n_gps))+
+  geom_boxplot() +
+  geom_jitter()+
+  facet_grid(algorithm ~ overlap_calculation,scale="free")+
+  labs(colour="n GPS",x="")
+
+allp_overlaps_95_naomit_long %>% ggplot(aes(as.factor(related),value,colour=n_gps))+
+  geom_boxplot()+
+  geom_jitter()+
+  facet_grid(period ~ overlap_calculation,scale="free")+
+  labs(colour="n GPS",x="related")
+
+allp_overlaps_95_naomit_long %>% ggplot(aes(as.factor(dominancediff),value,colour=n_gps))+
+  geom_boxplot()+
+  geom_jitter()+
+  facet_grid(period ~ overlap_calculation,scale="free")+
+  labs(colour="n GPS",x="difference in dominance category")
+
+allp_overlaps_95_naomit_long %>% ggplot(aes(as.factor(round(fruittree_normalized,2)),related,group=related,colour=n_gps))+
+  geom_boxplot()+
+  facet_grid(period ~ overlap_calculation,scale="free")+
+  labs(colour="n GPS",x="normalized fruit trees")+
+  theme(axis.text.x = element_text(angle = 45, hjust = 1,size = 7))
+
+## OVERLAP
+lmer_overlap_nullmodell_50 <- lmer(overlap ~ (1|algorithm)+(1 | focal)+(1|period),allp_overlaps_50_naomit,REML=FALSE)
+lmer_overlap_nullmodell_95 <- lmer(overlap ~ (1|algorithm)+(1 | focal)+(1|period),allp_overlaps_95_naomit,REML=FALSE)
+lmer_overlap_50<- lmer(overlap ~ dominancediff+related+(1|algorithm)+(1 | focal)+(1|period),allp_overlaps_50_naomit,REML=FALSE)
+lmer_overlap_95 <- lmer(overlap ~ dominancediff+related+(1|algorithm)+(1 | focal)+(1|period),allp_overlaps_95_naomit,REML=FALSE)
+
+anova(lmer_overlap_50,lmer_overlap_nullmodell_50)
+anova(lmer_overlap_nullmodell_95,lmer_overlap_95)
+vif.mer(lmer_overlap_50)
+summary(lmer_overlap_50)
+summary(lmer_overlap_50)
+
+r.squaredGLMM(lmer_overlap_50)
+r.squaredGLMM(lmer_overlap_95)
+
+## JACCARD
+lmer_jaccard_nullmodell_50 <- lmer(overlap_jaccard ~ (1|algorithm)+(1|period)+(1 | focal),allp_overlaps_50_naomit,REML=FALSE)
+lmer_jaccard_nullmodell_95 <- lmer(overlap_jaccard ~ (1|algorithm)+(1|period)+(1 | focal),allp_overlaps_95_naomit,REML=FALSE)
+lmer_jaccard_50<- lmer(overlap_jaccard ~ dominancediff+related+(1|algorithm)+(1 | focal)+(1|period),allp_overlaps_50_naomit,REML=FALSE)
+lmer_jaccard_95 <- lmer(overlap_jaccard ~ dominancediff+related+(1|algorithm)+(1 | focal)+(1|period),allp_overlaps_95_naomit,REML=FALSE)
+
+anova(lmer_jaccard_50,lmer_jaccard_nullmodell_50)
+anova(lmer_jaccard_nullmodell_95,lmer_jaccard_95)
+vif.mer(lmer_jaccard_50)
+summary(lmer_jaccard_50)
+summary(lmer_jaccard_50)
+r.squaredGLMM(lmer_jaccard_95)
+
+## RELATIVE OVERLAP
+lmer_relativeov_nullmodell_50 <- lmer(overlap_relative ~ (1|algorithm)+(1 | focal)+(1|period),allp_overlaps_50_naomit,REML=FALSE)
+lmer_relativeov_nullmodell_95 <- lmer(overlap_relative ~ (1|algorithm)+(1 | focal)+(1|period),allp_overlaps_95_naomit,REML=FALSE)
+lmer_reltiveov_50<- lmer(overlap_relative ~ dominancediff+related++(1 | focal)+(1|algorithm)+(1|period),allp_overlaps_50_naomit,REML=FALSE)
+lmer_relativeov_95 <- lmer(overlap_relative ~ dominancediff+related+(1 | focal)+(1|algorithm)+(1|period),allp_overlaps_95_naomit,REML=FALSE)
+
+anova(lmer_reltiveov_50,lmer_relativeov_nullmodell_50)
+anova(lmer_relativeov_nullmodell_95,lmer_relativeov_95)
+vif.mer(lmer_reltiveov_50)
+summary(lmer_reltiveov_50)
+summary(lmer_relativeov_95)
+r.squaredGLMM(lmer_relativeov_95)
+
+## UDOI
+lmer_UDOI_nullmodell_95 <- lmer(overlap_UDOI ~ (1|algorithm)+(1 | focal),all_overlaps_95_naomit,REML=FALSE)
+lmer_UDOI_95 <- lmer(overlap_UDOI ~ dominancediff+related+(1|algorithm)+(1 | focal),all_overlaps_95_naomit,REML=FALSE)
+
+anova(lmer_UDOI_nullmodell_95,lmer_UDOI_95)
+vif.mer(lmer_UDOI_95)
+summary(lmer_UDOI_95)
+r.squaredGLMM(lmer_UDOI_95)
+
+
+screenreg(list(lmer_overlap_50,lmer_overlap_95,lmer_jaccard_50,lmer_jaccard_95,lmer_reltiveov_50,lmer_relativeov_95,lmer_UDOI_95),digits=4)
+texreg(list(lmer_overlap_50,lmer_overlap_95,lmer_jaccard_50,lmer_jaccard_95,lmer_reltiveov_50,lmer_relativeov_95,lmer_UDOI_95),
+       digits=4,
+          custom.model.names = c("absolute overlap (CR)","absolute overlap (HR)","Jaccard (CR)","Jaccard (HR)","relative overlap (CR)","relative overlap (HR)","UDOI (UD)"),
+          custom.coef.names = c("intercept", "difference dominance","related"),
+          return.string=TRUE,
+          use.packages=FALSE,
+          single.row=TRUE,
+       stars = c(0.001, 0.01, 0.05, 0.1))
+
+summary(lmer_UDOI_95)
+sjPlot::tab_model(lmer_UDOI_95, 
+                  show.re.var= TRUE, 
+                  pred.labels =c("intercept", "dominance","fruit trees normalized", "n follows", "average DJL"),
+                  dv.labels= "Effects of internal and external factors on DJL")
+ranova(lmer_UDOI_95)
+view(as.data.frame(vif.mer(lmer_UDOI_95)))
+r.squaredGLMM(lmer_UDOI_95)
+anova(lmer_UDOI_nullmodell_95,lmer_UDOI_95)
+
+
+## TREES IN OVERLAPS
+lmer_ntree_nullmodell_50 <- lmer(fruittree_normalized ~ (1|algorithm)++(1 | focal.1)+(1 | focal)+(1|period),allp_overlaps_50_naomit,REML=FALSE)
+lmer_ntree_nullmodell_95 <- lmer(fruittree_normalized ~ (1|algorithm)++(1 | focal.1)+(1 | focal)+(1|period),allp_overlaps_95_naomit,REML=FALSE)
+lmer_ntree_50<- lmer(fruittree_normalized ~ dominancediff+related+(1 | focal.1)+(1 | focal)+(1|algorithm)+(1|period),allp_overlaps_50_naomit,REML=FALSE)
+lmer_ntree_95 <- lmer(fruittree_normalized ~ dominancediff+related+(1 | focal.1)+(1 | focal)+(1|algorithm)+(1|period),allp_overlaps_95_naomit,REML=FALSE)
+
+anova(lmer_ntree_50,lmer_ntree_nullmodell_50)
+anova(lmer_ntree_95,lmer_ntree_nullmodell_95)
+vif.mer(lmer_ntree_95)
+summary(lmer_ntree_50)
+summary(lmer_ntree_95)
+r.squaredGLMM(lmer_ntree_95)
+
+
+
 ```
 
 ```{r Homerange Trees in overlaps - Statistics, Explanatory variables,echo=FALSE, message=FALSE,comment=FALSE, warning=FALSE}
@@ -5819,13 +6344,28 @@ coefs
 
 # See if overlap and homeranges are significantly different. Explaining normalized fruittree count
 ### Fruittreeindex
-temp_fruittreediffoverlaps<- all_overlaps %>% dplyr::select(area=overlap,fruittree_normalized,algorithm) %>% mutate(type="overlap") 
-temp_fruittreediffoverlaps2<- all_homeranges_sf %>% dplyr::select(area,fruittree_normalized,algorithm)%>% mutate(type="homerange")%>% st_drop_geometry()
+temp_fruittreediffoverlaps<- all_overlaps_allperiods %>% filter(algorithm=="brb") %>%   dplyr::select(area=overlap,hrprcnt,fruittree_normalized,algorithm) %>% mutate(type="overlap") 
+temp_fruittreediffoverlaps2<- all_homeranges_sf %>% filter(algorithm=="brb")  %>% filter(hminfac==0.8) %>%  dplyr::select(area,hrprcnt,fruittree_normalized,algorithm)%>% mutate(type="range")%>% st_drop_geometry()
 temp_fruittreediffoverlaps <- temp_fruittreediffoverlaps %>% rbind(temp_fruittreediffoverlaps2)
 
-temp_fruittreediffoverlaps %>% ggplot(aes(as.factor(type),fruittree_normalized,colour=area))+
-  geom_boxplot() +
-  geom_jitter()
+
+plot_comparisonfruittrees_50<- temp_fruittreediffoverlaps %>% filter(hrprcnt!="99%") %>%  ggplot(aes(as.factor(type),fruittree_normalized,colour=area))+
+  geom_jitter(alpha=0.2)+
+  geom_boxplot(alpha=0.6)+
+  #ylim(0,0.2)+
+  facet_grid(.~hrprcnt)+
+  labs(y="normalized trees [tree/tot gps effort]",x="")
+plot_comparisonfruittrees_50
+plot_comparisonfruittrees_50 %>% ggsave(filename = paste(
+  paste(
+    "/Users/stefgr/Dropbox/Apps/Overleaf/Msc_Thesis/figures/",
+    format(Sys.Date(), "%Y%m%d"),"_",
+    "plot_comparisonfruittrees_brb08",
+    sep = ""
+  ),
+  "png",
+  sep = "."
+),dpi=300,width = 21,height = 15,units="cm")
 
 lmer_diff_overlap_hr_zero <- lmer(fruittree_normalized ~ (1| algorithm),temp_fruittreediffoverlaps,REML=FALSE)
 lmer_diff_overlap_hr <- lmer(fruittree_normalized ~ area+type+(1| algorithm),temp_fruittreediffoverlaps,REML=FALSE)
@@ -5833,15 +6373,43 @@ anova(lmer_diff_overlap_hr_zero,lmer_diff_overlap_hr)
 summary(lmer_diff_overlap_hr)
 
 
-all_overlaps %>%
+FTC_overlaps_HR_comaparison<- all_overlaps %>%
   #filter(algorithm=="brb") %>% 
   #filter(hminfac==1) %>%  
   ggplot(aes(overlap,fruittree_normalized))+
-  geom_point(aes(color=hrprcnt),size=3)+
-  geom_point(data=all_homeranges_sf,aes(area,fruittree_normalized),alpha=0.2)+
-  labs(x="overlap or area",y=expression("normalized trees [tree/tot gps effort]"),color="HR [%]") +
-  scale_fill_viridis()+
-  scale_x_log10()
+  geom_point(aes(color=hrprcnt),size=2,shape=8)+
+  geom_point(data=temp_fruittreediffoverlaps2,aes(area,fruittree_normalized,color=hrprcnt),alpha=0.8)+
+  labs(x=expression("overlap or area [km"^2*"]"),y=expression("normalized trees [tree/tot gps effort]"),color="HR [%]") +
+  scale_fill_viridis()
+FTC_overlaps_HR_comaparison
+FTC_overlaps_HR_comaparison %>% ggsave(filename = paste(
+  paste(
+    "/Users/stefgr/Dropbox/Apps/Overleaf/Msc_Thesis/figures/",
+    format(Sys.Date(), "%Y%m%d"),"_",
+    "FTC_overlaps_HR_comaparison",
+    sep = ""
+  ),
+  "png",
+  sep = "."
+),dpi=600,width = 21,height = 21,units="cm")
+
+
+
+#### Comparison boxplot core range home range
+
+
+all_homeranges_sf %>% 
+  filter(algorithm=="kde")  %>% 
+  #filter(hminfac==0.8) %>%  
+  filter(bndwthm=="HSCV") %>% 
+  dplyr::select(area,fruittree_normalized,hrprcnt) %>% 
+  st_drop_geometry() %>% 
+  ggplot(aes(as.factor(hrprcnt),fruittree_normalized,colour=area))+
+  geom_jitter(alpha=0.2)+
+  geom_boxplot(alpha=0.6)+
+  ylim(0,0.2)+
+  labs(y="normalized trees [tree/tot gps effort]",x="")
+
 ```
 
 ```{r DELETE Homerange - Normalized fruit tree points,echo=FALSE, message=FALSE,comment=FALSE, warning=FALSE}

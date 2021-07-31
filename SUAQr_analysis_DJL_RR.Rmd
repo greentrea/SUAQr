@@ -23,8 +23,11 @@ packages_checker <- function(packages_list){
     library(package, character.only = T)
   }
 }
+
 packages_checker(
-  c('sjstats', # further statistics : infos:https://bookdown.org/animestina/phd_july_19/simple-linear-model-and-mixed-methods.html#multilevel-modelling-with-random-intercepts-and-slopes
+  c('sjlabelled',
+    'sjmisc',
+    'sjstats', # further statistics : infos:https://bookdown.org/animestina/phd_july_19/simple-linear-model-and-mixed-methods.html#multilevel-modelling-with-random-intercepts-and-slopes
     'lmtest', # further statistics
     'rstatix', # friedmann test level 3
     'sjPlot',
@@ -356,7 +359,7 @@ SUAQ_rangepoints_11all20_loc_wgs<- st_drop_geometry(SUAQ_rangepoints_11all20_loc
 ##### Selection only females / most tracked females ##### 
 SUAQ_rangepoints_11all20_loc_females <-
   SUAQ_rangepoints_11all20_loc %>%   filter(!(SUAQ_orangutans.Sex == "male"))
-SUAQ_rangepoints_11all20_loc_females_12 <-
+SUAQ_rangepoints_11all20_loc_females_10 <-
   SUAQ_rangepoints_11all20_loc %>%   filter(!(SUAQ_orangutans.Sex == "male")) %>% filter(
     focal %in% c(
       "lisa",
@@ -368,11 +371,14 @@ SUAQ_rangepoints_11all20_loc_females_12 <-
       "raffi",
       "sarabi",
       "trident",
-      "alice",
-      "mocca",
-      "cinnamon"
+      "tiara"
     )
-  )
+  )%>% ungroup()
+
+#### Adding some explanatory variables
+explanatoryvars <- SUAQ_rangepoints_11all20_loc_females_10[,c("focal","SUAQ_orangutans.matriline", "SUAQ_orangutans.agecategory","SUAQ_orangutans.dominancecat")] %>% group_by(focal,SUAQ_orangutans.matriline,SUAQ_orangutans.agecategory,SUAQ_orangutans.dominancecat) %>% summarise()
+colnames(explanatoryvars) <- c("focal","matriline","agecat","dominance")
+
 ```
 
 ### Analysis
@@ -867,7 +873,7 @@ SUAQ_weather_fai_overyears<- SUAQ_weather_fai_soi_monthly %>%  ggplot(aes(yearmo
   scale_fill_manual("",
                       breaks = c("strong la niña","moderate la niña","weak la niña","neutral","weak el niño","very strong niño"),
                       values = c("#2166ac","#67a9cf","#d1e5f0","#fddbc7","#ef8a62","#b2182b"))+
-  labs(x="time [year]",y="fruit availability     /      temparature [°C]")+
+  labs(x="time [year]",y="fruit availability     /      temprature [°C]")+
   scale_colour_manual("",
                       breaks = c("Max. evening","Max. morning","Avg. of means","Min. evening","Min. morning","FAI"),
                       values = c("#d7191c","#fdae61","black","#abd9e9","#2c7bb6", "darkgreen"))+
@@ -1428,16 +1434,18 @@ pb <-  txtProgressBar(min = 0, max = NROW(random_window_sizes), initial = 0)
 stepi <-0
 SUAQ_randomdirectness <- data.frame()
 for(i in random_window_sizes){
+  print(i)
   windowsize <- i+2 # plus two because thats the window size (Start end tree is not counted in the tree_betweennumgps)
   points_available<- SUAQ_rangepoints_11all20_loc %>% ungroup() %>% 
     filter(as.numeric(follow_totNumOfGPSpoints)>as.numeric(windowsize)) 
   points_available_start_anti<- points_available %>% arrange(desc(trackpoint_id)) %>% 
     group_by(follow) %>% 
     top_n((windowsize-1),trackpoint_id) # select last i+1 or windowsize-1 objects these are not appropriate startpoints because they are too short till followend
-  points_available_start<- setdiff(points_available,points_available_start_anti)
+  points_available_start<- dplyr::setdiff(points_available,points_available_start_anti)
     # find follwos which have enough elements
   random_start <- points_available_start %>%ungroup() %>%  sample_n(1)
   random_startid<- pull(random_start,trackpoint_id)
+  test <- points_available %>% filter(follow%in%c(random_start$follow))
   random_end <- points_available %>% filter(follow%in%c(random_start$follow)) %>%  filter(trackpoint_id==(random_startid+i+1)) # adding one because of indexing
   random_endid<- pull(random_end,trackpoint_id)
   windowselected <- points_available %>% filter(follow%in%c(random_start$follow)) %>% 
@@ -1464,7 +1472,7 @@ SUAQ_randomdirectness <- SUAQ_randomdirectness %>% mutate(random_betweendirectne
 
 
 
-### renaming and selecting for stats analysis
+### renaming and selecting for stats analysis 2
 SUAQ_randomdirectness_stats <- SUAQ_randomdirectness %>%
   dplyr::select(follow,focal,SUAQ_orangutans.matriline,ageFromDOB,ClassFocal,SUAQ_weather.rainfall_ml_evening,SUAQ_weather.river_waterlevel_morning,SUAQ_weather.river_waterlevel_evening,SUAQ_weather.rainfall_ml_morning,SUAQ_weather.avg_temperature_tot,SUAQ_weather.max_temp_average,SUAQ_weather.min_temp_average,SUAQ_weather.temperature_max_morning,SUAQ_weather.temperature_min_morning,SUAQ_weather.temperature_max_evening,SUAQ_weather.temperature_min_evening,SUAQ_fai.fai,ageOfCurrentOffspring,monthYearDate,follow_totNumOfGPSpoints,random_betweentravelled,random_betweendirectness,random_sinuosity,random_betweennumgps,manualDate,random_timetravelled)
 colnames(SUAQ_randomdirectness_stats) <-
@@ -1523,6 +1531,22 @@ plot_BetweenTreeSinuosityxClassFocal<- SUAQ_treedirectness %>%
   geom_smooth()
 plot_BetweenTreeSinuosityxClassFocal
 
+plot_Betweentreedirectness_test<- SUAQ_treedirectness %>% 
+  ggplot( aes(x=tree_betweennumgps, y=tree_betweendirectness)) +
+    scale_fill_viridis(discrete = TRUE, alpha=0.6) +
+    geom_jitter(color="blue", size=1, alpha=0.2) +
+    geom_jitter(data=SUAQ_randomdirectness_stats,aes(random_betweennumgps,random_betweendirectness),color="red", size=1, alpha=0.2) +
+    theme_ipsum() +
+    theme(
+      #legend.position="none",
+      plot.title = element_text(size=11)
+    ) +
+    labs(x="Windowsize number of fixes between trees",y="SI")+
+  ylim(0,1)+
+  geom_smooth(data=SUAQ_randomdirectness_stats,aes(sqrt(random_betweentravelled),random_sinuosity),color="red",method="loess")+
+  geom_smooth(method="loess")
+plot_Betweentreedirectness_test
+
 
 ggsave(filename = paste(
   paste(
@@ -1560,8 +1584,14 @@ SUAQ_treedirectness_full %>% ggplot(aes(log(tree_sinuosity),sample))+geom_boxplo
 
 
 
+
+
 ### Statistics
 # Simple statistics
+sample_SUAQ_treedirectness <- SUAQ_treedirectness %>% filter(tree_betweennumgps==5) %>% mutate(sample = "between trees")
+sample_SUAQ_randomdirectness <- SUAQ_randomdirectness %>% filter(random_betweennumgps==5)%>% mutate(sample = "random") 
+
+sample_SUAQ_treedirectness %>% ggplot(aes(x=tree_betweendirectness,y=sample))+geom_boxplot()+geom_boxplot(data= sample_SUAQ_randomdirectness,aes(x=random_betweendirectness))
 summary(SUAQ_treedirectness$tree_betweentravelled)
 sd(SUAQ_randomdirectness$random_betweentravelled)
 sd(SUAQ_randomdirectness$random_betweennumgps)
@@ -1578,7 +1608,7 @@ SUAQ_treedirectness_stats <-   SUAQ_treedirectness_stats %>%
   mutate(year=as.character(year(lubridate::ym(monthYearDate))))%>%
   mutate(rainyseason=ifelse(month %in% c(10,11,12),"rainy","normal"))
 SUAQ_treedirectness_stats_naomit_minimum <- SUAQ_treedirectness_stats %>% dplyr::select(tree_betweennumgps,ClassFocal,manualDate,tree_betweendirectness,tree_sinuosity,fai,tree_betweentime,focal,rainyseason,tree_betweentravelled) %>% na.omit()
-SUAQ_treedirectness_stats_naomit_mother <- SUAQ_treedirectness_stats %>% dplyr::select(focal,tree_betweennumgps,ClassFocal,manualDate,tree_betweendirectness,tree_sinuosity,rain_eve,walevel_eve,rain_mo,temp_min_eve,temp_min_mo,avg_temp_tot,fai,ageOfCurrentOffspring,matriline,ageFromDOB,tree_betweentime,rainyseason,tree_betweentravelled) %>% na.omit()
+SUAQ_treedirectness_stats_naomit_mother <- SUAQ_treedirectness_stats %>% left_join(explanatoryvars[,c(1,3:4)],by=c("focal"="focal"))%>%  dplyr::select(focal,tree_betweennumgps,ClassFocal,dominance,manualDate,tree_betweendirectness,tree_sinuosity,rain_eve,walevel_eve,rain_mo,temp_min_eve,temp_min_mo,avg_temp_tot,fai,ageOfCurrentOffspring,matriline,ageFromDOB,tree_betweentime,rainyseason,tree_betweentravelled) %>% na.omit()
 SUAQ_treedirectness_stats_naomit <- SUAQ_treedirectness_stats %>% dplyr::select(tree_betweennumgps,ClassFocal,manualDate,tree_betweendirectness,tree_sinuosity,rain_eve,walevel_eve,rain_mo,temp_min_eve,temp_min_mo,avg_temp_tot,fai,tree_betweentime,focal,rainyseason,tree_betweentravelled) %>% na.omit()
 
 #### Random effects day and number of gps between
@@ -1625,7 +1655,7 @@ aov_treedirectness_focal
 aov_treedirectness_matriline
 
 
-glm_SIN_FTD_mothers <- lmer(tree_sinuosity~rain_eve+rain_mo+avg_temp_tot+fai+ ageFromDOB+ageOfCurrentOffspring+matriline+(1 | tree_betweennumgps)+ (1 | manualDate),data=SUAQ_treedirectness_stats_naomit_mother)
+glm_SIN_FTD_mothers <- lmer(tree_sinuosity~rain_eve+rain_mo+avg_temp_tot+fai+ dominance+ageOfCurrentOffspring+matriline+(1|focal) +(1 | tree_betweennumgps)+ (1 | manualDate)+(1|tree_betweentime),data=SUAQ_treedirectness_stats_naomit_mother)
 glm_SIN_FTD_mothers_empty <- lmer(tree_sinuosity~ (1|focal) +(1 | tree_betweennumgps)+ (1 | manualDate)+(1|tree_betweentime),data=SUAQ_treedirectness_stats_naomit_mother)
 
 anova(glm_SIN_FTD_mothers_empty,glm_SIN_FTD_mothers, test="Chisq")
@@ -1636,6 +1666,7 @@ lrtest(glm_SIN_FTD_mothers_empty, glm_SIN_FTD_mothers)
 
 
 #### Plot and tables
+ggpairs(SUAQ_treedirectness_stats_naomit[,c(0:13,15:16)])
 ###### OVERVIEW OF MODEL RESULTS
 screenreg(list(glm_SIN_FTD_empty,glm_SIN_FTD_full,glm_SIN_FTD_mothers_empty,glm_SIN_FTD_mothers),digits=5)
 qqnorm(residuals(glm_SIN_selected))
@@ -1643,6 +1674,17 @@ qqnorm(residuals(glm_SIN_selected))
 ###### TEXTREG --> LATEX EXPORT
 r.squaredGLMM(glm_SIN_FTD_full)
 ranova(glm_SIN_FTD_backward)
+
+
+summary(glm_SIN_FTD_mothers)
+sjPlot::tab_model(glm_SIN_FTD_mothers,  digits = 4,
+                  show.re.var= TRUE, 
+                  pred.labels =c("intercept","day rain", "night rain","average temperature", "FAI", "Class: flanged male", "Class: infant","Class: juvenile","Class: unflanged male","age","age of offspring","matriline"),
+                  dv.labels= "Effects of internal and external factors on DJL")
+ranova(glm_SIN_FTD_mothers)
+view(as.data.frame(vif.mer(glm_SIN_FTD_mothers)))
+r.squaredGLMM(glm_SIN_FTD_mothers)
+anova(glm_SIN_FTD_mothers_empty,glm_SIN_FTD_mothers)
 
 texreg(list(glm_SIN_FTD_empty,glm_SIN_FTD_full,glm_SIN_FTD_mothers_empty,glm_SIN_FTD_mothers),
        digits=5,
@@ -1652,6 +1694,17 @@ texreg(list(glm_SIN_FTD_empty,glm_SIN_FTD_full,glm_SIN_FTD_mothers_empty,glm_SIN
           use.packages=FALSE,
           single.row=TRUE)
 
+
+
+SUAQ_treedirectness
+
+plot_gps_pttype<-SUAQ_randomdirectness[order(SUAQ_treedirectness$manualDatetime , decreasing = FALSE ),] %>%
+  filter(focal %in% c("cissy")) %>%
+  group_by(follow) %>%
+  ggplot()+
+  geom_point(aes(E,N,color=as.character(manualDatetime)),size=1)+
+  geom_path(aes(E,N,color=as.character(follow)), alpha = 0.7,size=0.5)
+ggplotly(plot_gps_pttype)
 ```
 
 ```{r visuals of DJL and explanatory variables ,echo=FALSE, message=FALSE,comment=FALSE, warning=FALSE}
@@ -1790,7 +1843,71 @@ plot_FruittreexClassFocalxDJL<- DJL_follows %>%
   xlab("DJL [m]")
 plot_FruittreexClassFocalxDJL
 
+
+ggsave(filename = paste(
+  paste(
+    "/Users/stefgr/Dropbox/Apps/Overleaf/Msc_Thesis/figures/",
+    format(Sys.Date(), "%Y%m%d"),"_",
+    "plot_DOMINANCExFTC",
+    sep = ""
+  ),
+  "png",
+  sep = "."
+), plot = plot_DOMINANCExFTC)
+
 ### Expected meaningless tree to tree follows analysis
+### Sinuosity and DJL
+plot_DOMINANCExDJL <-
+  DJL_follows %>% left_join(explanatoryvars,by=c("focal"="focal")) %>% 
+  ggplot(aes(dominance,DJL,group=dominance)) +
+  #scale_y_log10(labels=fancy_scientific) +
+  geom_boxplot() + 
+  labs(x = "Dominance category", y = "DJL [m]")
+plot_DOMINANCExDJL
+
+plot_STARTTIMExFAI <-
+  SUAQ_rangepoints_11all20_loc %>% 
+  group_by(focal,follow,SUAQ_followlog.StartFollow,SUAQ_fai.fai) %>% 
+  summarise() %>% na.omit() %>% 
+  ggplot(aes(SUAQ_followlog.StartFollow,SUAQ_fai.fai)) +
+  #scale_y_log10(labels=fancy_scientific) +
+  geom_point() + 
+  geom_smooth()+
+  labs(x = "Dominance category", y = "DJL [m]")
+plot_STARTTIMExFAI
+
+plot_DOMINANCExDJL <-
+  DJL_follows %>% left_join(explanatoryvars,by=c("focal"="focal")) %>% 
+  ggplot(aes(dominance,DJL,group=dominance)) +
+  #scale_y_log10(labels=fancy_scientific) +
+  geom_boxplot() + 
+  labs(x = "Dominance category", y = "DJL [m]")
+plot_DOMINANCExDJL
+
+plot_DOMINANCExRR <-
+  DJL_follows %>% left_join(explanatoryvars,by=c("focal"="focal")) %>% 
+  ggplot(aes(dominance,RR,group=dominance)) +
+  #scale_y_log10(labels=fancy_scientific) +
+  geom_boxplot() + 
+  labs(x = "Dominance category", y = "SI")
+plot_DOMINANCExRR
+
+plot_DOMINANCExSIN <-
+  DJL_follows %>% left_join(explanatoryvars,by=c("focal"="focal")) %>% 
+  ggplot(aes(dominance,trj_sinuosity,group=dominance)) +
+  #scale_y_log10(labels=fancy_scientific) +
+  geom_boxplot() + 
+  labs(x = "Dominance category", y = "SIN")
+plot_DOMINANCExSIN
+
+plot_DOMINANCExFTC <-
+  DJL_follows %>% left_join(explanatoryvars,by=c("focal"="focal")) %>% 
+  ggplot(aes(dominance,fruittreecount,group=dominance)) +
+  #scale_y_log10(labels=fancy_scientific) +
+  geom_boxplot() + 
+  labs(x = "Dominance category", y = "fruit trees")
+plot_DOMINANCExFTC
+
 plot_FAIxTREEDJL <-
   DJL_follows %>% ggplot(aes(fai,tree_DJL)) +
   #scale_y_log10(labels=fancy_scientific) +
@@ -1917,16 +2034,24 @@ plot_DJLxRR <-
   geom_smooth(method="lm")
 plot_DJLxRR
 
+### DJL and RR
+plot_MINTEMPxRR <-
+  DJL_follows %>% ggplot(aes(temp_min_eve,RR)) +
+  #scale_y_log10(labels=fancy_scientific) +
+  geom_point(binwidth = 1) + labs(x = "minimum temperature [C°]", y = "SI")+
+  geom_smooth()
+plot_MINTEMPxRR
+
 ggsave(filename = paste(
   paste(
     "/Users/stefgr/Dropbox/Apps/Overleaf/Msc_Thesis/figures/",
     format(Sys.Date(), "%Y%m%d"),"_",
-    "plot_FAIxTREEDJL",
+    "plot_MINTEMPxRR",
     sep = ""
   ),
   "png",
   sep = "."
-), plot = plot_FAIxTREEDJL)
+), plot = plot_MINTEMPxRR)
 
 ### Timelag and RR
 plot_TimelagxRR <-
@@ -2052,11 +2177,18 @@ plot_AgeCurrentOffspringxDJL <-
 plot_AgeCurrentOffspringxDJL
 
 plot_AgeFocalxDJL <-
-  DJL_follows  %>%  ggplot(aes(ageFromDOB,DJL)) +
+  DJL_follows  %>%  ggplot(aes(ageFromDOB,DJL,colour=ClassFocal,group=ClassFocal)) +
   #scale_y_log10(labels=fancy_scientific) +
-  geom_point(binwidth = 1) + labs(title = "Scatterplot of DJL and Age of focal", x = "Approximate Age [years]", y = "DJL [m]")+
-  geom_smooth()
+  geom_point() + labs(title = "Scatterplot of DJL and Age of focal", x = "Approximate Age [years]", y = "DJL [m]")+
+  geom_smooth(se=FALSE,colour="black")
 plot_AgeFocalxDJL
+
+plot_AgeFocalxSIN <-
+  DJL_follows  %>%  ggplot(aes(ageFromDOB,trj_sinuosity,colour=ClassFocal,group=ClassFocal)) +
+  #scale_y_log10(labels=fancy_scientific) +
+  geom_point() + labs(title = "Scatterplot of DJL and Age of focal", x = "Approximate Age [years]", y = "sinuosity")+
+  geom_smooth(se=FALSE,colour="black")
+plot_AgeFocalxSIN
 
 plot_AgeOffspringxDJL <-
   DJL_follows  %>%  ggplot(aes(ageOfCurrentOffspring,DJL)) +
@@ -2080,7 +2212,7 @@ ggsave(filename = paste(
   paste(
     "/Users/stefgr/Dropbox/Apps/Overleaf/Msc_Thesis/figures/",
     format(Sys.Date(), "%Y%m%d"),"_",
-    "plot_DJLxFTC",
+    "plot_AgeFocalxSIN",
     sep = ""
   ),
   "png",
@@ -2771,6 +2903,11 @@ summary(as.numeric(SUAQ_fai$SUAQ_fai.fai))
 kruskal.test(meanTimelag~ClassFocal,data = DJL_follows)
 DJL_follows %>% ggplot(aes(ClassFocal,meanTimelag))+geom_boxplot()
 
+### SIN influenced by class? Yes
+kruskal.test(trj_sinuosity~ClassFocal,data = DJL_follows)
+DJL_follows %>% ggplot(aes(ClassFocal,meanTimelag))+geom_boxplot()
+pairwise.t.test(DJL_follows$trj_sinuosity,DJL_follows$ClassFocal,data = DJL_follows)
+DJL_follows %>% ggplot(aes(ClassFocal,trj_sinuosity))+geom_boxplot()
 
 ### avg turning angles influenced by class? NO
 kruskal.test(turningAngleSum~ClassFocal,data = DJL_follows)
@@ -2778,7 +2915,15 @@ DJL_follows %>% ggplot(aes(ClassFocal,turningAngleSum))+geom_boxplot()
 
 ### avg TDD influenced by class? NO slightly
 kruskal.test(TDD~ClassFocal,data = DJL_follows)
+
 DJL_follows %>% ggplot(aes(ClassFocal,TDD))+geom_boxplot()
+hist(SUAQ_rangepoints_11all20_loc$turningAngle)
+
+### SIN influenced by class?
+pairwise.t.test(DJL_follows$trj_sinuosity,DJL_follows$ClassFocal,data = DJL_follows)
+
+
+DJL_follows %>% ggplot(aes(ClassFocal,trj_sinuosity))+geom_boxplot()
 
 ### avg DJL influenced by class? YES
 kruskal.test(DJL~ClassFocal,data = DJL_follows)
@@ -3297,8 +3442,12 @@ coefs
 ###### ###### ###### ###### ###### ###### ###### ###### ###### ###### 
 DJL_follows_naomit_full<- DJL_follows %>% dplyr::select(DJL,rain_eve, walevel_eve, rain_mo, temp_min_eve, temp_min_mo,temp_max_eve, temp_max_mo, avg_temp_tot, ClassFocal, fai, monthYearDate,focal,meanTimelag,numOfPoints,fruittreecount,monthname,rainyseason,tot_rain_before,mmax_temp_before,month) %>% na.omit()
 DJL_follows_naomit_age<- DJL_follows %>% dplyr::select(DJL,rain_eve, walevel_eve, rain_mo, temp_min_eve, temp_min_mo,temp_max_eve, temp_max_mo, avg_temp_tot, ClassFocal, fai, monthYearDate,focal,meanTimelag,numOfPoints,fruittreecount,monthname,rainyseason,ageFromDOB,tot_rain_before,mmax_temp_before,month) %>% na.omit()
-DJL_follows_naomit_mother<- DJL_follows %>% dplyr::select(DJL,rain_eve, walevel_eve, rain_mo, temp_min_eve, temp_min_mo,temp_max_eve, temp_max_mo, avg_temp_tot, ClassFocal, fai, monthYearDate,focal,meanTimelag,numOfPoints,fruittreecount,ageFromDOB, ageOfCurrentOffspring,monthname,rainyseason,tot_rain_before,mmax_temp_before,month) %>% na.omit()
+DJL_follows_naomit_ageANDdominance<- DJL_follows %>% dplyr::select(DJL,rain_eve, walevel_eve, rain_mo, temp_min_eve, temp_min_mo,temp_max_eve, temp_max_mo, avg_temp_tot, ClassFocal, fai, monthYearDate,focal,meanTimelag,numOfPoints,ageOfCurrentOffspring,fruittreecount,monthname,rainyseason,ageFromDOB,tot_rain_before,mmax_temp_before,month)  %>%  na.omit()
+DJL_follows_naomit_mother<- DJL_follows %>% dplyr::select(DJL,rain_eve, walevel_eve, rain_mo, temp_min_eve, temp_min_mo,temp_max_eve, temp_max_mo, avg_temp_tot, ClassFocal, fai, monthYearDate,focal,meanTimelag,numOfPoints,fruittreecount, ageOfCurrentOffspring,monthname,rainyseason,tot_rain_before,mmax_temp_before,month,ageFromDOB)%>% left_join(explanatoryvars,by=c("focal"="focal")) %>% na.omit()
 
+
+test<- aov(DJL~dominance,data=DJL_follows_naomit_mother)
+summary(test)
 
 ###### DAY JOURNEY LENGTH
 #### Check influence of sampling rate
@@ -3363,7 +3512,7 @@ icc(lmm_DJL_monthYearDate) # 11% of correlation within month year dates groups f
 glm_DJL_full <-lmer(DJL ~ rain_eve + walevel_eve + rain_mo + temp_min_eve + temp_min_mo+ temp_max_eve + temp_max_mo + avg_temp_tot   + fai + ClassFocal+meanTimelag+ (1 | monthYearDate) + (1 | focal), # random effects to correct for
   data = DJL_follows_naomit_full
   )
-glm_DJL_selected <-lmer(DJL ~ rain_eve + walevel_eve +rain_mo +  avg_temp_tot   + fai + ClassFocal + meanTimelag+ (1 | focal) + (1 | monthYearDate) , # random effects to correct for
+glm_DJL_selected <-lmer(DJL ~ rain_eve +rain_mo  +  avg_temp_tot   + fai + ClassFocal + meanTimelag+(1 | focal) + (1 | monthYearDate) , # random effects to correct for
   data = DJL_follows_naomit_full
   )
 summary(glm_DJL_selected)
@@ -3383,6 +3532,11 @@ glm_DJL_age <-lmer(DJL ~ ageFromDOB+ (1 | monthYearDate) + (1 | focal), # random
   data = DJL_follows_naomit_age
   )
 summary(glm_DJL_age)
+glm_DJL_ageANDdominance <-lmer(DJL ~  rain_eve + walevel_eve +rain_mo +  avg_temp_tot   + fai + ClassFocal + meanTimelag+dominance+ (1 | monthYearDate) + (1 | focal), # random effects to correct for
+  data = DJL_follows_naomit_ageANDdominance
+  )
+summary(glm_DJL_ageANDdominance)
+vif.mer(glm_DJL_ageANDdominance)
 glm_DJL_season <-lmer(DJL ~ rainyseason+ (1 | focal), # random effects to correct for
   data = DJL_follows_naomit_full
   )
@@ -3452,30 +3606,41 @@ lmm_DJL_females_empty<-lmer(DJL ~ (1 | focal)+  (1 | monthYearDate), # random ef
 glm_DJL_females_empty <-lmer(DJL ~ (1 | monthYearDate) + (1 | focal), # random effects to correct for
   data = DJL_follows_naomit_mother
   )
-glm_DJL_females_selected <-lmer(DJL ~ rain_eve  + rain_mo + walevel_eve +  avg_temp_tot   + fai+ageOfCurrentOffspring+ageFromDOB  + (1 | monthYearDate) + (1 | focal), # random effects to correct for
+glm_DJL_females_empty <-lmer(DJL ~dominance+ (1 | monthYearDate) + (1 | focal), # random effects to correct for
+  data = DJL_follows_naomit_mother
+  )
+glm_DJL_females_selected <-lmer(DJL ~ rain_eve  + rain_mo  +  avg_temp_tot   + fai+ageOfCurrentOffspring+dominance  + (1 | monthYearDate) + (1 | focal), # random effects to correct for
   data = DJL_follows_naomit_mother
   )
 anova(lmm_DJL_females_empty,glm_DJL_females_selected)
 summary(glm_DJL_females_selected)
 
 ###### OVERVIEW OF MODEL RESULTS
-screenreg(list(lmm_DJL_focalANDmonthyear,glm_DJL_full,glm_DJL_selected,glm_DJL_females_empty,glm_DJL_females_selected),digits=5)
+screenreg(list(lmm_DJL_focalANDmonthyear,glm_DJL_full,glm_DJL_selected,glm_DJL_females_empty,glm_DJL_females_selected,glm_DJL_ageANDdominance),digits=5)
 qqnorm(residuals(glm_DJL_selected))
 sjPlot::tab_model(glm_DJL_selected, 
                   show.re.var= TRUE, 
-                  pred.labels =c("(Intercept)", "Urchins", "Fish", "Depth"),
-                  dv.labels= "Effects of Herbivores on Coral Cover")
+                  pred.labels =c("intercept","day rain","waterlevel evening", "night rain","minimum °C evening","minimum °C morning","maximum °C evening","maximum °C morning","average temperature", "FAI", "Class: flanged male", "Class: infant","Class: juvenile","Class: unflanged male","mean timelag","age of offspring","age"),
+                  dv.labels= "Effects of internal and external factors on DJL")
+ranova(glm_DJL_females_selected)
+view(as.data.frame(vif.mer(glm_DJL_females_selected)))
+anova(lmm_DJL_focalANDmonthyear,glm_DJL_selected)
 
 ###### TEXTREG --> LATEX EXPORT
 r.squaredGLMM(glm_DJL_selected)
+stargazer(glm_DJL_selected)
+stargazer(glm_DJL_selected, type = "html", style = "qje")
 r.squaredGLMM(glm_DJL_females_selected)
-texreg(list(lmm_DJL_focalANDmonthyear,glm_DJL_full,glm_DJL_selected,glm_DJL_females_empty,glm_DJL_females_selected),
-          custom.model.names = c("Only random","Full","Selected","Only random females","Selected only females"),
+summary(glm_DJL_females_selected)
+ranova(glm_DJL_selected)
+texreg(list(lmm_DJL_focalANDmonthyear,glm_DJL_full,glm_DJL_selected,glm_DJL_females_empty,glm_DJL_females_selected,glm_DJL_ageANDdominance),
+          custom.model.names = c("Only random","Full","Selected","Only random females","Selected only females","Only females with DOB"),
           custom.coef.names = c("intercept","day rain","waterlevel evening", "night rain","minimum °C evening","minimum °C morning","maximum °C evening","maximum °C morning","average temperature", "FAI", "Class: flanged male", "Class: infant","Class: juvenile","Class: unflanged male","mean timelag","age of offspring","age"),
           return.string=TRUE,
           use.packages=FALSE,
           single.row=TRUE)
-
+test<- SUAQ_rangepoints_11all20_loc %>% filter(PtType!="tree")
+test2<- SUAQ_rangepoints_11all20_loc %>% filter(PtType!="tree") %>% filter(timelag==1800)
 
 ```
 
@@ -3485,9 +3650,11 @@ texreg(list(lmm_DJL_focalANDmonthyear,glm_DJL_full,glm_DJL_selected,glm_DJL_fema
 ###### ###### ###### ###### ###### ###### ###### ###### ###### ###### 
 RR_follows_naomit_full<- DJL_follows %>% dplyr::select(RR,rain_eve, walevel_eve, rain_mo, temp_min_eve, temp_min_mo,temp_max_eve, temp_max_mo, avg_temp_tot, ClassFocal, fai, monthYearDate,focal,meanTimelag,numOfPoints,fruittreecount,monthname,rainyseason,month) %>% na.omit()
 RR_follows_naomit_full_age<- DJL_follows %>% dplyr::select(RR,rain_eve, walevel_eve, rain_mo, temp_min_eve, temp_min_mo,temp_max_eve, temp_max_mo, avg_temp_tot, ClassFocal, fai, monthYearDate,focal,meanTimelag,numOfPoints,fruittreecount,monthname,rainyseason,ageFromDOB) %>% na.omit()
-RR_follows_naomit_mother<- DJL_follows %>% dplyr::select(RR,rain_eve, walevel_eve, rain_mo, temp_min_eve, temp_min_mo,temp_max_eve, temp_max_mo, avg_temp_tot, ClassFocal, fai, monthYearDate,focal,meanTimelag,numOfPoints,fruittreecount,ageFromDOB, ageOfCurrentOffspring,monthname,rainyseason,) %>% na.omit()
+RR_follows_naomit_mother<- DJL_follows %>% left_join(explanatoryvars,by=c("focal"="focal")) %>%  dplyr::select(RR,dominance,rain_eve, walevel_eve, rain_mo, temp_min_eve, temp_min_mo,temp_max_eve, temp_max_mo, avg_temp_tot, ClassFocal, fai, monthYearDate,focal,meanTimelag,numOfPoints,fruittreecount,ageFromDOB, ageOfCurrentOffspring,monthname,rainyseason,) %>% na.omit()
 RR_follows_naomit_full_historyweather<- DJL_follows %>% dplyr::select(RR,rain_eve, walevel_eve, rain_mo, temp_min_eve, temp_min_mo,temp_max_eve, temp_max_mo, avg_temp_tot, ClassFocal, fai, monthYearDate,focal,meanTimelag,numOfPoints,fruittreecount,monthname,rainyseason,tot_rain_before,mmax_temp_before) %>% na.omit()
 RR_follows_naomit_mother_historyweather<- DJL_follows %>% dplyr::select(RR,rain_eve, walevel_eve, rain_mo, temp_min_eve, temp_min_mo,temp_max_eve, temp_max_mo, avg_temp_tot, ClassFocal, fai, monthYearDate,focal,meanTimelag,numOfPoints,fruittreecount,ageFromDOB, ageOfCurrentOffspring,monthname,rainyseason,tot_rain_before,mmax_temp_before) %>% na.omit()
+
+
 
 
 ###### Tortuosity Straightness Index
@@ -3558,7 +3725,7 @@ glm_RR_full <-lmer(RR ~ rain_eve + walevel_eve + rain_mo + temp_min_eve + temp_m
   data = RR_follows_naomit_full
   )
 summary(glm_RR_full)
-glm_RR_selected <-lmer(RR ~ rain_eve  + rain_mo +  avg_temp_tot  +walevel_eve + fai + ClassFocal  +  (1 | monthYearDate) +(1 | focal), # random effects to correct for
+glm_RR_selected <-lmer(RR ~ rain_eve  + rain_mo +  avg_temp_tot   + fai + ClassFocal  +  (1 | monthYearDate) +(1 | focal), # random effects to correct for
   data = RR_follows_naomit_full
   )
 summary(glm_RR_selected)
@@ -3648,7 +3815,7 @@ lmm_RR_females_AgeAge <-lmer(RR ~ ageFromDOB+ageOfCurrentOffspring+ (1 | monthYe
 lmm_RR_females_empty<-lmer(RR ~ (1 | focal)+  (1 | monthYearDate), # random effects to correct for
   data = RR_follows_naomit_mother
   )
-glm_RR_females_selected <-lmer(RR ~ rain_eve  + rain_mo + walevel_eve +  avg_temp_tot   + fai+ageOfCurrentOffspring+ageFromDOB  + (1 | monthYearDate) + (1 | focal), # random effects to correct for
+glm_RR_females_selected <-lmer(RR ~ rain_eve  + rain_mo  +  avg_temp_tot   + fai+ageOfCurrentOffspring+dominance  + (1 | monthYearDate) + (1 | focal), # random effects to correct for
   data = RR_follows_naomit_mother
   )
 anova(lmm_RR_females_empty,glm_RR_females_selected)
@@ -3659,12 +3826,18 @@ r.squaredGLMM(glm_RR_females_selected)
 
 ###### OVERVIEW OF MODEL RESULTS
 screenreg(list(lmm_RR_focalANDmonthyear,glm_RR_selected,lmm_RR_females_empty,glm_RR_females_selected),digits=5)
-qqnorm(residuals(glm_RR_selected))
-sjPlot::tab_model(glm_RR_selected, 
-                  show.re.var= TRUE, 
-                  pred.labels =c("(Intercept)", "Urchins", "Fish", "Depth"),
-                  dv.labels= "Effects of Herbivores on Coral Cover")
 
+qqnorm(residuals(glm_RR_selected))
+summary(glm_RR_females_selected)
+sjPlot::tab_model(glm_RR_females_selected, 
+                  show.re.var= TRUE, 
+                  pred.labels =c("intercept","day rain","waterlevel evening", "night rain","minimum °C evening","minimum °C morning","maximum °C evening","maximum °C morning","average temperature", "FAI", "Class: flanged male", "Class: infant","Class: juvenile","Class: unflanged male","mean timelag","age of offspring","age"),
+                  dv.labels= "Effects of internal and external factors on DJL")
+ranova(glm_RR_females_selected)
+view(as.data.frame(vif.mer(glm_RR_females_selected)))
+r.squaredGLMM(glm_RR_females_selected)
+anova(lmm_RR_focalANDmonthyear,glm_RR_females_selected)
+?r.squaredGLMM
 ###### TEXTREG --> LATEX EXPORT
 
 texreg(list(lmm_RR_focalANDmonthyear,glm_RR_selected,lmm_RR_females_empty,glm_RR_females_selected),
@@ -3681,10 +3854,12 @@ texreg(list(lmm_RR_focalANDmonthyear,glm_RR_selected,lmm_RR_females_empty,glm_RR
 ```{r Final glm's TDD,echo=FALSE, message=FALSE,comment=FALSE, warning=FALSE}
 ###### ###### ###### ###### ###### ###### ###### ###### ###### ###### 
 ###### CLEAN AND FINAL LIST OF MODELS FOR SIMPLE MOVEMENT ANALYSIS ##
-###### ###### ###### ###### ###### ###### ###### ###### ###### ###### 
+###### ###### ###### ###### ###### ###### ###### ###### ###### ######
+explanatoryvars <- SUAQ_rangepoints_11all20_loc_females_10[,c("focal","SUAQ_orangutans.matriline", "SUAQ_orangutans.agecategory","SUAQ_orangutans.dominancecat")] %>% group_by(focal,SUAQ_orangutans.matriline,SUAQ_orangutans.agecategory,SUAQ_orangutans.dominancecat) %>% summarise()
+colnames(explanatoryvars) <- c("focal","matriline","agecat","dominance")
 TDD_follows_naomit_full<- DJL_follows %>% dplyr::select(TDD,rain_eve, walevel_eve, rain_mo, temp_min_eve, temp_min_mo,temp_max_eve, temp_max_mo, avg_temp_tot, ClassFocal, fai, monthYearDate,focal,meanTimelag,numOfPoints,fruittreecount,monthname,rainyseason,month) %>% na.omit()
 TDD_follows_naomit_full_age<- DJL_follows %>% dplyr::select(TDD,rain_eve, walevel_eve, rain_mo, temp_min_eve, temp_min_mo,temp_max_eve, temp_max_mo, avg_temp_tot, ClassFocal, fai, monthYearDate,focal,meanTimelag,numOfPoints,fruittreecount,monthname,rainyseason,ageFromDOB) %>% na.omit()
-TDD_follows_naomit_mother<- DJL_follows %>% dplyr::select(TDD,rain_eve, walevel_eve, rain_mo, temp_min_eve, temp_min_mo,temp_max_eve, temp_max_mo, avg_temp_tot, ClassFocal, fai, monthYearDate,focal,meanTimelag,numOfPoints,fruittreecount,ageFromDOB, ageOfCurrentOffspring,monthname,rainyseason,) %>% na.omit()
+TDD_follows_naomit_mother<- DJL_follows %>% left_join(explanatoryvars,by=c("focal"="focal")) %>% dplyr::select(TDD,rain_eve, walevel_eve, rain_mo,dominance, temp_min_eve, temp_min_mo,temp_max_eve, temp_max_mo, avg_temp_tot, ClassFocal, fai, monthYearDate,focal,meanTimelag,numOfPoints,fruittreecount,ageFromDOB, ageOfCurrentOffspring,monthname,rainyseason,) %>% na.omit()
 TDD_follows_naomit_full_historyweather<- DJL_follows %>% dplyr::select(TDD,rain_eve, walevel_eve, rain_mo, temp_min_eve, temp_min_mo,temp_max_eve, temp_max_mo, avg_temp_tot, ClassFocal, fai, monthYearDate,focal,meanTimelag,numOfPoints,fruittreecount,monthname,rainyseason,tot_rain_before,mmax_temp_before) %>% na.omit()
 TDD_follows_naomit_mother_historyweather<- DJL_follows %>% dplyr::select(TDD,rain_eve, walevel_eve, rain_mo, temp_min_eve, temp_min_mo,temp_max_eve, temp_max_mo, avg_temp_tot, ClassFocal, fai, monthYearDate,focal,meanTimelag,numOfPoints,fruittreecount,ageFromDOB, ageOfCurrentOffspring,monthname,rainyseason,tot_rain_before,mmax_temp_before) %>% na.omit()
 
@@ -3850,7 +4025,7 @@ lmm_TDD_females_AgeAge <-lmer(TDD ~ ageFromDOB+ageOfCurrentOffspring+ (1 | month
 lmm_TDD_females_empty<-lmer(TDD ~ (1 | focal)+  (1 | monthYearDate), # random effects to correct for
   data = TDD_follows_naomit_mother
   )
-glm_TDD_females_selected <-lmer(TDD ~ ageOfCurrentOffspring  + (1 | monthYearDate) + (1 | focal), # random effects to correct for
+glm_TDD_females_selected <-lmer(TDD ~ rain_eve  + rain_mo  +  avg_temp_tot   + fai+ageOfCurrentOffspring+dominance  + (1 | monthYearDate) + (1 | focal), # random effects to correct for
   data = TDD_follows_naomit_mother
   )
 anova(lmm_TDD_females_empty,glm_TDD_females_selected)
@@ -3866,6 +4041,16 @@ sjPlot::tab_model(glm_TDD_selected,
                   show.re.var= TRUE, 
                   pred.labels =c("(Intercept)", "Urchins", "Fish", "Depth"),
                   dv.labels= "Effects of Herbivores on Coral Cover")
+
+summary(glm_TDD_females_selected)
+sjPlot::tab_model(glm_TDD_females_selected, 
+                  show.re.var= TRUE, 
+                  pred.labels =c("intercept","day rain","waterlevel evening", "night rain","minimum °C evening","minimum °C morning","maximum °C evening","maximum °C morning","average temperature", "FAI", "Class: flanged male", "Class: infant","Class: juvenile","Class: unflanged male","mean timelag","age of offspring","age"),
+                  dv.labels= "Effects of internal and external factors on DJL")
+ranova(glm_TDD_females_selected)
+view(as.data.frame(vif.mer(glm_TDD_females_selected)))
+r.squaredGLMM(glm_TDD_females_selected)
+anova(lmm_TDD_focalANDmonthyear,glm_TDD_females_selected)
 
 ###### TEXTREG --> LATEX EXPORT
 
@@ -3884,10 +4069,12 @@ texreg(list(lmm_TDD_focalANDmonthyear,glm_TDD_selected,lmm_TDD_females_empty,glm
 ###### ###### ###### ###### ###### ###### ###### ###### ###### ###### 
 ###### CLEAN AND FINAL LIST OF MODELS FOR SIMPLE MOVEMENT ANALYSIS ##
 ###### ###### ###### ###### ###### ###### ###### ###### ###### ###### 
-SIN_follows_naomit_full<- DJL_follows %>% dplyr::select(DJL,follow,trj_sinuosity,rain_eve, walevel_eve, rain_mo, temp_min_eve, temp_min_mo,temp_max_eve, temp_max_mo, avg_temp_tot, ClassFocal, fai, monthYearDate,focal,meanTimelag,numOfPoints,fruittreecount,monthname,rainyseason,month,RR) %>% na.omit() 
-SIN_follows_naomit_mother<- DJL_follows %>% dplyr::select(DJL,trj_sinuosity,rain_eve, walevel_eve, rain_mo, temp_min_eve, temp_min_mo,temp_max_eve, temp_max_mo, avg_temp_tot, ClassFocal, fai, monthYearDate,focal,meanTimelag,numOfPoints,fruittreecount,ageFromDOB, ageOfCurrentOffspring,monthname,rainyseason,) %>% na.omit()
+SIN_follows_naomit_full<- DJL_follows %>% dplyr::select(DJL,follow,trj_sinuosity,rain_eve, walevel_eve, rain_mo, temp_min_eve, temp_min_mo,temp_max_eve, temp_max_mo, avg_temp_tot, ClassFocal, fai, monthYearDate,focal,meanTimelag,numOfPoints,fruittreecount,monthname,rainyseason,month,RR) %>% na.omit()
+SIN_follows_naomit_dominanceANDageDOP<- DJL_follows %>% left_join(explanatoryvars,by=c("focal"="focal")) %>% dplyr::select(DJL,follow,trj_sinuosity,rain_eve,dominance,ageFromDOB, walevel_eve, rain_mo, temp_min_eve, temp_min_mo,temp_max_eve, temp_max_mo, avg_temp_tot, ClassFocal, fai, monthYearDate,focal,meanTimelag,numOfPoints,fruittreecount,monthname,rainyseason,month,RR) %>% na.omit() 
+SIN_follows_naomit_mother<- DJL_follows%>% left_join(explanatoryvars,by=c("focal"="focal")) %>% dplyr::select(DJL,trj_sinuosity,rain_eve, walevel_eve, rain_mo, temp_min_eve, temp_min_mo,temp_max_eve, temp_max_mo, avg_temp_tot,dominance, ClassFocal, fai, monthYearDate,focal,meanTimelag,numOfPoints,fruittreecount,ageFromDOB, ageOfCurrentOffspring,monthname,rainyseason,) %>% na.omit()
 SIN_follows_naomit_full_historyweather<- DJL_follows %>% dplyr::select(DJL,trj_sinuosity,rain_eve, walevel_eve, rain_mo, temp_min_eve, temp_min_mo,temp_max_eve, temp_max_mo, avg_temp_tot, ClassFocal, fai, monthYearDate,focal,meanTimelag,numOfPoints,fruittreecount,monthname,rainyseason,tot_rain_before,mmax_temp_before) %>% na.omit()
 SIN_follows_naomit_mother_historyweather<- DJL_follows %>% dplyr::select(DJL,trj_sinuosity,rain_eve, walevel_eve, rain_mo, temp_min_eve, temp_min_mo,temp_max_eve, temp_max_mo, avg_temp_tot, ClassFocal, fai, monthYearDate,focal,meanTimelag,numOfPoints,fruittreecount,ageFromDOB, ageOfCurrentOffspring,monthname,rainyseason,tot_rain_before,mmax_temp_before) %>% na.omit()
+
 
 
 ###### Tortuosity Straightness Index
@@ -3976,12 +4163,17 @@ glm_SIN_full <-lmer(trj_sinuosity~ rain_eve + walevel_eve + rain_mo + temp_min_e
   data = SIN_follows_naomit_full
   )
 summary(glm_SIN_selected)
-glm_SIN_selected <-lmer(trj_sinuosity~ rain_eve  + rain_mo +  avg_temp_tot   + fai + ClassFocal + DJL+ (1 | monthYearDate) +(1 | focal), # random effects to correct for
+glm_SIN_selected <-lmer(trj_sinuosity~ rain_eve  + rain_mo +  avg_temp_tot + fruittreecount  + fai + ClassFocal +DJL+ (1 | monthYearDate) +(1 | focal), # random effects to correct for
   data = SIN_follows_naomit_full
   )
-glm_SIN_selected_low <-lmer(trj_sinuosity~ fruittreecount + DJL + meanTimelag + (1 | monthYearDate) +(1 | focal), # random effects to correct for
+glm_SIN_selected_dominance <-lmer(trj_sinuosity~ rain_eve  + rain_mo +  avg_temp_tot   + fai + ClassFocal + DJL+meanTimelag+dominance+ (1 | monthYearDate) +(1 | focal), # random effects to correct for
+  data = SIN_follows_naomit_dominanceANDageDOP
+  )
+summary(glm_SIN_selected_dominance)
+glm_SIN_selected_low <-lmer(trj_sinuosity~ fruittreecount + DJL  + (1 | monthYearDate) +(1 | focal), # random effects to correct for
   data = SIN_follows_naomit_full
   )
+vif.mer(glm_SIN_selected_low)
 glm_SIN_selected_fruittrees <-lmer(trj_sinuosity~ fruittreecount+ (1 | monthYearDate) +(1 | focal), # random effects to correct for
   data = SIN_follows_naomit_full
   )
@@ -4084,13 +4276,15 @@ lmm_SIN_females_AgeAge <-lmer(trj_sinuosity~ ageFromDOB+ageOfCurrentOffspring+ (
 lmm_SIN_females_empty<-lmer(trj_sinuosity~ (1 | focal)+  (1 | monthYearDate), # random effects to correct for
   data = SIN_follows_naomit_mother
   )
-glm_SIN_females_selected <-lmer(trj_sinuosity~ rain_eve  + rain_mo  +  avg_temp_tot   + fai+ageOfCurrentOffspring+ageFromDOB+fruittreecount +DJL+meanTimelag + (1 | monthYearDate) + (1 | focal), # random effects to correct for
+glm_SIN_females_selected <-lmer(trj_sinuosity~ rain_eve  + rain_mo  +  avg_temp_tot   + fai+ageOfCurrentOffspring+dominance+fruittreecount +DJL + (1 | monthYearDate) + (1 | focal), # random effects to correct for
   data = SIN_follows_naomit_mother
   )
-glm_SIN_females_selected_low <-lmer(trj_sinuosity~ ageOfCurrentOffspring  + (1 | monthYearDate) + (1 | focal), # random effects to correct for
+vif.mer(glm_SIN_females_selected)
+glm_SIN_females_selected_low <-lmer(trj_sinuosity~ ageOfCurrentOffspring  + DJL+ fruittreecount+meanTimelag+ (1 | monthYearDate) + (1 | focal), # random effects to correct for
   data = SIN_follows_naomit_mother
   )
-anova(lmm_SIN_females_empty,glm_SIN_females_selected_low)
+anova(lmm_SIN_females_empty,glm_SIN_females_selected)
+vif.mer(glm_SIN_females_selected_low)
 summary(glm_SIN_females_selected_low)
 
 
@@ -4101,7 +4295,7 @@ step_result_backward<- step(glm_SIN_females_selected)
 glm_SIN_selected_backward<- get_model(step_result_backward,direction="forward")
 summary(glm_SIN_selected_backward)
 vif.mer(glm_SIN_selected_backward)
-anova(lmm_SIN_focalANDmonthyear,glm_SIN_selected_backward,glm_SIN_selected_withfruittree)
+anova(lmm_SIN_females_empty,glm_SIN_selected_backward)
 r.squaredGLMM(glm_SIN_selected_withfruittree)
 
 
@@ -4113,6 +4307,16 @@ sjPlot::tab_model(glm_SIN_selected,
                   show.re.var= TRUE, 
                   pred.labels =c("(Intercept)", "Urchins", "Fish", "Depth"),
                   dv.labels= "Effects of Herbivores on Coral Cover")
+?tab_model
+summary(glm_SIN_females_selected)
+sjPlot::tab_model(glm_SIN_females_selected,  digits = 4,
+                  show.re.var= TRUE, 
+                  pred.labels =c("intercept","day rain","waterlevel evening", "night rain","minimum °C evening","minimum °C morning","maximum °C evening","maximum °C morning","average temperature", "FAI", "Class: flanged male", "Class: infant","Class: juvenile","Class: unflanged male","mean timelag","age of offspring","age"),
+                  dv.labels= "Effects of internal and external factors on DJL")
+ranova(glm_SIN_females_selected)
+view(as.data.frame(vif.mer(glm_SIN_females_selected)))
+r.squaredGLMM(glm_SIN_females_selected)
+anova(lmm_SIN_females_empty,glm_SIN_females_selected)
 
 ###### TEXTREG --> LATEX EXPORT
 ?r.squaredGLMM()
@@ -4134,7 +4338,7 @@ texreg(list(lmm_SIN_focalANDmonthyear,glm_SIN_selected,glm_SIN_selected_low,lmm_
 ###### CLEAN AND FINAL LIST OF MODELS FOR SIMPLE MOVEMENT ANALYSIS ##
 ###### ###### ###### ###### ###### ###### ###### ###### ###### ###### 
 FTC_follows_naomit_full<- DJL_follows %>% dplyr::select(follow,trj_sinuosity,rain_eve, walevel_eve, rain_mo, temp_min_eve, temp_min_mo,temp_max_eve, temp_max_mo, avg_temp_tot, ClassFocal, fai, monthYearDate,focal,meanTimelag,numOfPoints,fruittreecount,monthname,rainyseason,month,RR,trj_sinuosity) %>% na.omit() %>% mutate(year=as.character(year(ym(monthYearDate))))
-FTC_follows_naomit_mother<- DJL_follows %>% dplyr::select(trj_sinuosity,rain_eve, walevel_eve, rain_mo, temp_min_eve, temp_min_mo,temp_max_eve, temp_max_mo, avg_temp_tot, ClassFocal, fai,RR,trj_sinuosity, monthYearDate,focal,meanTimelag,numOfPoints,fruittreecount,ageFromDOB, ageOfCurrentOffspring,monthname,rainyseason,) %>% na.omit()%>% mutate(year=as.character(year(ym(monthYearDate))))
+FTC_follows_naomit_mother<- DJL_follows%>% left_join(explanatoryvars,by=c("focal"="focal")) %>% dplyr::select(trj_sinuosity,dominance,rain_eve, walevel_eve, rain_mo, temp_min_eve, temp_min_mo,temp_max_eve, temp_max_mo, avg_temp_tot, ClassFocal, fai,RR,trj_sinuosity, monthYearDate,focal,meanTimelag,numOfPoints,fruittreecount,ageFromDOB, ageOfCurrentOffspring,monthname,rainyseason,) %>% na.omit()%>% mutate(year=as.character(year(ym(monthYearDate))))
 FTC_follows_naomit_full_historyweather<- DJL_follows %>% dplyr::select(trj_sinuosity,rain_eve, walevel_eve, rain_mo, temp_min_eve, temp_min_mo,temp_max_eve, temp_max_mo, avg_temp_tot, ClassFocal, fai,RR,trj_sinuosity, monthYearDate,focal,meanTimelag,numOfPoints,fruittreecount,monthname,rainyseason,tot_rain_before,mmax_temp_before) %>% na.omit()%>% mutate(year=as.character(year(ym(monthYearDate))))
 FTC_follows_naomit_mother_historyweather<- DJL_follows %>% dplyr::select(trj_sinuosity,rain_eve, walevel_eve, rain_mo, temp_min_eve, temp_min_mo,temp_max_eve, temp_max_mo, avg_temp_tot, ClassFocal, fai,RR,trj_sinuosity,RR,trj_sinuosity, monthYearDate,focal,meanTimelag,numOfPoints,fruittreecount,ageFromDOB, ageOfCurrentOffspring,monthname,rainyseason,tot_rain_before,mmax_temp_before) %>% na.omit()%>% mutate(year=as.character(year(ym(monthYearDate))))
 
@@ -4227,7 +4431,7 @@ glm_FTC_full <-lmer(fruittreecount~ rain_eve + walevel_eve + rain_mo + temp_min_
   data = FTC_follows_naomit_full
   )
 summary(glm_FTC_full)
-glm_FTC_selected <-lmer(fruittreecount~ rain_eve  + rain_mo +  avg_temp_tot   + fai + ClassFocal  + RR +trj_sinuosity+  (1 | monthYearDate), # random effects to correct for
+glm_FTC_selected <-lmer(fruittreecount~ rain_eve  + rain_mo +  avg_temp_tot   + fai + ClassFocal  + RR +trj_sinuosity+  (1 | monthYearDate) + (1 | focal), # random effects to correct for
   data = FTC_follows_naomit_full
   )
 summary(glm_FTC_selected)
@@ -4312,7 +4516,7 @@ lmm_FTC_females_AgeAge <-lmer(fruittreecount~ ageFromDOB+ageOfCurrentOffspring+ 
 lmm_FTC_females_empty<-lmer(fruittreecount~ (1 | monthYearDate), # random effects to correct for
   data = FTC_follows_naomit_mother
   )
-glm_FTC_females_selected <-lmer(fruittreecount~  trj_sinuosity+ageOfCurrentOffspring  + (1 | monthYearDate), # random effects to correct for
+glm_FTC_females_selected <-lmer(fruittreecount~  rain_eve  + rain_mo +  avg_temp_tot   + fai+ dominance + ageOfCurrentOffspring  + RR +trj_sinuosity+  (1 | monthYearDate) + (1 | focal), # random effects to correct for
   data = FTC_follows_naomit_mother
   )
 test <- FTC_follows_naomit_mother %>% mutate(logftc=log(fruittreecount)) %>% filter(is.finite(logftc))%>% filter(!is.na(logftc))
@@ -4328,6 +4532,16 @@ sjPlot::tab_model(glm_FTC_selected,
                   show.re.var= TRUE, 
                   pred.labels =c("(Intercept)", "Urchins", "Fish", "Depth"),
                   dv.labels= "Effects of Herbivores on Coral Cover")
+
+summary(glm_FTC_females_selected)
+sjPlot::tab_model(glm_FTC_females_selected,  digits = 4,
+                  show.re.var= TRUE, 
+                  pred.labels =c("intercept","day rain","waterlevel evening", "night rain","minimum °C evening","minimum °C morning","maximum °C evening","maximum °C morning","average temperature", "FAI", "Class: flanged male", "Class: infant","Class: juvenile","Class: unflanged male","mean timelag","age of offspring","age"),
+                  dv.labels= "Effects of internal and external factors on DJL")
+ranova(glm_FTC_females_selected)
+view(as.data.frame(vif.mer(glm_FTC_females_selected)))
+r.squaredGLMM(glm_FTC_females_selected)
+anova(lmm_FTC_monthYearDate,glm_FTC_selected)
 
 ###### TEXTREG --> LATEX EXPORT
 r.squaredGLMM(glm_FTC_selected_fai)
