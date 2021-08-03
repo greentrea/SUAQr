@@ -4885,6 +4885,16 @@ fruittreeindex_inoverlaps<- all_overlaps %>%
 fruittreeindex_inoverlaps
 
 ### Range sharing
+test <- all_overlaps_sf %>%
+  mutate(period = fct_relevel(period, 
+            "before 2012", "2012 until 2016", "2016 until August 2018", 
+            "Since August 2018", "total research period")) %>%
+  #filter(algorithm=="brb") %>% 
+  filter(hminfac%in%c(0.8,NA)) %>% # filter only brb with 1 --> reduce redundancy
+  filter(bndwthm%in%c("HBCV",NA)) %>% # filter only kde with hbcv method
+  filter(modelbase%in%c("pooled",NA)) %>% 
+  filter(algorithm=="brb")
+
 range_sharing<- all_overlaps_sf %>%
   mutate(period = fct_relevel(period, 
             "before 2012", "2012 until 2016", "2016 until August 2018", 
@@ -5463,8 +5473,36 @@ coefs <- data.frame(coef(summary(lmer_numOfPoints95)))
 coefs$p.z <- 2 * (1 - pnorm(abs(coefs$t.value)))
 coefs
 
-### Dominance
+### Age of current offspring
 all_homeranges_50_naomit <- all_homeranges_50 %>% dplyr::select(area,SUAQ_orangutans.dominancecat,period,focal,n_gps,n_fllws,algorithm) %>%  na.omit() 
+all_homeranges_95_naomit <- all_homeranges_95 %>% dplyr::select(area,SUAQ_orangutans.dominancecat,period,focal,n_gps,n_fllws,algorithm) %>% na.omit()
+hr_all_nullmodell_95 <- lmer(area ~ (1 | focal)+(1| n_gps)+(1| algorithm),all_homeranges_95_naomit,REML=FALSE)
+hr_all_nullmodell_50 <- lmer(area ~ (1 | focal)+(1| n_gps)+(1| algorithm),all_homeranges_50_naomit,REML=FALSE)
+all_homeranges_50_naomit %>% ggplot(aes(as.factor(SUAQ_orangutans.dominancecat),area,colour=n_gps))+
+  geom_boxplot() +
+  geom_jitter()
+all_homeranges_95_naomit %>% ggplot(aes(as.factor(SUAQ_orangutans.dominancecat),area,colour=n_gps))+
+  geom_boxplot() +
+  geom_jitter()
+#### core area
+lmer_numOfPoints50 <- lmer(area ~ SUAQ_orangutans.dominancecat+(1 | focal)+(1| n_gps)+(1| algorithm),all_homeranges_50_naomit,REML=FALSE)
+anova(lmer_numOfPoints50,hr_all_nullmodell_50)
+##### Create P values for lm
+coefs <- data.frame(coef(summary(lmer_numOfPoints50)))
+# use normal distribution to approximate p-value
+coefs$p.z <- 2 * (1 - pnorm(abs(coefs$t.value)))
+coefs
+#### core area
+lmer_numOfPoints95 <- lmer(area ~ SUAQ_orangutans.dominancecat+(1 | focal)+(1| n_gps)+(1| algorithm),all_homeranges_95_naomit,REML=FALSE)
+anova(lmer_numOfPoints95,hr_all_nullmodell_95)
+##### Create P values for lm
+coefs <- data.frame(coef(summary(lmer_numOfPoints95)))
+# use normal distribution to approximate p-value
+coefs$p.z <- 2 * (1 - pnorm(abs(coefs$t.value)))
+coefs
+
+### Dominance
+all_homeranges_50_naomit <- all_homeranges_50$ageOfCurrentOffspring_mean %>% dplyr::select(area,SUAQ_orangutans.dominancecat,period,focal,n_gps,n_fllws,algorithm) %>%  na.omit() 
 all_homeranges_95_naomit <- all_homeranges_95 %>% dplyr::select(area,SUAQ_orangutans.dominancecat,period,focal,n_gps,n_fllws,algorithm) %>% na.omit()
 hr_all_nullmodell_95 <- lmer(area ~ (1 | focal)+(1| n_gps)+(1| algorithm),all_homeranges_95_naomit,REML=FALSE)
 hr_all_nullmodell_50 <- lmer(area ~ (1 | focal)+(1| n_gps)+(1| algorithm),all_homeranges_50_naomit,REML=FALSE)
@@ -5694,10 +5732,12 @@ texreg(list(hr_all_nullmodell_50,lmm_cr_full_HR50,hr_all_nullmodell_95,lmm_cr_fu
 
 ```{r Trees in Homerange - Statistics, Explanatory variables,echo=FALSE, message=FALSE,comment=FALSE, warning=FALSE}
 ## MATRILINE
-all_homeranges_50_naomit <- all_homeranges_50 %>% dplyr::select(area,matriline,period,focal,n_gps,n_fllws,algorithm,fruittree_normalized) %>%  na.omit()
-all_homeranges_95_naomit <- all_homeranges_95 %>% dplyr::select(area,matriline,period,focal,n_gps,n_fllws,algorithm,fruittree_normalized) %>% na.omit()
-hr_all_nullmodell_95 <- lmer(fruittree_normalized ~ (1 | focal)+(1| n_gps)+(1| algorithm),all_homeranges_95_naomit,REML=FALSE)
-hr_all_nullmodell_50 <- lmer(fruittree_normalized ~ (1 | focal)+(1| n_gps)+(1| algorithm),all_homeranges_50_naomit,REML=FALSE)
+all_homeranges_50_naomit <- all_homeranges_50 %>% dplyr::select(area,matriline,period,focal,n_gps,n_fllws,algorithm,fruittree_normalized,dominance) %>%  na.omit()
+all_homeranges_95_naomit <- all_homeranges_95 %>% dplyr::select(area,matriline,period,focal,n_gps,n_fllws,algorithm,fruittree_normalized,dominance) %>% na.omit()
+hr_all_nullmodell_95 <- lmer(fruittree_normalized ~ (1 | focal)+(1| algorithm),all_homeranges_95_naomit,REML=FALSE)
+hr_all_nullmodell_50 <- lmer(fruittree_normalized ~ (1 | focal)+(1| algorithm),all_homeranges_50_naomit,REML=FALSE)
+hr_all_fullmodell_95 <- lmer(fruittree_normalized ~ area+matriline+dominance+(1 | focal)+(1| algorithm),all_homeranges_95_naomit,REML=FALSE)
+hr_all_fullmodell_50 <- lmer(fruittree_normalized ~ area+matriline+dominance+(1 | focal)+(1| algorithm),all_homeranges_50_naomit,REML=FALSE)
 
 all_homeranges_50_naomit %>% ggplot(aes(as.factor(matriline),fruittree_normalized,colour=period))+
   geom_boxplot() +
@@ -5800,6 +5840,14 @@ coefs <- data.frame(coef(summary(lmer_numOfPoints95)))
 coefs$p.z <- 2 * (1 - pnorm(abs(coefs$t.value)))
 coefs
 
+summary(hr_all_fullmodell_95)
+sjPlot::tab_model(hr_all_fullmodell_50, digits=4,
+                  show.re.var= TRUE,
+                  dv.labels= "Effects of internal and external factors on DJL")
+ranova(hr_all_fullmodell_95)
+view(as.data.frame(vif.mer(hr_all_fullmodell_95)))
+r.squaredGLMM(hr_all_fullmodell_95)
+anova(hr_all_nullmodell_50,hr_all_fullmodell_95)
 
 
 ```
@@ -5812,7 +5860,11 @@ all_overlaps_95_naomit <- all_overlaps_95 %>% dplyr::select(area,n_gps,overlap,a
 
 ### Simple descriptive statistics 
 # Area shared
-specs_areashared_50<- all_overlaps_50_naomit %>% group_by(focal,algorithm,area_shared) %>% summarise(n())
+test <- specs_areashared_95 %>% filter(algorithm=="brb")
+mean(as.numeric(test$area_shared),na.rm=TRUE)
+specs_areashared_95<- all_overlaps_95_naomit %>% group_by(focal,algorithm,area_shared) %>% summarise(n())
+
+specs_areashared_50<- all_overlaps_50_naomit %>% group_by(focal,algorithm,area_shared,overlap_relative) %>% summarise(n())
 plot_specs_areashared_50<- specs_areashared_50 %>% ggplot(aes(focal,area_shared,colour=focal,shape=algorithm)) + 
   geom_point(size=4) +
   labs(y="area shared [%]",x="")
@@ -6245,12 +6297,16 @@ r.squaredGLMM(lmer_ntree_95)
 ```{r Homerange Trees in overlaps - Statistics, Explanatory variables,echo=FALSE, message=FALSE,comment=FALSE, warning=FALSE}
 # Tree in overlap
 ## MATRILINE Explain tree normalized
-all_overlaps_50_naomit <- all_overlaps_50%>%  dplyr::select(area,n_gps,overlap,fruittree_normalized,related,period,focal,focal.1,algorithm) %>% na.omit() %>% ungroup() 
-all_overlaps_95_naomit <- all_overlaps_95 %>% dplyr::select(area,n_gps,overlap,fruittree_normalized,related,period,focal,focal.1,algorithm) %>% na.omit() %>% ungroup()
-lmer_overlap_all_nullmodell_95 <- lmer(fruittree_normalized ~ (1 | focal)+(1| n_gps)+(1|algorithm),all_overlaps_95_naomit,REML=FALSE)
-lmer_overlap_all_nullmodell_50 <- lmer(fruittree_normalized ~ (1 | focal)+(1| n_gps)+(1| algorithm),all_overlaps_50_naomit,REML=FALSE)
+all_overlaps_50_naomit <- all_overlaps_50%>%  dplyr::select(area,n_gps,overlap,dominancediff,fruittree_normalized,related,period,focal,focal.1,algorithm) %>% na.omit() %>% ungroup() 
+all_overlaps_95_naomit <- all_overlaps_95 %>% dplyr::select(area,n_gps,dominancediff,overlap,fruittree_normalized,related,period,focal,focal.1,algorithm) %>% na.omit() %>% ungroup()
+lmer_overlap_all_nullmodell_95 <- lmer(fruittree_normalized ~ (1 | focal)+(1|algorithm),all_overlaps_95_naomit,REML=FALSE)
+lmer_overlap_all_nullmodell_50 <- lmer(fruittree_normalized ~ (1 | focal)+(1| algorithm),all_overlaps_50_naomit,REML=FALSE)
+lmer_overlap_all_fullmodell_50 <- lmer(fruittree_normalized ~ area+related+dominancediff+(1 | focal)+(1| algorithm),all_overlaps_50_naomit,REML=FALSE)
+lmer_overlap_all_fullmodell_95 <- lmer(fruittree_normalized ~ area+related+dominancediff+(1 | focal)+(1| algorithm),all_overlaps_95_naomit,REML=FALSE)
 
-all_overlaps_95_naomit %>% ggplot(aes(as.factor(related),fruittree_normalized,colour=area))+
+
+
+all_overlaps_50_naomit %>% ggplot(aes(as.factor(dominancediff),fruittree_normalized,colour=area))+
   geom_boxplot() +
   geom_jitter()
 
@@ -6340,6 +6396,25 @@ coefs <- data.frame(coef(summary(lmer_fruittree_overlap95)))
 # use normal distribution to approximate p-value
 coefs$p.z <- 2 * (1 - pnorm(abs(coefs$t.value)))
 coefs
+
+
+summary(lmer_overlap_all_fullmodell_50)
+sjPlot::tab_model(lmer_overlap_all_fullmodell_50, digits=4,
+                  show.re.var= TRUE,
+                  dv.labels= "Effects of internal and external factors on DJL")
+ranova(lmer_overlap_all_fullmodell_50)
+view(as.data.frame(vif.mer(lmer_overlap_all_fullmodell_50)))
+r.squaredGLMM(lmer_overlap_all_fullmodell_50)
+anova(lmer_overlap_all_nullmodell_50,lmer_overlap_all_fullmodell_50)
+
+summary(hr_all_fullmodell_50)
+sjPlot::tab_model(hr_all_fullmodell_50, digits=4,
+                  show.re.var= TRUE,
+                  dv.labels= "Effects of internal and external factors on DJL")
+ranova(hr_all_fullmodell_50)
+view(as.data.frame(vif.mer(hr_all_fullmodell_50)))
+r.squaredGLMM(hr_all_fullmodell_50)
+anova(hr_all_nullmodell_50,hr_all_fullmodell_50)
 
 
 # See if overlap and homeranges are significantly different. Explaining normalized fruittree count

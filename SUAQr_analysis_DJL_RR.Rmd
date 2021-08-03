@@ -245,7 +245,6 @@ SUAQ_waypoints_11all20_loc <- SUAQ_waypoints_11all20_loc %>% mutate(manualDateti
 SUAQ_waypoints_11all20_loc_test <- SUAQ_waypoints_11all20_loc %>% filter(focal!=SUAQ_followlog.FocalName)
 SUAQ_waypoints_11all20_loc_test2 <- SUAQ_waypoints_11all20_loc %>% filter(!is.na(ageOfCurrentOffspring))
 
-
 ##### Weather and FAI #####
 SUAQ_weather <- read_csv("data/Processed_data/SUAQ_weather.csv")
 SUAQ_fai <- read_csv("data/Processed_data/SUAQ_fai.csv")
@@ -1966,12 +1965,12 @@ plot_SEASONxSIN <-
 plot_SEASONxRR
 
 ### DJL and sinuosity
-plot_DJLxSINUOSITY <-
-  DJL_follows %>% ggplot(aes(trj_sinuosity,DJL)) +
+plot_RRxAge<-
+  DJL_follows %>% ggplot(aes(ageFromDOB,RR)) +
   #scale_y_log10(labels=fancy_scientific) +
-  geom_point(binwidth = 1) + labs(x = "Sinuosity index", y = "DJL [m]")+
+  geom_point(binwidth = 1) + labs(y = "SI", x = "Age")+
   geom_smooth()
-plot_DJLxSINUOSITY
+plot_RRxAge
 
 ### RR and sinuosity
 plot_RRxSIN2 <-
@@ -2046,12 +2045,12 @@ ggsave(filename = paste(
   paste(
     "/Users/stefgr/Dropbox/Apps/Overleaf/Msc_Thesis/figures/",
     format(Sys.Date(), "%Y%m%d"),"_",
-    "plot_MINTEMPxRR",
+    "plot_RRxAge",
     sep = ""
   ),
   "png",
   sep = "."
-), plot = plot_MINTEMPxRR)
+), plot = plot_RRxAge)
 
 ### Timelag and RR
 plot_TimelagxRR <-
